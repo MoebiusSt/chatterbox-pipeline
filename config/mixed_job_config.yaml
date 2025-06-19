@@ -1,0 +1,11 @@
+job:
+  name: "mixed_job"
+  run-label: "mixed_test"
+
+input:
+  reference_audio: "stephan_moebius.wav"
+  text_file: "test_short.txt"
+
+generation:
+  num_candidates: 1
+  max_retries: 0 

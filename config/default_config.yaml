@@ -1,0 +1,68 @@
+job:
+  name: "raise_children"
+  run-label: "mike"  # empty by default
+
+input:
+  reference_audio: "mike_kamp.wav"        # Dateiname im reference_audio Ordner
+  text_file: "raise_children.txt"   # Text-Datei im texts Ordner
+
+preprocessing:
+  # Text normalization options
+  enabled: true
+  normalize_line_endings: true    # Convert \r\n and \r to \n
+  # Future preprocessing options can be added here
+  # normalize_quotes: false
+  # remove_extra_whitespace: false
+  # fix_encoding_issues: false
+
+chunking:
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  min_chunk_length: 80
+  spacy_model: "en_core_web_sm"
+
+generation:
+  num_candidates: 5
+  max_retries: 2
+  tts_params:
+    # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
+    # - exaggeration: MAX value (ramps DOWN from here)
+    # - cfg_weight: MIN value (ramps UP from here)  
+    # - temperature: MIN value (ramps UP from here)
+    exaggeration: 0.40                  # MAX: give maximum here
+    exaggeration_max_deviation: 0.20    # Range: (ramp DOWN) [exaggeration, exaggeration-exag_max_deviation] 
+    cfg_weight: 0.2                    # MIN: give minimum
+    cfg_weight_max_deviation: 0.20      # Range: (ramp UP) [cfg_weight, cfg_weight+max_dev] 
+    temperature: 0.9                    # MIN: give minimum
+    temperature_max_deviation: 0.3      # Range: (ramp UP) [temp, temp+max_dev] 
+    
+  # Conservative candidate parameters for guaranteed correctness
+  conservative_candidate:
+    enabled: true
+    exaggeration: 0.45
+    cfg_weight: 0.3
+    temperature: 0.8
+  
+validation:
+  whisper_model: "small" # "base" "small" "medium" "large"
+  similarity_threshold: 0.8
+  min_quality_score: 0.75
+
+postprocessing:
+  audio_cleaning:
+    enabled: false  # Disable AudioCleaner completely to avoid chunky audio
+  auto_editor:
+    enabled: false  # Disable Auto-Editor completely
+    margin_before: 0.4    # longer puffer before speech segments
+    margin_after: 0.3     # longer puffer after speech segments
+    preserve_natural_sounds: true
+  noise_threshold_factor: 0.4  # multiplication factor for recommended threshold (0.8 = 80% of the detected voice threshhold)
+
+audio:
+  silence_duration:
+    normal: 0.40
+    paragraph: 0.80
+  # ChatterboxTTS native sample rate - NOT a user setting!
+  # This must match the actual output sample rate of ChatterboxTTS (24kHz)
+  # Only change this if ChatterboxTTS itself changes its output sample rate
+  sample_rate: 24000 

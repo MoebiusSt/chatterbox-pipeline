@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+When ever you call a tool, start a command, script, or program in a terminal then give that terminal an id. You shall be able to find this terminal if i should move it "to the backround" into cursors terminal list. When the chat shows "Terminal moved to background. Click to focus", then don't kill the process, but investigate that terminal for outputs. It's probably done working. This is a measure to insure that will get results from your tool-call even if the chat was stuck with you waiting for terminal to answer.

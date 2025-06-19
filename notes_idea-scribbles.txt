@@ -1,0 +1,114 @@
+the --force-regenerate erzeugt eine anders klingende Datei als das original final. Es nimmt wohl andere Kandidaten.
+
+----------------------
+
+generating two more retry candidates, does not save the audio-chunks to output
+
+--------------------------------
+
+
+
+in Order to have conditional voice swapping before a generation, we can use
+
+model.prepare_conditionals(wav_fpath=AUDIO_PROMPT_PATH). It turns a wav file into a set of conditional values: - model.conds
+
+you can save and re-use them
+
+they can be saved as conds.pt and swapped in as
+model.conds = torch.load("your_new_conds.pt")
+
+
+IPA transcription of British RP work somewhat:
+/aɪ ˈrɪəli ɪnˈdʒɔɪ ˈlɜːnɪŋ ˈlæŋɡwɪdʒɪz/
+I really enjoy learning languages
+
+1. eng-to-ipa
+
+Specifically for English text.
+
+Uses the Carnegie-Mellon University Pronouncing Dictionary.
+
+Simple usage:
+
+python
+import eng_to_ipa as ipa
+ipa.convert("The quick brown fox jumped over the lazy dog.")
+# Output: 'ðə kwɪk braʊn fɑks ʤəmpt ˈoʊvər ðə ˈleɪzi dɔg.'
+Words not found in the dictionary are marked with an asterisk.
+
+2. Epitran
+
+Supports many languages, not just English.
+
+Designed for transliterating orthographic text to IPA.
+
+Suitable for research and multilingual applications.
+
+3. Gruut-IPA
+
+Manipulates IPA pronunciations and can convert between IPA, espeak, and sampa.
+
+Supports multiple languages including English, German, Spanish, Russian, and more.
+
+4. ipapy
+
+Focuses on working with IPA strings and characters.
+
+Useful for validating, parsing, and manipulating IPA, but not primarily for converting plain text to IPA.
+
+5. espeak-ng
+
+Command-line tool with Python bindings.
+
+Can output IPA transcriptions using the -x flag.
+
+
+
+Try:
+"[UH]": 604,
+      "[UM]": 605,
+      "[giggle]": 606,
+      "[laughter]": 607,
+      "[guffaw]": 608,
+      "[inhale]": 609,
+      "[exhale]": 610,
+      "[sigh]": 611,
+      "[cry]": 612,
+      "[bark]": 613,
+      "[howl]": 614,
+      "[meow]": 615,
+      "[singing]": 616,
+      "[music]": 617,
+      "[whistle]": 618,
+      "[humming]": 619,
+      "[gasp]": 620,
+      "[groan]": 621,
+      "[whisper]": 622,
+      "[mumble]": 623,
+      "[sniff]": 624,
+      "[sneeze]": 625,
+      "[cough]": 626,
+      "[snore]": 627,
+      "[chew]": 628,
+      "[sip]": 629,
+      "[clear_throat]": 630,
+      "[kiss]": 631,
+      "[shhh]": 632,
+      "[gibberish]": 633,
+      "[fr]": 634,
+      "[es]": 635,
+      "[de]": 636,
+      "[it]": 637,
+      "[ipa]": 638,
+      "[end_of_label]": 639,
+      
+      
+Perhaps there IS another way for foreign words? Let's say we would convert [irish/chinese/whatever] words to IPA, then use another tool that would convert the IPA-phonem-strings back to "how-a-brit-would-read-it"-British looking text? For instance:
+
+--> INPUT:
+"I come from Glais a Chú in the North West Gaeltacht"
+--> to IPS:
+"I come from /Glais ə Chu/ in the /nɔːθ wɛst Gaeltacht/."
+--> IPS to Brit-Lingo:
+"I come from Glas ɑ Koo in the norf west Gayl-tahkt"
+--> feed to Chatterbox.
