@@ -248,11 +248,20 @@ def main() -> int:
 
             task_config = execution_plan.task_configs[0]
 
-            # Create file manager
-            file_manager = FileManager(task_config)
+            # Load config once via ConfigManager
+            task_config_path = task_config.config_path
+            project_root = task_config_path.parent.parent.parent.parent
+            cm = ConfigManager(project_root)
+            loaded_config = cm.load_cascading_config(task_config_path)
 
-            # Create and execute task
+            # Create file manager with preloaded config
+            file_manager = FileManager(task_config, preloaded_config=loaded_config)
+
+            # Create and execute task - TaskExecutor will not reload config
             task_executor = TaskExecutor(file_manager, task_config)
+            # Set the loaded config directly to avoid re-loading in TaskExecutor
+            task_executor.config = loaded_config
+            
             result = task_executor.execute_task()
 
             # Report results

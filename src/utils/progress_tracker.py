@@ -35,10 +35,6 @@ class ProgressTracker:
         self.start_time = time.time()
         self.item_times: List[float] = []
 
-        # Reduce initial verbosity
-        # logger.info(f"Started {description}: {total_items} items to process")
-        # logger.info(f"Start time: {datetime.now().strftime('%H:%M:%S')}")
-
     def update(self, current_item: Optional[int] = None, message: str = "") -> None:
         """
         Update progress tracker.

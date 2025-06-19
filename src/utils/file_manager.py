@@ -67,12 +67,13 @@ class FileManager:
     Maintains consistent file schemas and directory structures.
     """
 
-    def __init__(self, task_config: Union[TaskConfig, Dict[str, Any]]) -> None:
+    def __init__(self, task_config: Union[TaskConfig, Dict[str, Any]], preloaded_config: Optional[Dict[str, Any]] = None) -> None:
         """
         Initialize FileManager with task configuration.
 
         Args:
             task_config: TaskConfig object or config dictionary
+            preloaded_config: Optional pre-loaded config to avoid redundant loading
         """
         from utils.config_manager import ConfigManager
 
@@ -83,9 +84,13 @@ class FileManager:
             self.task_directory = task_config.base_output_dir
             self.job_name = task_config.job_name
 
-            # Load the config data from file
-            cm = ConfigManager(Path.cwd())
-            self.config = cm.load_cascading_config(task_config.config_path)
+            # Use preloaded config if provided, otherwise load from file
+            if preloaded_config is not None:
+                self.config = preloaded_config
+            else:
+                # Load the config data from file
+                cm = ConfigManager(Path.cwd())
+                self.config = cm.load_cascading_config(task_config.config_path)
 
         elif isinstance(task_config, dict):
             # Config dictionary (fallback for backward compatibility)
@@ -301,12 +306,35 @@ class FileManager:
                     saved_count += 1
                     logger.debug(f"Saved new candidate file: {audio_filename}")
                 elif candidate.audio_path and candidate.audio_path.exists():
-                    # Copy existing audio file
-                    import shutil
-
-                    shutil.copy2(candidate.audio_path, audio_path)
-                    saved_count += 1
-                    logger.debug(f"Copied candidate file: {audio_filename}")
+                    # VALIDATE before copying to prevent corrupt files from propagating
+                    try:
+                        # Test if the file can be loaded properly
+                        test_waveform, test_sample_rate = torchaudio.load(str(candidate.audio_path))
+                        if test_waveform.numel() == 0:
+                            raise ValueError("Empty audio file")
+                        if torch.isnan(test_waveform).any() or torch.isinf(test_waveform).any():
+                            raise ValueError("Audio contains NaN or Inf values")
+                        
+                        # File is valid, safe to copy
+                        import shutil
+                        shutil.copy2(candidate.audio_path, audio_path)
+                        saved_count += 1
+                        logger.debug(f"Copied validated candidate file: {audio_filename}")
+                        
+                    except Exception as e:
+                        # CRITICAL: Corrupt file detected - do NOT copy!
+                        logger.error(f"🚨 CORRUPT AUDIO FILE DETECTED: {candidate.audio_path}")
+                        logger.error(f"   Error: {e}")
+                        logger.error(f"   Skipping candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}")
+                        logger.error(f"   This candidate will be excluded from final audio assembly!")
+                        
+                        # Remove the corrupt file and its validation data
+                        self._remove_corrupt_candidate(chunk_idx, candidate.candidate_idx)
+                        continue  # Skip this candidate entirely
+                else:
+                    # No audio tensor AND no valid audio file - this candidate is unusable
+                    logger.warning(f"⚠️ Unusable candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}: no audio tensor or valid file")
+                    continue  # Skip this candidate
 
                 # Update candidate path
                 candidate.audio_path = audio_path
@@ -654,7 +682,6 @@ class FileManager:
                 
                 # If no candidates left in chunk, clean up chunk-level data
                 if not metrics["chunks"][chunk_key]["candidates"]:
-                    # Reset chunk-level best candidate info since all data is stale
                     metrics["chunks"][chunk_key]["best_candidate"] = None
                     metrics["chunks"][chunk_key]["best_score"] = 0.0
                     logger.debug(f"Reset chunk {chunk_idx} best candidate info due to no valid candidates")
@@ -852,12 +879,27 @@ class FileManager:
             if audio_file.exists():
                 try:
                     audio, _ = torchaudio.load(str(audio_file))
+                    
+                    # VALIDATE loaded audio
+                    if audio.numel() == 0:
+                        raise ValueError("Empty audio file")
+                    if torch.isnan(audio).any() or torch.isinf(audio).any():
+                        raise ValueError("Audio contains NaN or Inf values")
+                        
                     audio_segments.append(audio.squeeze(0))  # Remove batch dimension
+                    
                 except Exception as e:
-                    logger.error(f"Error loading audio segment {audio_file}: {e}")
-                    # Add silence as fallback
+                    logger.error(f"🚨 CORRUPT AUDIO DETECTED in final assembly: {audio_file}")
+                    logger.error(f"   Error: {e}")
+                    logger.error(f"   Falling back to silence for chunk {chunk_idx}")
+                    
+                    # Remove corrupt file and its validation data
+                    self._remove_corrupt_candidate(chunk_idx, candidate_idx)
+                    
+                    # Add silence as fallback instead of breaking the entire final audio
                     sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
-                    silence = torch.zeros(int(sample_rate * 0.5))  # 0.5 second silence
+                    silence_duration = 2.0  # 2 seconds of silence as fallback
+                    silence = torch.zeros(int(sample_rate * silence_duration))
                     audio_segments.append(silence)
             else:
                 logger.warning(f"Audio file not found: {audio_file}")
@@ -868,6 +910,47 @@ class FileManager:
 
         logger.info(f"Loaded {len(audio_segments)} audio segments")
         return audio_segments
+
+    def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:
+        """
+        Remove corrupt candidate file and its validation data.
+        
+        Args:
+            chunk_idx: Chunk index
+            candidate_idx: Candidate index
+            
+        Returns:
+            True if removal successful
+        """
+        try:
+            removed_files = []
+            
+            # Remove audio file
+            chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
+            audio_file = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
+            if audio_file.exists():
+                audio_file.unlink()
+                removed_files.append(str(audio_file))
+                logger.info(f"🗑️ Removed corrupt audio file: {audio_file}")
+            
+            # Remove whisper validation file
+            whisper_file = self.whisper_dir / f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            if whisper_file.exists():
+                whisper_file.unlink()
+                removed_files.append(str(whisper_file))
+                logger.info(f"🗑️ Removed stale whisper validation: {whisper_file}")
+            
+            # Remove from enhanced metrics
+            self._remove_stale_validation_data(chunk_idx, candidate_idx)
+            
+            if removed_files:
+                logger.warning(f"⚠️ Cleaned up {len(removed_files)} files for corrupt candidate {candidate_idx+1} in chunk {chunk_idx+1}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}")
+            return False
 
     # State Analysis
     def analyze_task_state(self) -> TaskState:

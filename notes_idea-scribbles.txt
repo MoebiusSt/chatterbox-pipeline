@@ -1,13 +1,3 @@
-the --force-regenerate erzeugt eine anders klingende Datei als das original final. Es nimmt wohl andere Kandidaten.
-
-----------------------
-
-generating two more retry candidates, does not save the audio-chunks to output
-
---------------------------------
-
-
-
 in Order to have conditional voice swapping before a generation, we can use
 
 model.prepare_conditionals(wav_fpath=AUDIO_PROMPT_PATH). It turns a wav file into a set of conditional values: - model.conds

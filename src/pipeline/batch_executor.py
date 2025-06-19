@@ -199,11 +199,15 @@ class BatchExecutor:
         Returns:
             TaskResult object
         """
-        # Create file manager for this task
-        file_manager = FileManager(task_config)
+        # Load config once to avoid duplicate loading
+        loaded_config = self.config_manager.load_cascading_config(task_config.config_path)
+        
+        # Create file manager with preloaded config
+        file_manager = FileManager(task_config, preloaded_config=loaded_config)
 
-        # Create task executor
+        # Create task executor and set config to avoid re-loading
         task_executor = TaskExecutor(file_manager, task_config)
+        task_executor.config = loaded_config
 
         # Execute task
         return task_executor.execute_task()

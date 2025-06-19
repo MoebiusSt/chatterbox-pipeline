@@ -62,11 +62,15 @@ class TaskExecutor:
         self.file_manager = file_manager
         self.task_config = task_config
 
-        # Load config data from the task config file
-        cm = ConfigManager(
-            task_config.config_path.parent.parent.parent.parent
-        )  # Go up to project root
-        self.config = cm.load_cascading_config(task_config.config_path)
+        # Load config data only if not already set (avoid duplicate loading)
+        if not hasattr(self, 'config') or self.config is None:
+            cm = ConfigManager(
+                task_config.config_path.parent.parent.parent.parent
+            )  # Go up to project root
+            self.config = cm.load_cascading_config(task_config.config_path)
+            
+            # Set the loaded config in FileManager to avoid duplicate loading
+            file_manager.config = self.config
 
         # Initialize progress tracking (will be created when needed)
         self.progress_tracker = None
@@ -163,7 +167,7 @@ class TaskExecutor:
         start_time = time.time()
 
         try:
-            logger.primary(f"Starting task execution: {self.task_config.job_name}")
+            logger.primary(f"Starting task execution from job: {self.task_config.job_name}")
             logger.verbose(f"Task directory: {self.task_config.base_output_dir}")
 
             # Analyze current state

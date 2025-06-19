@@ -263,9 +263,9 @@ preprocessing:
   # fix_encoding_issues: false
 
 chunking:
-  target_chunk_limit: 480
-  max_chunk_limit: 600
-  min_chunk_length: 50
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  min_chunk_length: 80
   spacy_model: "en_core_web_sm"
 
 generation:
@@ -274,7 +274,7 @@ generation:
   tts_params:
     exaggeration: 0.40
     cfg_weight: 0.30
-    temperature: 0.8
+    temperature: 0.9
   # Conservative candidate parameters for guaranteed correctness
   conservative_candidate:
     enabled: true
@@ -288,11 +288,15 @@ validation:
   min_quality_score: 0.75
 
 postprocessing:
+  audio_cleaning:
+    enabled: false  # Disable AudioCleaner completely to avoid chunky audio
   auto_editor:
-    margin_before: 0.1
-    margin_after: 0.1
+    enabled: false  # Disable Auto-Editor completely
+    margin_before: 0.4    # longer puffer before speech segments
+    margin_after: 0.3     # longer puffer after speech segments
     preserve_natural_sounds: true
-  noise_threshold_factor: 1.5
+  noise_threshold_factor: 0.4  # multiplication factor for recommended threshold (0.8 = 80% of the detected voice threshhold)
+
 
 audio:
   silence_duration:
