@@ -318,7 +318,9 @@ class BatchExecutor:
         """
         if output_path is None:
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            output_path = Path(f"batch_report_{timestamp}.txt")
+            logs_dir = Path("logs")
+            logs_dir.mkdir(exist_ok=True)
+            output_path = logs_dir / f"batch_report_{timestamp}.txt"
 
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("TTS PIPELINE BATCH EXECUTION REPORT\n")

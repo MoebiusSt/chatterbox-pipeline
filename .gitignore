@@ -71,6 +71,7 @@ models/
 # Logs and temporary files
 *.log
 logs/
+batch_report_*.txt
 data/tests/
 .pytest_cache/
 .coverage
