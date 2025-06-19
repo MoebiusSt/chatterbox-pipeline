@@ -2,10 +2,8 @@
 
 Diese Tabelle enthält alle Logger-Ausgaben des vollständigen TTS-Pipeline-Programms zur Laufzeit.
 
-## Legende
-
-- **Level**: `S` = Standard (primary), `V` = Verbose-only, `W` = Warning, `E` = Error
-- **Empfehlung**: `S` = Standard beibehalten, `V` = In Verbose-Mode, `R` = Entfernen/Reduzieren
+- **Aktueller Level**: `S` = Standard (primary), `V` = Verbose-only, `W` = Warning, `E` = Error
+- **Empfehlung**: `S` = zu Standard Meldung machen, `V` = In Verbose-Mode wandeln, `R` = Entfernen/Reduzieren
 
 ## Main Pipeline (src/main.py)
 
@@ -81,8 +79,8 @@ Diese Tabelle enthält alle Logger-Ausgaben des vollständigen TTS-Pipeline-Prog
 | "Audio cleaning applied" | S | V | Technisches Detail |
 | "Custom threshold: {orig} * {factor} = {custom}" | S | V | Technisches Detail |
 | "Auto-Editor processing applied" | S | V | Technisches Detail |
-| "Auto-Editor not available, skipping" | W | V | Technische Warnung |
-| "Auto-Editor processing failed: {error}" | W | V | Technische Warnung |
+| "Auto-Editor not available, skipping" | W | W | Technische Warnung |
+| "Auto-Editor processing failed: {error}" | W | W | Technische Warnung |
 | "Post-processing applied successfully" | S | V | Technisches Detail |
 | "Post-processing failed, using original audio: {error}" | W | W | Wichtige Warnung |
 
@@ -198,7 +196,7 @@ Diese Tabelle enthält alle Logger-Ausgaben des vollständigen TTS-Pipeline-Prog
 | "Conditionals prepared successfully" | S | V | Technisches Detail |
 | "Error preparing conditionals: {error}" | E | E | Kritischer Fehler |
 | "Conditionals already prepared for: {filename}" | V (verbose) | V | Caching-Info |
-| "Could not calculate hash for {file}: {error}" | W | V | Technische Warnung |
+| "Could not calculate hash for {file}: {error}" | W | W | Technische Warnung |
 | "🔄 Resetting conditional cache state" | S | V | Cache-Verwaltung |
 
 ## Candidate Manager (src/generation/candidate_manager.py)

@@ -77,11 +77,11 @@ class WhisperValidator:
     def _load_model(self):
         """Load Whisper model."""
         try:
-            self.logger.info(
+            self.logger.verbose(
                 f"Loading Whisper model '{self.model_size}' on device '{self.device}'..."
             )
             self.model = whisper.load_model(self.model_size, device=self.device)
-            self.logger.info(f"Whisper model loaded successfully")
+            self.logger.verbose(f"Whisper model loaded successfully")
         except Exception as e:
             self.logger.error(f"Failed to load Whisper model: {e}")
             raise

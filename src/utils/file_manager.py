@@ -150,7 +150,7 @@ class FileManager:
         with open(text_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        logger.info(f"Loaded input text: {text_path} ({len(content)} characters)")
+        logger.verbose(f"Loaded input text: {text_path} ({len(content)} characters)")
         return content
 
     def get_reference_audio(self) -> Path:
@@ -201,7 +201,7 @@ class FileManager:
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(chunk_metadata, f, indent=2, ensure_ascii=False)
 
-            logger.info(f"Saved {len(chunks)} chunks to {self.texts_dir}")
+            logger.verbose(f"Saved {len(chunks)} chunks to {self.texts_dir}")
             return True
 
         except Exception as e:
@@ -259,7 +259,7 @@ class FileManager:
         # Sort by index
         chunks.sort(key=lambda c: c.idx)
 
-        logger.info(f"Loaded {len(chunks)} chunks from {self.texts_dir}")
+        logger.verbose(f"Loaded {len(chunks)} chunks from {self.texts_dir}")
         return chunks
 
     # Candidate Operations
@@ -358,9 +358,9 @@ class FileManager:
                 json.dump(candidate_metadata, f, indent=2)
 
             if overwrite_existing:
-                logger.info(f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)")
+                logger.verbose(f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)")
             else:
-                logger.info(f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)")
+                logger.verbose(f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)")
             return True
 
         except Exception as e:
@@ -457,7 +457,7 @@ class FileManager:
             candidates[idx] = chunk_candidates
 
         total_candidates = sum(len(cands) for cands in candidates.values())
-        logger.info(
+        logger.verbose(
             f"Loaded {total_candidates} candidates for {len(candidates)} chunks"
         )
         return candidates
@@ -711,12 +711,12 @@ class FileManager:
             True if migration successful
         """
         try:
-            logger.info("🔄 Migrating existing whisper files to enhanced metrics format...")
+            logger.verbose("🔄 Migrating existing whisper files to enhanced metrics format...")
             
             # Find all existing whisper files
             whisper_files = list(self.whisper_dir.glob("chunk_*_candidate_*_whisper.json"))
             if not whisper_files:
-                logger.info("No existing whisper files found - no migration needed")
+                logger.verbose("No existing whisper files found - no migration needed")
                 return True
             
             migration_count = 0
@@ -746,7 +746,7 @@ class FileManager:
                     logger.warning(f"Failed to migrate {whisper_file}: {e}")
                     continue
             
-            logger.info(f"✅ Migration completed: {migration_count}/{len(whisper_files)} whisper files migrated to enhanced metrics")
+            logger.verbose(f"✅ Migration completed: {migration_count}/{len(whisper_files)} whisper files migrated to enhanced metrics")
             return True
             
         except Exception as e:
@@ -769,7 +769,7 @@ class FileManager:
             return True
             
         try:
-            logger.info("🧹 Cleaning up individual whisper files after migration...")
+            logger.verbose("🧹 Cleaning up individual whisper files after migration...")
             
             # Verify enhanced metrics exists and has data
             metrics = self.get_metrics()
@@ -788,7 +788,7 @@ class FileManager:
                 except Exception as e:
                     logger.warning(f"Failed to remove {whisper_file}: {e}")
             
-            logger.info(f"✅ Cleanup completed: {removed_count} individual whisper files removed")
+            logger.verbose(f"✅ Cleanup completed: {removed_count} individual whisper files removed")
             return True
             
         except Exception as e:
@@ -908,7 +908,7 @@ class FileManager:
                 silence = torch.zeros(int(sample_rate * 0.5))
                 audio_segments.append(silence)
 
-        logger.info(f"Loaded {len(audio_segments)} audio segments")
+        logger.verbose(f"Loaded {len(audio_segments)} audio segments")
         return audio_segments
 
     def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:

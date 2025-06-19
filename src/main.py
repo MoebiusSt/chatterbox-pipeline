@@ -50,7 +50,7 @@ def detect_device() -> str:
     else:
         device = "cpu"
 
-    logger.info(f"Using device: {device}")
+    logger.primary(f"Using device: {device}")
     return device
 
 
@@ -185,9 +185,9 @@ def main() -> int:
         # Detect device
         device = detect_device() if args.device == "auto" else args.device
 
-        logger.info("=" * 60)
-        logger.info("TTS PIPELINE - TASK-BASED EXECUTION SYSTEM")
-        logger.info("=" * 60)
+        logger.primary("=" * 60)
+        logger.primary("TTS PIPELINE - TASK-BASED EXECUTION SYSTEM")
+        logger.primary("=" * 60)
 
         # Initialize core components
         project_root = PROJECT_ROOT
@@ -200,7 +200,7 @@ def main() -> int:
 
         # Handle cancelled execution
         if execution_plan.execution_mode == "cancelled":
-            logger.info("Execution cancelled by user")
+            logger.primary("Execution cancelled by user")
             return 0
 
         # Validate execution plan
@@ -217,7 +217,7 @@ def main() -> int:
             or len(execution_plan.task_configs) > 1
         ):
             # Batch execution
-            logger.info("Starting batch execution mode")
+            logger.verbose("Starting batch execution mode")
 
             batch_executor = BatchExecutor(config_manager)
 
@@ -237,14 +237,14 @@ def main() -> int:
 
                 # Generate batch report file
                 report_path = batch_executor.generate_batch_report(batch_result)
-                logger.info(f"Detailed report saved: {report_path}")
+            logger.primary(f"Detailed report saved: {report_path}")
 
             # Return appropriate exit code
             return 0 if batch_result.failed_tasks == 0 else 1
 
         else:
             # Single task execution
-            logger.info("Starting single task execution mode")
+            logger.verbose("Starting single task execution mode")
 
             task_config = execution_plan.task_configs[0]
 
@@ -266,18 +266,18 @@ def main() -> int:
 
             # Report results
             if result.success:
-                logger.info("=" * 60)
-                logger.info("TASK COMPLETED SUCCESSFULLY")
-                logger.info("=" * 60)
-                logger.info(f"Job: {result.task_config.job_name}")
-                logger.info(f"Task: {result.task_config.task_name}")
+                logger.primary("=" * 60)
+                logger.primary("TASK COMPLETED SUCCESSFULLY")
+                logger.primary("=" * 60)
+                logger.primary(f"Job: {result.task_config.job_name}")
+                logger.primary(f"Task: {result.task_config.task_name}")
                 if result.task_config.run_label:
-                    logger.info(f"Label: {result.task_config.run_label}")
-                logger.info(f"Execution time: {result.execution_time:.2f} seconds")
-                logger.info(f"Final stage: {result.completion_stage.value}")
+                    logger.primary(f"Label: {result.task_config.run_label}")
+                logger.primary(f"Execution time: {result.execution_time:.2f} seconds")
+                logger.primary(f"Final stage: {result.completion_stage.value}")
 
                 if result.final_audio_path:
-                    logger.info(f"Final audio: {result.final_audio_path}")
+                    logger.primary(f"Final audio: {result.final_audio_path}")
 
                 return 0
             else:
@@ -291,7 +291,7 @@ def main() -> int:
                 return 1
 
     except KeyboardInterrupt:
-        logger.info("\nExecution interrupted by user")
+        logger.primary("\nExecution interrupted by user")
         return 1
 
     except Exception as e:

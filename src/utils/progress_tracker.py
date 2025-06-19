@@ -85,7 +85,7 @@ class ProgressTracker:
         if message:
             progress_msg += f" | {message}"
 
-        logger.info(progress_msg)
+        logger.primary(progress_msg)
 
     def finish(self) -> None:
         """Mark the process as finished and log final statistics."""
@@ -93,7 +93,7 @@ class ProgressTracker:
         total_time = end_time - self.start_time
         total_time_str = self._format_duration(total_time)
 
-        logger.info(
+        logger.primary(
             f"{self.description} COMPLETED - {self.total_items} items in {total_time_str}"
         )
 
@@ -124,7 +124,7 @@ class ValidationProgressTracker(ProgressTracker):
         super().__init__(total_items, description, bar_width)
         # Only log start for validation if there are multiple items
         if total_items > 1:
-            logger.info(f"Starting {description}: {total_items} candidates to validate")
+            logger.verbose(f"Starting {description}: {total_items} candidates to validate")
 
     def update_with_texts(
         self,
@@ -141,17 +141,17 @@ class ValidationProgressTracker(ProgressTracker):
 
         # Display text comparison with clear separation
         if current_text or transcribed_text:
-            logger.info("=" * 80)
-            logger.info("TEXT COMPARISON")
-            logger.info("=" * 80)
+            logger.verbose("=" * 80)
+            logger.verbose("TEXT COMPARISON")
+            logger.verbose("=" * 80)
 
             if current_text:
-                logger.info(f"ORIGINAL:")
-                logger.info(f"{current_text}")
+                logger.verbose(f"ORIGINAL:")
+                logger.verbose(f"{current_text}")
 
             if transcribed_text:
-                logger.info(f"WHISPER RESULT:")
-                logger.info(f"{transcribed_text}")
+                logger.verbose(f"WHISPER RESULT:")
+                logger.verbose(f"{transcribed_text}")
 
         if not success:
-            logger.info("Validation failed")
+            logger.primary("Validation failed")

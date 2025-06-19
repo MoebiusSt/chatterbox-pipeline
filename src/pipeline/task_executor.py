@@ -107,7 +107,7 @@ class TaskExecutor:
                 config=self.config["generation"], device=device, seed=12345
             )
 
-            logger.info("TTSGenerator initialized with automatic model loading")
+            logger.verbose("TTSGenerator initialized with automatic model loading")
 
         return self._tts_generator
 
@@ -207,7 +207,7 @@ class TaskExecutor:
                 final_files = list(self.file_manager.final_dir.glob("*_final.wav"))
                 for final_file in final_files:
                     final_file.unlink()
-                    logger.info(f"Removed existing final audio file: {final_file}")
+                    logger.verbose(f"Removed existing final audio file: {final_file}")
             elif task_state.missing_components and any("whisper_chunk" in comp for comp in task_state.missing_components):
                 # If only whisper validations are missing, go directly to validation
                 logger.primary("🔍 Missing whisper validations detected - running validation phase")
@@ -330,7 +330,7 @@ class TaskExecutor:
 
             # Chunk text
             text_chunks = self.chunker.chunk_text(input_text)
-            logger.primary(f"Created {len(text_chunks)} text chunks")
+            logger.primary(f"Generated {len(text_chunks)} text chunks")
 
             # Update indices for TextChunk objects
             for i, chunk in enumerate(text_chunks):
@@ -391,12 +391,12 @@ class TaskExecutor:
                 chunk_num = chunk.idx + 1
                 logger.primary("")  # Empty line for spacing
                 logger.primary(f"🎯 CHUNK {chunk_num}/{total_chunks}")
-                logger.primary(f"Text length: {len(chunk.text)} characters")
+                logger.verbose(f"Text length: {len(chunk.text)} characters")
                 if len(chunk.text) > 80:
                     preview = chunk.text[:80] + "..."
                 else:
                     preview = chunk.text
-                logger.primary(f"Preview: \"{preview}\"")
+                logger.verbose(f"Preview: \"{preview}\"")
                 logger.primary("-" * 40)
 
                 # Check if we need to generate missing candidates
@@ -454,7 +454,7 @@ class TaskExecutor:
                         return False
 
                     # CandidateManager already saved the new candidates, no need to save again
-                    logger.primary(f"✅ Successfully generated {len(new_candidates)} missing candidates")
+                    logger.verbose(f"✅ Successfully generated {len(new_candidates)} missing candidates")
                 else:
                     # Generate all candidates (original logic for empty chunks)
                     logger.primary(f"⚡ Generating candidates...")
@@ -607,7 +607,7 @@ class TaskExecutor:
                 base_cfg_weight = conservative_config.get("cfg_weight", 0.4)
                 base_temperature = conservative_config.get("temperature", 0.8)
 
-            logger.info(f"Generating {max_retries} retry candidates with conservative base values: "
+            logger.verbose(f"Generating {max_retries} retry candidates with conservative base values: "
                        f"exag={base_exaggeration:.2f}, cfg={base_cfg_weight:.2f}, temp={base_temperature:.2f}")
 
             retry_candidates = []
@@ -677,7 +677,7 @@ class TaskExecutor:
                     logger.error(f"Failed to generate retry candidate {i+1}: {e}")
                     continue
             
-            logger.info(f"Successfully generated {len(retry_candidates)}/{max_retries} retry candidates")
+            logger.verbose(f"Successfully generated {len(retry_candidates)}/{max_retries} retry candidates")
             return retry_candidates
 
         except Exception as e:
@@ -717,7 +717,7 @@ class TaskExecutor:
                 chunk_num = chunk.idx + 1
                 logger.primary("")  # Empty line for spacing
                 logger.primary(f"🎯 CHUNK {chunk_num}/{len(chunks)}")
-                logger.primary(f"Candidates to validate: {len(chunk_candidates)}")
+                logger.verbose(f"Candidates to validate: {len(chunk_candidates)}")
                 logger.primary("-" * 40)
 
                 chunk_results = {}
@@ -1121,7 +1121,7 @@ class TaskExecutor:
                 logger.error("Failed to save final audio")
                 return False
 
-            logger.info("Assembly stage completed successfully")
+                            logger.primary("Assembly stage completed successfully")
             return True
 
         except Exception as e:
@@ -1201,7 +1201,7 @@ class TaskExecutor:
                 )
 
                 processed_audio = audio_cleaner.clean_audio(processed_audio)
-                logger.info("Audio cleaning applied")
+                logger.verbose("Audio cleaning applied")
 
             # Apply Auto-Editor if enabled and available
             auto_editor_config = postprocessing_config.get("auto_editor", {})
@@ -1237,7 +1237,7 @@ class TaskExecutor:
                         
                         # Apply noise_threshold_factor as multiplier
                         custom_threshold = profile.recommended_threshold * noise_threshold_factor
-                        logger.info(f"Custom threshold: {profile.recommended_threshold:.6f} * {noise_threshold_factor} = {custom_threshold:.6f}")
+                        logger.verbose(f"Custom threshold: {profile.recommended_threshold:.6f} * {noise_threshold_factor} = {custom_threshold:.6f}")
 
                     processed_audio = auto_editor.clean_audio(
                         processed_audio,
@@ -1247,7 +1247,7 @@ class TaskExecutor:
                         reference_audio_path=reference_audio_path,
                         custom_threshold=custom_threshold,
                     )
-                    logger.info("Auto-Editor processing applied")
+                    logger.verbose("Auto-Editor processing applied")
 
                 except ImportError:
                     logger.warning("Auto-Editor not available, skipping")

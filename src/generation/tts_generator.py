@@ -40,7 +40,7 @@ class TTSGenerator:
         self.model = ChatterboxModelCache.get_model(self.device)
         self.conditional_cache = ConditionalCache(self.model)
 
-        logger.primary(
+        logger.verbose(
             f"TTSGenerator initialized on device: {self.device} (using cached model)"
         )
 
@@ -64,7 +64,7 @@ class TTSGenerator:
         try:
             was_prepared = self.conditional_cache.ensure_conditionals(wav_fpath)
             if was_prepared:
-                logger.info("Conditionals prepared successfully (fresh)")
+                logger.verbose("Conditionals prepared successfully (fresh)")
             else:
                 logger.verbose("Conditionals were already prepared (cached)")
         except Exception as e:
@@ -194,7 +194,7 @@ class TTSGenerator:
         cfg_max_deviation = tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = tts_params.get("temperature_max_deviation", 0.2)
 
-        logger.info(
+        logger.primary(
             f"Generating {num_candidates} diverse candidates for text (len={len(text)})"
         )
         logger.debug(
@@ -205,7 +205,7 @@ class TTSGenerator:
 
         # Special case: 1 candidate + conservative enabled = only conservative
         if num_candidates == 1 and conservative_config and conservative_config.get("enabled", False):
-            logger.info("Single candidate mode with conservative enabled - generating only conservative candidate")
+            logger.verbose("Single candidate mode with conservative enabled - generating only conservative candidate")
             try:
                 candidate_seed = self.seed + hash(text) % 10000
                 torch.manual_seed(candidate_seed)
@@ -225,7 +225,7 @@ class TTSGenerator:
                     **kwargs,
                 }
 
-                logger.info(
+                logger.verbose(
                     f"Candidate 1 ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}"
                 )
 
@@ -246,14 +246,14 @@ class TTSGenerator:
                 )
 
                 candidates.append(candidate)
-                logger.info(
+                logger.verbose(
                     f"Generated candidate 1/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s\n"
                 )
 
             except Exception as e:
                 logger.error(f"Failed to generate conservative candidate: {e}")
 
-            logger.info(f"Successfully generated {len(candidates)}/1 conservative candidate")
+            logger.verbose(f"Successfully generated {len(candidates)}/1 conservative candidate")
             return candidates
 
         # Multi-candidate mode or single expressive mode
@@ -314,7 +314,7 @@ class TTSGenerator:
                     **kwargs,
                 }
 
-                logger.info(
+                logger.verbose(
                     f"Candidate {i+1} ({candidate_type}):"
                 )
 
@@ -336,7 +336,7 @@ class TTSGenerator:
 
                 candidates.append(candidate)
                 # NOTE: Using ChatterboxTTS native sample rate (24kHz) for duration calculation
-                logger.info(
+                logger.verbose(
                     f"Generated candidate {i+1}/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s, idx={candidate.candidate_idx}" + f" exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}\n"
                 )
 
@@ -347,7 +347,7 @@ class TTSGenerator:
                 # Continue with remaining candidates
                 continue
 
-        logger.info(
+        logger.verbose(
             f"Successfully generated {len(candidates)}/{num_candidates} diverse candidates"
         )
         return candidates
