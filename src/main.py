@@ -76,7 +76,7 @@ Usage Examples:
   %(prog)s --mode new                # Create new tasks for all jobs
   %(prog)s --mode all                # Run all tasks of all jobs
   %(prog)s --mode last               # Run latest task of all jobs
-  %(prog)s --job-mode "job1:new,job2:all"  # Different strategies per job
+  %(prog)s --mode "job1:new,job2:all"  # Different strategies per job
   %(prog)s --add-final               # Force regeneration of final audio from existing candidates
         """,
     )
@@ -90,13 +90,8 @@ Usage Examples:
     # Execution strategy arguments
     parser.add_argument(
         "--mode",
-        choices=["last", "all", "new"],
-        help="Strategy for all jobs (last=latest task, all=all tasks, new=new task). Can be overridden by --job-mode.",
-    )
-    parser.add_argument(
-        "--job-mode",
         type=str,
-        help="Comma-separated list of job:strategy pairs (e.g. 'job1:new,job2:all'). Overrides --mode for specific jobs.",
+        help="Execution strategy: global (last/all/new) or job-specific (job1:new,job2:all). Examples: --mode all, --mode 'job1:new,job2:last'",
     )
     parser.add_argument(
         "--add-final",
@@ -105,13 +100,6 @@ Usage Examples:
     )
 
     # Execution options
-    parser.add_argument(
-        "--batch",
-        "-b",
-        action="store_true",
-        help="Enable batch mode (non-interactive)",
-    )
-
     parser.add_argument(
         "--parallel",
         "-p",
@@ -182,14 +170,6 @@ def resolve_config_files(args: argparse.Namespace, project_root: Path) -> List[P
 
 def main() -> int:
     """Main entry point for the refactored TTS pipeline."""
-
-    # Diagnose: Zeige alle aktiven Handler und deren Formatter
-    root_logger = logging.getLogger()
-    print("\n[DIAGNOSE] Aktive Logger-Handler und Formatter:")
-    for h in root_logger.handlers:
-        print(f"Handler: {h}")
-        print(f"  Formatter: {getattr(h, 'formatter', None)}")
-    print("[DIAGNOSE ENDE]\n")
 
     try:
         # Parse arguments

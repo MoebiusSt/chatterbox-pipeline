@@ -1,10 +1,10 @@
 job:
-  name: "raise_children"
-  run-label: "mike"  # empty by default
+  name: "default"
+  run-label: ""  # empty by default
 
 input:
   reference_audio: "mike_kamp.wav"        # Dateiname im reference_audio Ordner
-  text_file: "raise_children.txt"   # Text-Datei im texts Ordner
+  text_file: "input-document.txt"   # Text-Datei im texts Ordner
 
 preprocessing:
   # Text normalization options
@@ -22,8 +22,8 @@ chunking:
   spacy_model: "en_core_web_sm"
 
 generation:
-  num_candidates: 5
-  max_retries: 2
+  num_candidates: 2
+  max_retries: 0
   tts_params:
     # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
     # - exaggeration: MAX value (ramps DOWN from here)
@@ -39,8 +39,8 @@ generation:
   # Conservative candidate parameters for guaranteed correctness
   conservative_candidate:
     enabled: true
-    exaggeration: 0.45
-    cfg_weight: 0.3
+    exaggeration: 0.40
+    cfg_weight: 0.2
     temperature: 0.8
   
 validation:

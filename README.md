@@ -75,31 +75,55 @@ python src/main.py                              # Execute default job
 python src/main.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
 python src/main.py --job "my_job"               # Execute job with specific name
 
-# Batch mode (non-interactive)
-python src/main.py --mode last                  # Execute latest task for all jobs
-python src/main.py --mode all                   # Execute all tasks for all jobs
-python src/main.py --mode new                   # Create new tasks for all jobs
-python src/main.py --mode last-new              # Latest task + new final audio for all jobs
+# Non-interactive execution
+python src/main.py --mode last                   # Non-interactive mode (auto-select latest task)
+python src/main.py --mode all                    # Non-interactive + specific strategy
+
+# Execution strategies (global)
+python src/main.py --mode last or latest        # Execute latest task for all given jobs
+python src/main.py --mode all                   # Execute all found tasks for all given jobs
+python src/main.py --mode new                   # Create new tasks for all given jobs
+python src/main.py --mode last-new or new-last  # Latest task + new final audio for all jobs
 python src/main.py --mode all-new               # All tasks + new final audio for all jobs
 
-# Job-specific strategies
-python src/main.py --job-mode "job1:last-new,job2:all-new,job3:last"  # Different strategies per job
+# Execution strategies (job-specific)
+python src/main.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
+
+# Force regeneration
+python src/main.py --add-final                  # Force regeneration of final audio from existing candidates
 
 # Parallel processing
-python src/main.py --parallel                # Parallel task execution
-python src/main.py --max-workers 4           # Adjust number of parallel workers
+python src/main.py --parallel                   # Parallel task execution
+python src/main.py --max-workers 4             # Adjust number of parallel workers
+python src/main.py -p                          # Short form of --parallel
 
 # Additional options
-python src/main.py --verbose                 # Detailed logging / forced to be on during dev
-python src/main.py --device cuda             # Force GPU execution
+python src/main.py --verbose                    # Detailed logging / forced to be on during dev
+python src/main.py --device cuda               # Force GPU execution
+python src/main.py -v                          # Short form of --verbose
+python src/main.py -j "my_job"                 # Short form of --job
+
+# Combined examples
+python src/main.py -j "my_job" -p -v           # Job + parallel + verbose (short forms)
+python src/main.py --job "job1" --add-final --parallel  # Complete non-interactive execution
+python src/main.py --mode "job1:new,job2:last" --parallel  # Job-specific strategies + non-interactive
 ```
 
 #### Execution Strategies
-- **last**: Uses the latest task (Check task)
+- **last/latest**: Uses the latest task (Check task)
 - **all**: Uses all tasks (Check tasks)
 - **new**: Creates a new task
-- **last-new**: Uses the latest task + new final audio
+- **last-new/new-last**: Uses the latest task + new final audio
 - **all-new**: Uses all tasks + new final audio
+
+#### Key Options
+- **`--mode`**: Unified execution strategy option that accepts:
+  - Global strategies: `--mode all`, `--mode new`, `--mode last`
+  - Job-specific strategies: `--mode "job1:new,job2:all,job3:last"`
+- **`--add-final`**: Force regeneration of final audio from existing candidates
+- **`--parallel/-p`**: Enable parallel execution for multiple tasks
+- **`--job/-j`**: Specify job name to execute
+- **`--verbose/-v`**: Enable detailed logging output
 
 #### Interactive Selection
 When no strategy is specified, the user is prompted interactively:
@@ -338,6 +362,19 @@ This linear task process is wrapped by a job/task manager that orchestrates exec
   ```
 - Each level can override settings
 - Enables flexible job and task-specific adjustments
+
+#### Job Search and Configuration
+When using `--job "jobname"`, the system searches for job configurations in this order:
+
+1. **Config directory search**: `config/*.yaml` files
+   - Opens each YAML file and checks if `job.name` matches the search term
+   - Example: `config/my_project_config.yaml` with `job.name: "my_project"`
+
+2. **Existing tasks search**: `data/output/{jobname}/` directory  
+   - Searches for existing task configurations (`*_config.yaml`)
+   - These are generated task files from previous executions
+
+To make a job discoverable via `--job` parameter, place the job configuration in the `config/` directory.
 
 ### Detaillierter Datenfluss
 

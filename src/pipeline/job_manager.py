@@ -34,6 +34,7 @@ class ExecutionStrategy(Enum):
     """Strategy for task execution."""
 
     LAST = "last"  # Use latest task
+    LATEST = "latest"  # Use latest task (alias for LAST)
     ALL = "all"  # Use all tasks
     NEW = "new"  # Create new task
     LAST_NEW = "last-new"  # Use latest task + new final audio
@@ -115,6 +116,8 @@ class JobManager:
                     # Create new task config from job-yaml
                     config_data = self.config_manager.load_cascading_config(config_file)
                     task_config = self.config_manager.create_task_config(config_data)
+                    # Set the original job-yaml path for later use
+                    task_config.config_path = config_file
                     task_configs.append(task_config)
 
             except Exception as e:
@@ -338,6 +341,54 @@ class JobManager:
         print("Invalid choice, defaulting to latest task")
         return UserChoice.LATEST
 
+    def parse_mode_argument(self, mode_arg: Optional[str]) -> tuple[Dict[str, ExecutionStrategy], Optional[ExecutionStrategy]]:
+        """
+        Parse the unified --mode argument that can be either:
+        - Global strategy: "all", "new", "last"
+        - Job-specific strategies: "job1:new,job2:all,job3:last"
+        
+        Args:
+            mode_arg: The --mode argument value
+            
+        Returns:
+            Tuple of (job_strategies_dict, global_strategy)
+        """
+        if not mode_arg:
+            return {}, None
+            
+        def normalize_strategy(strategy: str) -> str:
+            """Normalize strategy aliases to canonical form."""
+            strategy = strategy.strip()
+            # Handle aliases
+            if strategy == "new-last":
+                return "last-new"
+            return strategy
+            
+        # Check if it contains job-specific format (contains colon)
+        if ":" in mode_arg:
+            # Job-specific strategies: "job1:new,job2:all"
+            job_strategies = {}
+            try:
+                for pair in mode_arg.split(","):
+                    job_name, strategy = pair.split(":")
+                    normalized_strategy = normalize_strategy(strategy)
+                    job_strategies[job_name.strip()] = ExecutionStrategy(normalized_strategy)
+                return job_strategies, None
+            except ValueError:
+                raise ValueError(
+                    "Invalid --mode format for job-specific strategies. Use 'job1:strategy,job2:strategy'"
+                )
+        else:
+            # Global strategy: "all", "new", "last"
+            try:
+                normalized_strategy = normalize_strategy(mode_arg)
+                global_strategy = ExecutionStrategy(normalized_strategy)
+                return {}, global_strategy
+            except ValueError:
+                raise ValueError(
+                    f"Invalid --mode strategy '{mode_arg}'. Use: last/latest, all, new, last-new/new-last, all-new, or job-specific format 'job1:strategy,job2:strategy'"
+                )
+
     def resolve_execution_plan(
         self, args: Any, config_files: Optional[List[Path]] = None
     ) -> ExecutionPlan:
@@ -354,22 +405,9 @@ class JobManager:
         task_configs = []
         execution_mode = "single"
         requires_user_input = False
-        batch_mode = args.batch
 
-        # Parse job-specific strategies if provided
-        job_strategies = {}
-        if args.job_mode:
-            try:
-                for pair in args.job_mode.split(","):
-                    job_name, strategy = pair.split(":")
-                    job_strategies[job_name] = ExecutionStrategy(strategy)
-            except ValueError:
-                raise ValueError(
-                    "Invalid --job-mode format. Use 'job1:strategy,job2:strategy'"
-                )
-
-        # Global strategy from --mode
-        global_strategy = ExecutionStrategy(args.mode) if args.mode else None
+        # Parse unified --mode argument
+        job_strategies, global_strategy = self.parse_mode_argument(args.mode)
 
         if args.job:
             # --job "jobname" scenario
@@ -393,12 +431,23 @@ class JobManager:
                     # Use all tasks
                     task_configs = list(existing_tasks)
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LAST:
+                elif strategy == ExecutionStrategy.ALL_NEW:
+                    # Use all tasks + force new final audio
+                    task_configs = list(existing_tasks)
+                    for task in task_configs:
+                        task.add_final = True
+                    execution_mode = "batch"
+                elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
                     # Use latest task
-                    task_configs = [existing_tasks[-1]]
+                    task_configs = [existing_tasks[0]]
+                elif strategy == ExecutionStrategy.LAST_NEW:
+                    # Use latest task + force new final audio
+                    task_config = existing_tasks[0]  # First in sorted list (newest)
+                    task_config.add_final = True
+                    task_configs = [task_config]
                 else:
                     # No strategy specified - interactive selection
-                    if not batch_mode:
+                    if global_strategy is None:
                         requires_user_input = True
                     choice = self.prompt_user_selection(existing_tasks)
 
@@ -477,11 +526,22 @@ class JobManager:
                             task_configs.append(new_task)
                         elif strategy == ExecutionStrategy.ALL:
                             task_configs.extend(existing_tasks)
-                        elif strategy == ExecutionStrategy.LAST:
-                            task_configs.append(existing_tasks[-1])
+                        elif strategy == ExecutionStrategy.ALL_NEW:
+                            # Use all tasks + force new final audio
+                            all_tasks = list(existing_tasks)
+                            for task in all_tasks:
+                                task.add_final = True
+                            task_configs.extend(all_tasks)
+                        elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                            task_configs.append(existing_tasks[0])
+                        elif strategy == ExecutionStrategy.LAST_NEW:
+                            # Use latest task + force new final audio
+                            task_config = existing_tasks[0]  # First in sorted list (newest)
+                            task_config.add_final = True
+                            task_configs.append(task_config)
                         else:
                             # No strategy specified - interactive selection
-                            if not batch_mode:
+                            if global_strategy is None:
                                 requires_user_input = True
                             choice = self.prompt_user_selection(existing_tasks)
 
@@ -543,11 +603,22 @@ class JobManager:
                 elif strategy == ExecutionStrategy.ALL:
                     task_configs = list(existing_tasks)
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LAST:
-                    task_configs = [existing_tasks[-1]]
+                elif strategy == ExecutionStrategy.ALL_NEW:
+                    # Use all tasks + force new final audio
+                    task_configs = list(existing_tasks)
+                    for task in task_configs:
+                        task.add_final = True
+                    execution_mode = "batch"
+                elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                    task_configs = [existing_tasks[0]]  # Use first (newest) not last
+                elif strategy == ExecutionStrategy.LAST_NEW:
+                    # Use latest task + force new final audio
+                    task_config = existing_tasks[0]  # First in sorted list (newest)
+                    task_config.add_final = True
+                    task_configs = [task_config]
                 else:
                     # No strategy specified - interactive selection
-                    if not batch_mode:
+                    if global_strategy is None:
                         requires_user_input = True
                     choice = self.prompt_user_selection(existing_tasks)
 
@@ -675,29 +746,6 @@ class JobManager:
                 f"Mixed job configs ({len(task_configs_by_type['job_config'])}) "
                 f"and task configs ({len(task_configs_by_type['task_config'])})"
             )
-
-        # Check 2: Multiple jobs with same name but different configs
-        for job_name, configs in jobs_by_name.items():
-            if len(configs) > 1:
-                # Check if configurations are actually different
-                first_config_data = self.config_manager.load_cascading_config(
-                    configs[0].config_path
-                )
-                for config in configs[1:]:
-                    other_config_data = self.config_manager.load_cascading_config(
-                        config.config_path
-                    )
-
-                    # Compare key configuration sections
-                    key_sections = ["generation", "validation", "chunking", "audio"]
-                    for section in key_sections:
-                        if first_config_data.get(section) != other_config_data.get(
-                            section
-                        ):
-                            errors.append(
-                                f"Job '{job_name}' has conflicting {section} configurations "
-                                f"between {configs[0].config_path.name} and {config.config_path.name}"
-                            )
 
         # Check 3: Device compatibility
         device_requirements = set()
