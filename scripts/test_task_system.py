@@ -3,11 +3,13 @@
 Test script für das task-basierte TTS System.
 """
 
-import sys
 import logging
+import sys
 from pathlib import Path
+
 import pytest
-from src.pipeline.job_manager import JobManager, UserChoice, ExecutionStrategy
+
+from src.pipeline.job_manager import ExecutionStrategy, JobManager, UserChoice
 from src.utils.config_manager import ConfigManager
 
 # Path correction for imports
@@ -18,8 +20,8 @@ SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(SRC_ROOT))
 
-from utils.file_manager import FileManager
 from pipeline.task_executor import TaskExecutor
+from src.utils.file_manager import FileManager
 
 # Configure logging
 logging.basicConfig(

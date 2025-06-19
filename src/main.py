@@ -28,13 +28,13 @@ from utils.logging_config import LoggingConfigurator
 # Ensure logs directory exists
 (PROJECT_ROOT / "logs").mkdir(exist_ok=True)
 
-# Early enhanced logging setup with icons
+# Early enhanced logging setup with icons (verbose mode will be configured later)
 LoggingConfigurator.configure(
     log_file=PROJECT_ROOT / "logs" / "main.log",
     console_level=logging.INFO,
     file_level=logging.DEBUG,
     append=True,
-    verbose_mode=True,  # Will be updated later based on args
+    verbose_mode=False,  # Will be updated later based on args
     use_icons=True,
 )
 
@@ -50,7 +50,7 @@ def detect_device() -> str:
     else:
         device = "cpu"
 
-    logger.primary(f"Using device: {device}")
+    logger.info(f"Using device: {device}")
     return device
 
 
@@ -175,19 +175,31 @@ def main() -> int:
         # Parse arguments
         args = parse_arguments()
 
-        # DEVELOPMENT: Force verbose mode during development
-        verbose_mode = True  # Set to args.verbose for production
+        # Update verbose mode based on arguments
+        verbose_mode = args.verbose  # Set to args.verbose for production
 
-        # Early logging configuration with verbose mode
+        # Reconfigure logging with correct verbose mode
+        LoggingConfigurator.configure(
+            log_file=PROJECT_ROOT / "logs" / "main.log",
+            console_level=logging.INFO,
+            file_level=logging.DEBUG,
+            append=True,
+            verbose_mode=verbose_mode,
+            use_icons=True,
+        )
+
+        # Also set root logger level for debug if verbose
         if verbose_mode:
             logging.getLogger().setLevel(logging.DEBUG)
 
+        
+
+        logger.info("\n" + "=" * 50)
+        logger.info("TTS PIPELINE - TASK-BASED EXECUTION SYSTEM")
+        logger.info("=" * 50)
+
         # Detect device
         device = detect_device() if args.device == "auto" else args.device
-
-        logger.primary("=" * 60)
-        logger.primary("TTS PIPELINE - TASK-BASED EXECUTION SYSTEM")
-        logger.primary("=" * 60)
 
         # Initialize core components
         project_root = PROJECT_ROOT
@@ -200,7 +212,7 @@ def main() -> int:
 
         # Handle cancelled execution
         if execution_plan.execution_mode == "cancelled":
-            logger.primary("Execution cancelled by user")
+            logger.info("Execution cancelled by user")
             return 0
 
         # Validate execution plan
@@ -217,7 +229,7 @@ def main() -> int:
             or len(execution_plan.task_configs) > 1
         ):
             # Batch execution
-            logger.verbose("Starting batch execution mode")
+            logger.debug("Starting batch execution mode")
 
             batch_executor = BatchExecutor(config_manager)
 
@@ -236,15 +248,14 @@ def main() -> int:
                 batch_executor.print_detailed_results(batch_result)
 
                 # Generate batch report file
-                report_path = batch_executor.generate_batch_report(batch_result)
-            logger.primary(f"Detailed report saved: {report_path}")
+                batch_executor.generate_batch_report(batch_result)
 
             # Return appropriate exit code
             return 0 if batch_result.failed_tasks == 0 else 1
 
         else:
             # Single task execution
-            logger.verbose("Starting single task execution mode")
+            logger.debug("Starting single task execution mode")
 
             task_config = execution_plan.task_configs[0]
 
@@ -266,24 +277,24 @@ def main() -> int:
 
             # Report results
             if result.success:
-                logger.primary("=" * 60)
-                logger.primary("TASK COMPLETED SUCCESSFULLY")
-                logger.primary("=" * 60)
-                logger.primary(f"Job: {result.task_config.job_name}")
-                logger.primary(f"Task: {result.task_config.task_name}")
+                logger.info("=" * 50)
+                logger.info("TASK COMPLETED SUCCESSFULLY")
+                logger.info("=" * 50)
+                logger.info(f"Job: {result.task_config.job_name}")
+                logger.info(f"📊 Task: {result.task_config.task_name}")
                 if result.task_config.run_label:
-                    logger.primary(f"Label: {result.task_config.run_label}")
-                logger.primary(f"Execution time: {result.execution_time:.2f} seconds")
-                logger.primary(f"Final stage: {result.completion_stage.value}")
+                    logger.info(f"Label: {result.task_config.run_label}")
+                logger.info(f"⏳ Execution time: {result.execution_time:.2f} seconds")
+                logger.info(f"Final stage: {result.completion_stage.value}")
 
                 if result.final_audio_path:
-                    logger.primary(f"Final audio: {result.final_audio_path}")
+                    logger.info(f"📁 Final audio: {result.final_audio_path}")
 
                 return 0
             else:
-                logger.error("=" * 60)
-                logger.error("✗ TASK EXECUTION FAILED")
-                logger.error("=" * 60)
+                logger.error("=" * 50)
+                logger.error("❌ TASK EXECUTION FAILED")
+                logger.error("=" * 50)
                 logger.error(f"Job: {result.task_config.job_name}")
                 logger.error(f"Error: {result.error_message}")
                 logger.error(f"Stage reached: {result.completion_stage.value}")
@@ -291,7 +302,7 @@ def main() -> int:
                 return 1
 
     except KeyboardInterrupt:
-        logger.primary("\nExecution interrupted by user")
+        logger.info("\nExecution interrupted by user")
         return 1
 
     except Exception as e:

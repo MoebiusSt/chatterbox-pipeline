@@ -79,6 +79,7 @@ class QualityScorer:
             sample_rate: Audio sample rate for duration calculations
         """
         self.sample_rate = sample_rate
+        import logging
         self.logger = logging.getLogger(__name__)
 
         # Default weights for weighted average strategy

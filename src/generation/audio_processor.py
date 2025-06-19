@@ -267,8 +267,13 @@ class AudioProcessor:
                 return audio
 
             # Find start and end indices
-            start_idx = torch.nonzero(non_silent)[0].item()
-            end_idx = torch.nonzero(non_silent)[-1].item() + 1
+            nonzero_indices = torch.nonzero(non_silent)
+            if len(nonzero_indices) == 0:
+                logger.warning("No non-silent frames found")
+                return audio
+                
+            start_idx = int(nonzero_indices[0].item())
+            end_idx = int(nonzero_indices[-1].item()) + 1
 
             # Trim audio
             trimmed = audio_1d[start_idx:end_idx]

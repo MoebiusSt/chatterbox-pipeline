@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +58,7 @@ class ConfigManager:
     def load_default_config(self) -> Dict[str, Any]:
         """Load the default pipeline configuration."""
         if "default" not in self._config_cache:
-            logger.verbose(f"Loading default config: {self.default_config_path}")
+            logger.debug(f"Loading default config: {self.default_config_path}")
             with open(self.default_config_path, "r", encoding="utf-8") as f:
                 self._config_cache["default"] = yaml.safe_load(f)
         return copy.deepcopy(self._config_cache["default"])
@@ -65,7 +67,7 @@ class ConfigManager:
         """Load a job configuration file."""
         config_key = str(config_path)
         if config_key not in self._config_cache:
-            logger.verbose(f"Loading job config: {config_path}")
+            logger.debug(f"Loading job config: {config_path}")
             with open(config_path, "r", encoding="utf-8") as f:
                 self._config_cache[config_key] = yaml.safe_load(f)
         return copy.deepcopy(self._config_cache[config_key])
@@ -237,7 +239,7 @@ class ConfigManager:
         # Update task_config with saved path
         task_config.config_path = config_path
 
-        logger.verbose(f"Saved task config: {config_path}")
+        logger.debug(f"Saved task config: {config_path}")
         return config_path
 
     def is_task_config(self, config_path: Path) -> bool:

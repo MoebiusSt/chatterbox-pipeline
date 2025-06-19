@@ -13,6 +13,8 @@ from .tts_generator import TTSGenerator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +84,7 @@ class CandidateManager:
 
         if self.save_candidates:
             self.candidates_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Candidates will be saved to: {self.candidates_dir}")
+            logger.info(f"💻 Candidates will be saved to: {self.candidates_dir}")
 
         logger.info(
             f"CandidateManager initialized: max_candidates={self.max_candidates}, max_retries={max_retries}"
@@ -150,8 +152,8 @@ class CandidateManager:
         if not self.tts_generator:
             raise RuntimeError("TTS generator not initialized")
 
-        logger.info(
-            f"🔧 Generating ONLY specific candidates {candidate_indices} for chunk {chunk_index + 1}"
+        logger.debug(
+            f"🔧 generate_specific_candidates(): Generating candidates {candidate_indices} for chunk {chunk_index + 1}"
         )
 
         # Extract generation parameters from config
@@ -186,7 +188,7 @@ class CandidateManager:
                 saved_candidates.append(candidate)
 
                 logger.debug(
-                    f"✅ Generated specific candidate {candidate.candidate_idx+1} for chunk {chunk_index+1}"
+                    f"✅ Generated candidate {candidate.candidate_idx+1} for chunk {chunk_index+1}"
                 )
 
             except Exception as e:
@@ -256,7 +258,7 @@ class CandidateManager:
         logger.info(
             f"Starting candidate generation for chunk (length: {len(chunk.text)} chars)"
         )
-        logger.verbose(f"Chunk text preview: '{chunk.text[:100]}{'...' if len(chunk.text) > 100 else ''}'")
+        logger.debug(f"Chunk text preview: '{chunk.text[:100]}{'...' if len(chunk.text) > 100 else ''}'")
 
         all_candidates = []
         generation_attempts = 0

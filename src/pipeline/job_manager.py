@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from utils.config_manager import ConfigManager, TaskConfig
-from utils.logging_config import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class UserChoice(Enum):
@@ -717,7 +717,7 @@ class JobManager:
         Returns:
             True if configurations are compatible
         """
-        logger.info("🔍 Validating mixed configuration compatibility...")
+        logger.info("🔍 Validating configuration compatibility...")
 
         # Group by job names
         jobs_by_name = {}
@@ -760,19 +760,6 @@ class JobManager:
         if len(device_requirements) > 1:
             warnings.append(f"Multiple device requirements: {device_requirements}")
 
-        # Check 4: Sample rate compatibility
-        sample_rates = set()
-        for task_config in task_configs:
-            config_data = self.config_manager.load_cascading_config(
-                task_config.config_path
-            )
-            audio_config = config_data.get("audio", {})
-            if audio_config.get("sample_rate"):
-                sample_rates.add(audio_config["sample_rate"])
-
-        if len(sample_rates) > 1:
-            errors.append(f"Incompatible sample rates: {sample_rates}")
-
         # Log warnings and errors
         if warnings:
             logger.warning("⚠️ Configuration compatibility warnings:")
@@ -789,9 +776,9 @@ class JobManager:
             return False
 
         if warnings:
-            logger.info("✅ Mixed configurations are compatible (with warnings)")
+            logger.info("⚠️ Configurations are compatible (with warnings)")
         else:
-            logger.info("✅ Mixed configurations are fully compatible")
+            logger.info("✅ Configurations are fully compatible")
 
         return True
 
@@ -802,15 +789,15 @@ class JobManager:
         Args:
             plan: ExecutionPlan to summarize
         """
-        print("\n" + "=" * 60)
-        print("EXECUTION PLAN SUMMARY")
-        print("=" * 60)
-        print(f"Mode: {plan.execution_mode.upper()}")
-        print(f"Tasks: {len(plan.task_configs)}")
+        logger.info("")
+        logger.info("=" * 50)
+        logger.info("📋 EXECUTION PLAN SUMMARY")
+        logger.info(f"  Mode: {plan.execution_mode.upper()}")
+        logger.info(f"  Tasks: {len(plan.task_configs)}")
 
         for i, task in enumerate(plan.task_configs, 1):
             run_label = f" ({task.run_label})" if task.run_label else ""
-            print(f"  {i}. {task.job_name}: {task.task_name}{run_label}")
-            print(f"     └─ {task.base_output_dir}")
+            logger.info(f"  {i}. {task.job_name}: {task.task_name}{run_label}")
+            logger.info(f"     └─ {task.base_output_dir}")
 
-        print("=" * 60)
+        logger.info("=" * 50)

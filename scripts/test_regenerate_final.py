@@ -26,11 +26,12 @@ logger = logging.getLogger(__name__)
 SRC_ROOT = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_ROOT))
 
-from src.pipeline.job_manager import JobManager, UserChoice, ExecutionStrategy
+import pytest
+
+from src.pipeline.job_manager import ExecutionStrategy, JobManager, UserChoice
+from src.pipeline.task_executor import TaskExecutor
 from src.utils.config_manager import ConfigManager
 from src.utils.file_manager import FileManager
-from src.pipeline.task_executor import TaskExecutor
-import pytest
 
 
 def create_mock_final_audio(output_dir: Path) -> Path:
@@ -160,9 +161,9 @@ def test_regenerate_final():
     # Create mock scenario
     create_mock_scenario(test_dir)
 
-    logger.info("=" * 60)
+    logger.info("=" * 50)
     logger.info("🎯 Mock scenario ready for testing!")
-    logger.info("=" * 60)
+    logger.info("=" * 50)
     logger.info("Now you can test --regenerate-final with:")
     logger.info(f"   python src/main.py --job {test_dir_name} --regenerate-final")
     logger.info("")
@@ -170,7 +171,7 @@ def test_regenerate_final():
     logger.info("   1. Detect assembly stage (final audio exists)")
     logger.info("   2. Force regeneration due to --regenerate-final flag")
     logger.info("   3. Create new file with '_regen-01' suffix")
-    logger.info("=" * 60)
+    logger.info("=" * 50)
 
     return test_dir
 

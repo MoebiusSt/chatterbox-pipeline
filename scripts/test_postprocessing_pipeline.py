@@ -300,7 +300,7 @@ def test_pipeline_integration(sample_rate=24000):
 def main():
     """Main test function."""
     print("Starting Phase 3 Post-Processing Pipeline Tests")
-    print("=" * 60)
+    print("=" * 50)
 
     # Setup logging
     setup_logging()
@@ -319,9 +319,9 @@ def main():
         test_pipeline_integration()
 
         # Summary
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 50)
         print("Phase 3 Testing Summary")
-        print("=" * 60)
+        print("=" * 50)
         print(
             f"✅ NoiseAnalyzer: Analyzed noise profile (confidence: {noise_profile.confidence:.3f})"
         )

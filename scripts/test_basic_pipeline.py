@@ -17,7 +17,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
 from generation.audio_processor import AudioProcessor
-from utils.file_manager import AudioCandidate
+from src.utils.file_manager import AudioCandidate
 
 # Configure logging
 logging.basicConfig(

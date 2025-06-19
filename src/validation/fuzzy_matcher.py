@@ -66,6 +66,7 @@ class FuzzyMatcher:
         self.case_sensitive = case_sensitive
         self.normalize_whitespace = normalize_whitespace
         self.remove_punctuation = remove_punctuation
+        import logging
         self.logger = logging.getLogger(__name__)
 
         # Pre-compile regex for punctuation removal

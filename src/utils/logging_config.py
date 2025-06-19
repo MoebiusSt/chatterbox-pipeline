@@ -1,13 +1,12 @@
 """
-Enhanced logging configuration utility.
+Simplified logging configuration utility.
 Provides dual logging (console + rotating file) with optional colorized console output.
-Supports primary/verbose mode distinction and structured output with icons.
+Uses standard Python logging levels: INFO for normal messages, DEBUG for verbose messages.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -50,28 +49,27 @@ class StructuredFormatter(logging.Formatter):
     # Consolidated icon mapping (context overrides level)
     ICONS = {
         # Level defaults
-        logging.DEBUG: "🔍",
-        logging.INFO: "ℹ️",
-        logging.WARNING: "⚠️",
-        logging.ERROR: "❌",
-        logging.CRITICAL: "🚨",
+        logging.DEBUG: "ℹ️ ",
+        logging.INFO: "",
+        logging.WARNING: "⚠️ ",
+        logging.ERROR: "❌ ",
+        logging.CRITICAL: "🚨 ",
         # Context overrides (checked first)
-        "starting": "▶️",
+        "starting": "▶️ ",
         "preprocessing": "📝",
         "generation": "⚡",
         "validation": "🚦",
         "assembly": "🔧",
         "complete": "✅",
         "model": "🤖",
-        "config": "⚙️",
+        "config": "⚙️ ",
         "audio": "〰️",
         "file": "📁",
     }
 
-    def __init__(self, fmt: str, use_icons: bool = True, verbose_mode: bool = False):
+    def __init__(self, fmt: str, use_icons: bool = True):
         super().__init__(fmt)
         self.use_icons = use_icons
-        self.verbose_mode = verbose_mode
 
     def format(self, record: logging.LogRecord) -> str:  # noqa: D401
         if not self.use_icons:
@@ -107,13 +105,10 @@ class StructuredFormatter(logging.Formatter):
         return (
             # Has emoji (simple Unicode check) - improved to catch more cases
             any(ord(c) > 0x1F300 for c in message[:30])  # Extended range and check more characters
-            or
-            # Separator line
-            set(message.strip()) <= {"=", "-", " "}
-            or
-            # Structured header
-            message.count(":") > 2
+            or set(message.strip()) <= {"=", "-", " "}
+            or message.count(":") > 2
             or "TTS PIPELINE" in message
+            or message.startswith("- ")
         )
 
     def _get_icon(self, message: str, level: int) -> str:
@@ -129,54 +124,8 @@ class StructuredFormatter(logging.Formatter):
         return self.ICONS.get(level, "")
 
 
-class VerboseFilter(logging.Filter):
-    """Filter to control verbose-only messages."""
-
-    def __init__(self, verbose_mode: bool = False):
-        super().__init__()
-        self.verbose_mode = verbose_mode
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        # Always allow warnings and errors
-        if record.levelno >= logging.WARNING:
-            return True
-
-        # Check if message is marked as verbose-only
-        if getattr(record, "_verbose_only", False):
-            return self.verbose_mode
-
-        # Always allow primary messages (INFO level without verbose marker)
-        return True
-
-
-def create_verbose_logger(name: str, verbose: bool = False) -> logging.Logger:
-    """Create a logger with verbose support."""
-    logger = logging.getLogger(name)
-
-    # Add verbose method to logger
-    def verbose(self, message, *args, **kwargs):
-        if self.isEnabledFor(logging.INFO):
-            self._log(
-                logging.INFO, message, args, extra={"_verbose_only": True}, **kwargs
-            )
-
-    def primary(self, message, *args, **kwargs):
-        if self.isEnabledFor(logging.INFO):
-            self._log(
-                logging.INFO, message, args, extra={"_verbose_only": False}, **kwargs
-            )
-
-    # Bind methods to logger
-    import types
-
-    logger.verbose = types.MethodType(verbose, logger)
-    logger.primary = types.MethodType(primary, logger)
-
-    return logger
-
-
 class LoggingConfigurator:  # pylint: disable=too-few-public-methods
-    """Central logging configuration helper with enhanced structure and verbose mode support.
+    """Central logging configuration helper with dual logging support.
 
     Usage:
         from utils.logging_config import LoggingConfigurator
@@ -204,7 +153,7 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
             max_bytes: Maximum size of each rotating log file.
             backup_count: Number of backup log files to keep.
             append: Append to existing log file instead of truncating.
-            verbose_mode: Enable verbose mode for detailed logging.
+            verbose_mode: Enable verbose mode (show DEBUG level on console).
             use_icons: Enable icons in console output.
         """
         # Ensure directory exists
@@ -217,22 +166,25 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
 
-        # Console handler with structured formatting and verbose filtering
+        # Set console level based on verbose mode
         if verbose_mode:
-            console_fmt = "%(levelname)s - %(message)s"
+            actual_console_level = logging.DEBUG
+            # console_fmt = "%(levelname)s - %(message)s"
         else:
-            console_fmt = "%(message)s"  # Cleaner format for primary mode
+            actual_console_level = console_level  # Usually INFO
+            # console_fmt = "%(message)s"  # Cleaner format for non-verbose mode
 
+        console_fmt = "%(message)s"
+
+        # Console handler with structured formatting
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(console_level)
+        console_handler.setLevel(actual_console_level)
 
         # Create structured formatter with color support
         class StructuredColorFormatter(_ColorFormatter, StructuredFormatter):
             def __init__(self, fmt: str):
                 _ColorFormatter.__init__(self, fmt)
-                StructuredFormatter.__init__(
-                    self, fmt, use_icons=use_icons, verbose_mode=verbose_mode
-                )
+                StructuredFormatter.__init__(self, fmt, use_icons=use_icons)
 
             def format(self, record: logging.LogRecord) -> str:
                 # Apply structure first, then color
@@ -245,11 +197,6 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
 
         console_formatter = StructuredColorFormatter(console_fmt)
         console_handler.setFormatter(console_formatter)
-
-        # Add verbose filter to console
-        verbose_filter = VerboseFilter(verbose_mode=verbose_mode)
-        console_handler.addFilter(verbose_filter)
-
         root_logger.addHandler(console_handler)
 
         # Structured log record factory: ensures optional context fields exist
@@ -265,7 +212,7 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
 
         logging.setLogRecordFactory(_record_factory)
 
-        # Rotating file handler – detailed, structured format (always verbose for files)
+        # Rotating file handler – detailed, structured format (always includes DEBUG)
         file_fmt = "%(asctime)s | %(levelname)-8s | %(job)s | %(task)s | %(stage)s | %(name)s | %(message)s"
         file_mode = "a" if append else "w"
         file_handler: Optional[logging.Handler]
@@ -283,25 +230,12 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
                 log_file, mode=file_mode, encoding="utf-8"
             )
 
-        file_handler.setLevel(file_level)
+        file_handler.setLevel(file_level)  # Usually DEBUG - logs everything to file
         file_handler.setFormatter(logging.Formatter(file_fmt))
         root_logger.addHandler(file_handler)
 
         # Configure third-party library logging
         LoggingConfigurator._configure_third_party_logging(verbose_mode)
-
-        # Set development mode to verbose by default
-        if verbose_mode:
-            # Enable DEBUG level for our modules
-            for module_name in [
-                "generation",
-                "validation",
-                "chunking",
-                "postprocessing",
-                "utils",
-            ]:
-                module_logger = logging.getLogger(module_name)
-                module_logger.setLevel(logging.DEBUG)
 
     @staticmethod
     def _configure_third_party_logging(verbose_mode: bool = False) -> None:
@@ -330,16 +264,3 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
             logging.getLogger("transformers").setLevel(logging.WARNING)
             logging.getLogger("torch").setLevel(logging.WARNING)
             logging.getLogger("torchaudio").setLevel(logging.WARNING)
-
-
-def get_logger(name: str, verbose: bool = False) -> logging.Logger:
-    """Get a logger with verbose support.
-
-    Args:
-        name: Logger name (typically __name__)
-        verbose: Whether verbose mode is enabled
-
-    Returns:
-        Logger with verbose() and primary() methods
-    """
-    return create_verbose_logger(name, verbose)

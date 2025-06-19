@@ -242,11 +242,11 @@ def main():
         logger.info(
             f"End time: {datetime.fromtimestamp(pipeline_end_time).strftime('%H:%M:%S')}"
         )
-        logger.info(f"Total execution time: {_format_duration(total_pipeline_time)}")
+        logger.info(f"- Total execution time: {_format_duration(total_pipeline_time)}")
         logger.info(
             f"Generated {duration:.2f} seconds of mock audio from {len(input_text)} characters of text"
         )
-        logger.info(f"Mock output saved to: {output_path}")
+        logger.info(f"- Mock output saved to: {output_path}")
         logger.info(f"✅ Mock pipeline test successful - ready for CI/CD integration")
         logger.info(f"{'='*60}")
 

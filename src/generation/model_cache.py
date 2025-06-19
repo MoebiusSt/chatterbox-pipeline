@@ -12,9 +12,9 @@ from typing import Any, Dict, Optional
 
 import torch
 
-from utils.logging_config import get_logger
+import logging
 
-logger = get_logger(__name__, verbose=True)
+logger = logging.getLogger(__name__)
 
 
 class ChatterboxModelCache:
@@ -50,12 +50,12 @@ class ChatterboxModelCache:
         cache_key = actual_device
 
         if cache_key not in cls._model_cache:
-            logger.primary(
+            logger.info(
                 f"🔄 Loading ChatterboxTTS model for device: {cache_key} (cache miss)"
             )
             cls._model_cache[cache_key] = cls._load_fresh_model(cache_key)
         else:
-            logger.primary(
+            logger.info(
                 f"♻️ Using cached ChatterboxTTS model for device: {cache_key} (cache hit)"
             )
 
@@ -94,25 +94,25 @@ class ChatterboxModelCache:
                     )
                 except TypeError:
                     # Older library version – ignore kwarg and log info
-                    logger.verbose(
+                    logger.debug(
                         "ChatterboxTTS.from_pretrained() does not accept attn_implementation – falling back without it"
                     )
                     model = ChatterboxTTS.from_pretrained(device=device)
 
-            logger.verbose(
+            logger.debug(
                 f"ChatterboxTTS model loaded successfully for device: {device}"
             )
             return model
 
         except Exception as e:
             logger.error(f"Failed to load ChatterboxTTS model for device {device}: {e}")
-            logger.primary("Returning None - will use mock mode for testing")
+            logger.info("Returning None - will use mock mode for testing")
             return None
 
     @classmethod
     def clear_cache(cls):
         """Clear all cached models (useful for testing)."""
-        logger.verbose("🗑️ Clearing ChatterboxTTS model cache")
+        logger.debug("🗑️ Clearing ChatterboxTTS model cache")
         cls._model_cache.clear()
 
     @classmethod
@@ -167,20 +167,20 @@ class ConditionalCache:
             or self.current_reference_hash != reference_hash
         ):
 
-            logger.verbose(
+            logger.debug(
                 f"Preparing conditionals for: {Path(reference_audio_path).name}"
             )
             try:
                 self.model.prepare_conditionals(wav_fpath=reference_audio_path)
                 self.current_reference_audio = reference_audio_path
                 self.current_reference_hash = reference_hash
-                logger.verbose("Conditionals prepared successfully")
+                logger.debug("Conditionals prepared successfully")
                 return True
             except Exception as e:
                 logger.error(f"Error preparing conditionals: {e}")
                 raise
         else:
-            logger.verbose(
+            logger.debug(
                 f"Conditionals already prepared for: {Path(reference_audio_path).name}"
             )
             return False
@@ -210,6 +210,6 @@ class ConditionalCache:
 
     def reset(self):
         """Reset conditional cache state."""
-        logger.verbose("🔄 Resetting conditional cache state")
+        logger.debug("🔄 Resetting conditional cache state")
         self.current_reference_audio = None
         self.current_reference_hash = None

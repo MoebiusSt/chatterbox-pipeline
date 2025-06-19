@@ -6,11 +6,11 @@ Handles all file I/O operations for the TTS pipeline with consistent schemas.
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
-import time
 
 import torch
 import torchaudio
@@ -18,6 +18,8 @@ import yaml
 
 from chunking.base_chunker import TextChunk
 from utils.config_manager import ConfigManager, TaskConfig
+
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +152,7 @@ class FileManager:
         with open(text_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        logger.verbose(f"Loaded input text: {text_path} ({len(content)} characters)")
+        logger.debug(f"Loaded input text: {text_path} ({len(content)} characters)")
         return content
 
     def get_reference_audio(self) -> Path:
@@ -201,7 +203,7 @@ class FileManager:
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(chunk_metadata, f, indent=2, ensure_ascii=False)
 
-            logger.verbose(f"Saved {len(chunks)} chunks to {self.texts_dir}")
+            logger.debug(f"Saved {len(chunks)} chunks to {self.texts_dir}")
             return True
 
         except Exception as e:
@@ -259,7 +261,7 @@ class FileManager:
         # Sort by index
         chunks.sort(key=lambda c: c.idx)
 
-        logger.verbose(f"Loaded {len(chunks)} chunks from {self.texts_dir}")
+        logger.debug(f"Loaded {len(chunks)} chunks from {self.texts_dir}")
         return chunks
 
     # Candidate Operations
@@ -358,9 +360,9 @@ class FileManager:
                 json.dump(candidate_metadata, f, indent=2)
 
             if overwrite_existing:
-                logger.verbose(f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)")
+                logger.debug(f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)")
             else:
-                logger.verbose(f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)")
+                logger.debug(f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)")
             return True
 
         except Exception as e:
@@ -457,7 +459,7 @@ class FileManager:
             candidates[idx] = chunk_candidates
 
         total_candidates = sum(len(cands) for cands in candidates.values())
-        logger.verbose(
+        logger.debug(
             f"Loaded {total_candidates} candidates for {len(candidates)} chunks"
         )
         return candidates
@@ -711,12 +713,12 @@ class FileManager:
             True if migration successful
         """
         try:
-            logger.verbose("🔄 Migrating existing whisper files to enhanced metrics format...")
+            logger.debug("🔄 Migrating existing whisper files to enhanced metrics format...")
             
             # Find all existing whisper files
             whisper_files = list(self.whisper_dir.glob("chunk_*_candidate_*_whisper.json"))
             if not whisper_files:
-                logger.verbose("No existing whisper files found - no migration needed")
+                logger.debug("No existing whisper files found - no migration needed")
                 return True
             
             migration_count = 0
@@ -740,13 +742,13 @@ class FileManager:
                     # Sync to enhanced metrics (without saving individual file again)
                     if self._sync_whisper_to_enhanced_metrics(chunk_idx, candidate_idx, result):
                         migration_count += 1
-                        logger.debug(f"✓ Migrated whisper result for chunk {chunk_idx}, candidate {candidate_idx}")
+                        # logger.debug(f"✓ Migrated whisper result for chunk {chunk_idx}, candidate {candidate_idx}")
                     
                 except Exception as e:
                     logger.warning(f"Failed to migrate {whisper_file}: {e}")
                     continue
             
-            logger.verbose(f"✅ Migration completed: {migration_count}/{len(whisper_files)} whisper files migrated to enhanced metrics")
+            logger.debug(f"✅ Migration completed: {migration_count}/{len(whisper_files)} whisper files migrated to enhanced metrics")
             return True
             
         except Exception as e:
@@ -769,7 +771,7 @@ class FileManager:
             return True
             
         try:
-            logger.verbose("🧹 Cleaning up individual whisper files after migration...")
+            logger.debug("🧹 Cleaning up individual whisper files after migration...")
             
             # Verify enhanced metrics exists and has data
             metrics = self.get_metrics()
@@ -788,7 +790,7 @@ class FileManager:
                 except Exception as e:
                     logger.warning(f"Failed to remove {whisper_file}: {e}")
             
-            logger.verbose(f"✅ Cleanup completed: {removed_count} individual whisper files removed")
+            logger.debug(f"✅ Cleanup completed: {removed_count} individual whisper files removed")
             return True
             
         except Exception as e:
@@ -811,7 +813,7 @@ class FileManager:
         """Load quality metrics and validation results."""
         path = self.task_directory / "enhanced_metrics.json"
         if not path.exists():
-            logger.warning(f"Metrics file not found: {path}")
+            logger.debug(f"Metrics file not found: {path}")
             return {}
         
         with open(path, "r", encoding="utf-8") as f:
@@ -908,7 +910,7 @@ class FileManager:
                 silence = torch.zeros(int(sample_rate * 0.5))
                 audio_segments.append(silence)
 
-        logger.verbose(f"Loaded {len(audio_segments)} audio segments")
+        logger.debug(f"Loaded {len(audio_segments)} audio segments")
         return audio_segments
 
     def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:

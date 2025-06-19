@@ -62,7 +62,7 @@ class BatchExecutor:
             BatchResult object with execution summary
         """
         start_time = time.time()
-
+        logger.info("=" * 50)
         logger.info(f"Starting batch execution of {len(task_configs)} tasks")
         logger.info(f"Execution mode: {'parallel' if parallel else 'sequential'}")
 
@@ -108,7 +108,7 @@ class BatchExecutor:
 
         for i, task_config in enumerate(task_configs, 1):
             logger.info(
-                f"Processing task {i}/{len(task_configs)}: {task_config.job_name}"
+                f"🔧 Processing task {i}/{len(task_configs)}: {task_config.job_name}"
             )
 
             try:
@@ -116,9 +116,9 @@ class BatchExecutor:
                 results.append(result)
 
                 if result.success:
-                    logger.info(f"Task {i} completed successfully")
+                    logger.info(f"Task {i} completed successfully\n")
                 else:
-                    logger.error(f"✗ Task {i} failed: {result.error_message}")
+                    logger.error(f"✗ Task {i} failed: {result.error_message}\n")
 
             except Exception as e:
                 logger.error(f"✗ Task {i} crashed: {e}", exc_info=True)
@@ -250,30 +250,27 @@ class BatchExecutor:
         Args:
             batch_result: BatchResult object
         """
-        logger.info("\n" + "=" * 60)
-        logger.info("BATCH EXECUTION SUMMARY")
-        logger.info("=" * 60)
-        logger.info(f"Total tasks: {batch_result.total_tasks}")
-        logger.info(f"Successful: {batch_result.successful_tasks}")
-        logger.info(f"Failed: {batch_result.failed_tasks}")
-        logger.info(
-            f"Success rate: {batch_result.successful_tasks/batch_result.total_tasks*100:.1f}%"
-        )
-        logger.info(f"Total execution time: {batch_result.execution_time:.2f} seconds")
+        logger.info("\n" + "=" * 50)
+        logger.info("📋 BATCH EXECUTION SUMMARY")
+        logger.info("=" * 50)
+        logger.info(f"- Total tasks: {batch_result.total_tasks}")
+        logger.info(f"- Successful: {batch_result.successful_tasks}")
+        logger.info(f"- Failed: {batch_result.failed_tasks}")
+        logger.info(f"- Total execution time: {batch_result.execution_time:.2f} seconds")
 
         if batch_result.successful_tasks > 0:
             avg_time = (
                 sum(r.execution_time for r in batch_result.task_results if r.success)
                 / batch_result.successful_tasks
             )
-            logger.info(f"Average task time: {avg_time:.2f} seconds")
+            logger.info(f"- Average task time: {avg_time:.2f} seconds")
 
         if batch_result.error_summary:
             logger.info("\nErrors:")
             for error in batch_result.error_summary:
                 logger.info(f"  • {error}")
 
-        logger.info("=" * 60)
+        logger.info("=" * 50)
 
     def print_detailed_results(self, batch_result: BatchResult):
         """
@@ -282,28 +279,29 @@ class BatchExecutor:
         Args:
             batch_result: BatchResult object
         """
-        print("\n" + "=" * 80)
-        print("DETAILED BATCH RESULTS")
-        print("=" * 80)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("📊 DETAILED BATCH RESULTS")
+        logger.info("=" * 80)
 
         for i, result in enumerate(batch_result.task_results, 1):
-            status = "✓ SUCCESS" if result.success else "✗ FAILED"
-            print(f"{i:2d}. {result.task_config.job_name} - {status}")
-            print(f"    Task: {result.task_config.task_name}")
+            status = "✅" if result.success else "❌"
+            logger.info(f"{status} {i:2d}. {result.task_config.job_name} - {result.success}")
+            logger.info(f"- Task: {result.task_config.task_name}")
             if result.task_config.run_label:
-                print(f"    Label: {result.task_config.run_label}")
-            print(f"    Time: {result.execution_time:.2f}s")
-            print(f"    Stage: {result.completion_stage.value}")
+                logger.info(f"- Label: {result.task_config.run_label}")
+            logger.info(f"- Time: {result.execution_time:.2f}s")
+            logger.info(f"- Stage: {result.completion_stage.value}")
 
             if result.final_audio_path:
-                print(f"    Output: {result.final_audio_path}")
+                logger.info(f"- Output: {result.final_audio_path}")
 
             if not result.success and result.error_message:
-                print(f"    Error: {result.error_message}")
+                logger.info(f"❌ Error: {result.error_message}")
 
-            print()
+            logger.info("")
 
-        print("=" * 80)
+        logger.info("=" * 80)
 
     def generate_batch_report(
         self, batch_result: BatchResult, output_path: Optional[Path] = None
@@ -360,5 +358,5 @@ class BatchExecutor:
                 for error in batch_result.error_summary:
                     f.write(f"• {error}\n")
 
-        logger.info(f"Batch report generated: {output_path}")
+        logger.info(f"Batch report file generated: {output_path}")
         return output_path

@@ -3,15 +3,16 @@
 Check CI status for commits.
 """
 
+import argparse
+import json
+import os
+import re
 import sys
 import time
-import os
-import json
-import requests
-import argparse
-import re
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
+
+import requests
 
 # Add src to Python path
 src_path = Path(__file__).parent.parent / "src"

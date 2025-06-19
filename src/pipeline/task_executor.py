@@ -27,13 +27,13 @@ from utils.file_manager import (
     TaskState,
     TextChunk,
 )
-from utils.logging_config import get_logger
+import logging
 from utils.progress_tracker import ProgressTracker
 from validation.fuzzy_matcher import FuzzyMatcher
 from validation.quality_scorer import QualityScorer
 from validation.whisper_validator import WhisperValidator
 
-logger = get_logger(__name__, verbose=True)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,12 +63,12 @@ class TaskExecutor:
         self.task_config = task_config
 
         # Load config data only if not already set (avoid duplicate loading)
-        if not hasattr(self, 'config') or self.config is None:
+        if not hasattr(self, "config") or self.config is None:
             cm = ConfigManager(
                 task_config.config_path.parent.parent.parent.parent
             )  # Go up to project root
             self.config = cm.load_cascading_config(task_config.config_path)
-            
+
             # Set the loaded config in FileManager to avoid duplicate loading
             file_manager.config = self.config
 
@@ -107,7 +107,7 @@ class TaskExecutor:
                 config=self.config["generation"], device=device, seed=12345
             )
 
-            logger.verbose("TTSGenerator initialized with automatic model loading")
+            logger.debug("TTSGenerator initialized with automatic model loading")
 
         return self._tts_generator
 
@@ -141,7 +141,7 @@ class TaskExecutor:
         """Lazy-loaded candidate manager."""
         if self._candidate_manager is None:
             from generation.candidate_manager import CandidateManager
-            
+
             self._candidate_manager = CandidateManager(
                 tts_generator=self.tts_generator,
                 config=self.config,
@@ -167,12 +167,11 @@ class TaskExecutor:
         start_time = time.time()
 
         try:
-            logger.primary(f"Starting task execution from job: {self.task_config.job_name}")
-            logger.verbose(f"Task directory: {self.task_config.base_output_dir}")
+            logger.debug(f"Task directory: {self.task_config.base_output_dir}")
 
             # Analyze current state
             task_state = self.file_manager.analyze_task_state()
-            logger.primary(
+            logger.info(
                 f"Current completion stage: {task_state.completion_stage.value}"
             )
 
@@ -180,37 +179,51 @@ class TaskExecutor:
             self.file_manager.migrate_whisper_to_enhanced_metrics()
 
             if task_state.missing_components:
-                logger.verbose(
+                logger.debug(
                     f"Missing components: {', '.join(task_state.missing_components)}"
                 )
 
             # Check if we should force final audio regeneration
             force_final = self.task_config.add_final
             if force_final and task_state.completion_stage == CompletionStage.COMPLETE:
-                logger.primary("🔄 Forcing final audio regeneration")
-                
+                logger.info("🔄 Forcing final audio regeneration")
+
                 # Check if we have missing candidates or whisper validations
-                has_missing_candidates = any("candidates_chunk" in comp for comp in task_state.missing_components)
-                has_missing_whisper = any("whisper_chunk" in comp for comp in task_state.missing_components)
-                
+                has_missing_candidates = any(
+                    "candidates_chunk" in comp for comp in task_state.missing_components
+                )
+                has_missing_whisper = any(
+                    "whisper_chunk" in comp for comp in task_state.missing_components
+                )
+
                 if has_missing_candidates:
-                    logger.primary("⚠️ Missing candidates detected - must generate first")
+                    logger.info(
+                        "⚠️ Missing candidates detected - must generate first"
+                    )
                     task_state.completion_stage = CompletionStage.GENERATION
                 elif has_missing_whisper:
-                    logger.primary("⚠️ Missing whisper validations detected - must validate first")
+                    logger.info(
+                        "⚠️ Missing whisper validations detected - must validate first"
+                    )
                     task_state.completion_stage = CompletionStage.VALIDATION
                 else:
-                    logger.primary("✅ All candidates available - proceeding to assembly only")
+                    logger.info(
+                        "✅ All candidates available - proceeding to assembly only"
+                    )
                     task_state.completion_stage = CompletionStage.ASSEMBLY
-                    
+
                 # Remove existing final audio files
                 final_files = list(self.file_manager.final_dir.glob("*_final.wav"))
                 for final_file in final_files:
                     final_file.unlink()
-                    logger.verbose(f"Removed existing final audio file: {final_file}")
-            elif task_state.missing_components and any("whisper_chunk" in comp for comp in task_state.missing_components):
+                    logger.debug(f"Removed existing final audio file: {final_file}")
+            elif task_state.missing_components and any(
+                "whisper_chunk" in comp for comp in task_state.missing_components
+            ):
                 # If only whisper validations are missing, go directly to validation
-                logger.primary("🔍 Missing whisper validations detected - running validation phase")
+                logger.info(
+                    "🔍 Missing whisper validations detected - running validation phase"
+                )
                 task_state.completion_stage = CompletionStage.VALIDATION
 
             # Execute stages based on gap analysis
@@ -224,14 +237,12 @@ class TaskExecutor:
                 # Find the actual file path
                 final_files = list(self.file_manager.final_dir.glob("*_final.wav"))
                 if final_files:
-                    final_audio_path = max(
-                        final_files, key=lambda f: f.stat().st_mtime
-                    )
+                    final_audio_path = max(final_files, key=lambda f: f.stat().st_mtime)
 
                 execution_time = time.time() - start_time
 
-                logger.primary(
-                    f"Task completed successfully in {execution_time:.2f} seconds"
+                logger.info(
+                    f"⏳ Task completed successfully in {execution_time:.2f} seconds"
                 )
 
                 return TaskResult(
@@ -274,7 +285,7 @@ class TaskExecutor:
             True if execution successful
         """
         if task_state.completion_stage == CompletionStage.COMPLETE:
-            logger.primary("Task already complete")
+            logger.info("Task already complete")
             return True
 
         # Execute stages in order based on what's missing
@@ -322,15 +333,15 @@ class TaskExecutor:
             True if successful
         """
         try:
-            logger.primary("Starting preprocessing stage")
+            logger.info("Starting preprocessing stage")
 
             # Load input text
             input_text = self.file_manager.get_input_text()
-            logger.verbose(f"Loaded input text: {len(input_text)} characters")
+            logger.debug(f"Loaded input text: {len(input_text)} characters")
 
             # Chunk text
             text_chunks = self.chunker.chunk_text(input_text)
-            logger.primary(f"Generated {len(text_chunks)} text chunks")
+            logger.info(f"Generated {len(text_chunks)} text chunks")
 
             # Update indices for TextChunk objects
             for i, chunk in enumerate(text_chunks):
@@ -352,7 +363,7 @@ class TaskExecutor:
                 logger.error("Failed to save chunks")
                 return False
 
-            logger.primary("Preprocessing stage completed successfully")
+            logger.info("Preprocessing stage completed successfully")
             return True
 
         except Exception as e:
@@ -367,7 +378,8 @@ class TaskExecutor:
             True if successful
         """
         try:
-            logger.primary("Starting generation stage")
+            logger.info("")
+            logger.info("Starting generation stage")
 
             # Load chunks
             chunks = self.file_manager.get_chunks()
@@ -383,49 +395,51 @@ class TaskExecutor:
 
             # Generate candidates for each chunk
             total_chunks = len(chunks)
-            logger.primary(f"⚡ GENERATION PHASE: Processing {total_chunks} chunks")
-            logger.primary("=" * 60)
-            
+            logger.info(f"⚡ GENERATION PHASE: Processing {total_chunks} chunks")
+            logger.info("=" * 50)
+
             for chunk in chunks:
                 # Enhanced chunk header with clear visual separation
                 chunk_num = chunk.idx + 1
-                logger.primary("")  # Empty line for spacing
-                logger.primary(f"🎯 CHUNK {chunk_num}/{total_chunks}")
-                logger.verbose(f"Text length: {len(chunk.text)} characters")
+                logger.info("")
+                logger.info(f"🎯 CHUNK {chunk_num}/{total_chunks}")
+                logger.debug(f"Text length: {len(chunk.text)} characters")
                 if len(chunk.text) > 80:
                     preview = chunk.text[:80] + "..."
                 else:
                     preview = chunk.text
-                logger.verbose(f"Preview: \"{preview}\"")
-                logger.primary("-" * 40)
+                logger.debug(f'Preview: "{preview}"')
+                logger.info("-" * 50)
 
                 # Check if we need to generate missing candidates
                 existing_candidates = self.file_manager.get_candidates(chunk.idx)
                 chunk_candidates = existing_candidates.get(chunk.idx, [])
-                
+
                 generation_config = self.config["generation"]
                 num_candidates = generation_config["num_candidates"]
-                
+
                 # Check actual files in chunk directory for accurate count
-                chunk_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                chunk_dir = (
+                    self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                )
                 existing_file_count = 0
                 if chunk_dir.exists():
                     candidate_files = list(chunk_dir.glob("candidate_*.wav"))
                     existing_file_count = len(candidate_files)
-                
+
                 if existing_file_count >= num_candidates:
-                    logger.verbose(
+                    logger.debug(
                         f"✓ Candidates already exist for chunk {chunk_num} ({existing_file_count}/{num_candidates}), skipping"
                     )
                     continue
                 elif existing_file_count > 0:
-                    logger.primary(
+                    logger.info(
                         f"⚡ Found {existing_file_count}/{num_candidates} candidates - generating {num_candidates - existing_file_count} missing candidates"
                     )
 
                 # Generate missing candidates
                 missing_count = num_candidates - existing_file_count
-                
+
                 if missing_count > 0:
 
                     # Find which specific candidate indices are missing
@@ -434,46 +448,57 @@ class TaskExecutor:
                         candidate_files = list(chunk_dir.glob("candidate_*.wav"))
                         for candidate_file in candidate_files:
                             try:
-                                candidate_num = int(candidate_file.stem.split('_')[1])
+                                candidate_num = int(candidate_file.stem.split("_")[1])
                                 candidate_idx = candidate_num - 1  # Convert to 0-based
                                 existing_indices.add(candidate_idx)
                             except (IndexError, ValueError):
                                 continue
-                    
+
                     # Find missing indices in the range [0, num_candidates)
                     missing_indices = []
                     for i in range(num_candidates):
                         if i not in existing_indices:
                             missing_indices.append(i)
-                    
+
                     # Generate missing candidates for specific indices
-                    new_candidates = self._generate_missing_candidates(chunk, missing_indices)
+                    new_candidates = self._generate_missing_candidates(
+                        chunk, missing_indices
+                    )
 
                     if not new_candidates:
-                        logger.error(f"❌ Failed to generate missing candidates for chunk {chunk_num+1}")
+                        logger.error(
+                            f"❌ Failed to generate missing candidates for chunk {chunk_num+1}"
+                        )
                         return False
 
                     # CandidateManager already saved the new candidates, no need to save again
-                    logger.verbose(f"✅ Successfully generated {len(new_candidates)} missing candidates")
+                    logger.debug(
+                        f"✅ Successfully generated {len(new_candidates)} missing candidates"
+                    )
                 else:
                     # Generate all candidates (original logic for empty chunks)
-                    logger.primary(f"⚡ Generating candidates...")
+                    logger.info(f"⚡ Generating candidates...")
                     candidates = self._generate_candidates_for_chunk(chunk)
 
                     if not candidates:
-                        logger.error(f"❌ Failed to generate candidates for chunk {chunk_num+1}")
+                        logger.error(
+                            f"❌ Failed to generate candidates for chunk {chunk_num+1}"
+                        )
                         return False
 
                     # Save candidates (new chunk, safe to overwrite)
-                    if not self.file_manager.save_candidates(chunk.idx, candidates, overwrite_existing=True):
-                        logger.error(f"❌ Failed to save candidates for chunk {chunk_num+1}")
+                    if not self.file_manager.save_candidates(
+                        chunk.idx, candidates, overwrite_existing=True
+                    ):
+                        logger.error(
+                            f"❌ Failed to save candidates for chunk {chunk_num+1}"
+                        )
                         return False
-                    
-                    logger.primary(f"✅ Successfully generated {len(candidates)} candidates")
 
-            logger.primary("")  # Empty line for spacing
-            logger.primary("=" * 60)
-            logger.primary("✅ Generation stage completed successfully")
+                    logger.info(
+                        f"✅ Successfully generated {len(candidates)} candidates"
+                    )
+            logger.info("✅ Generation stage completed successfully")
             return True
 
         except Exception as e:
@@ -536,20 +561,24 @@ class TaskExecutor:
             List of missing AudioCandidate objects
         """
         try:
-            logger.info(f"Generating {len(missing_indices)} missing candidates for indices: {missing_indices}")
+            logger.debug(
+                f"starting _generate_missing_candidates(): Generating {len(missing_indices)} candidates for indices: {missing_indices}"
+            )
 
             # Convert 0-based indices to 1-based for CandidateManager
             one_based_indices = [idx + 1 for idx in missing_indices]
-            
+
             # Use CandidateManager for consistent candidate generation and whisper file deletion
             missing_candidates = self.candidate_manager.generate_specific_candidates(
                 text_chunk=chunk,
                 chunk_index=chunk.idx,
                 candidate_indices=one_based_indices,
-                output_dir=self.file_manager.task_directory
+                output_dir=self.file_manager.task_directory,
             )
-            
-            logger.info(f"Successfully generated {len(missing_candidates)}/{len(missing_indices)} missing candidates using CandidateManager")
+
+            logger.debug(
+                f"Returning from candidate manager: generated {len(missing_candidates)}/{len(missing_indices)} missing candidates"
+            )
             return missing_candidates
 
         except Exception as e:
@@ -559,20 +588,26 @@ class TaskExecutor:
     def _delete_whisper_file(self, chunk_index: int, candidate_idx: int):
         """
         Delete corresponding whisper validation file for a candidate (ensures re-validation).
-        
+
         Args:
             chunk_index: Chunk index (0-based)
             candidate_idx: Candidate index (1-based)
         """
         whisper_dir = self.file_manager.task_directory / "whisper"
-        whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
+        whisper_file = (
+            whisper_dir
+            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
+        )
 
         if whisper_file.exists():
             whisper_file.unlink()
             logger.debug(f"🗑️ Deleted old whisper file: {whisper_file.name}")
-            
+
         # Also try alternative naming patterns (in case of inconsistencies)
-        alt_whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
+        alt_whisper_file = (
+            whisper_dir
+            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
+        )
         if alt_whisper_file.exists():
             alt_whisper_file.unlink()
             logger.debug(f"🗑️ Deleted old whisper TXT file: {alt_whisper_file.name}")
@@ -594,9 +629,11 @@ class TaskExecutor:
         try:
             generation_config = self.config["generation"]
             conservative_config = generation_config.get("conservative_candidate", {})
-            
+
             if not conservative_config.get("enabled", False):
-                logger.warning("Conservative candidate not enabled, using default values for retries")
+                logger.warning(
+                    "Conservative candidate not enabled, using default values for retries"
+                )
                 # Use default conservative values
                 base_exaggeration = 0.45
                 base_cfg_weight = 0.4
@@ -607,11 +644,13 @@ class TaskExecutor:
                 base_cfg_weight = conservative_config.get("cfg_weight", 0.4)
                 base_temperature = conservative_config.get("temperature", 0.8)
 
-            logger.verbose(f"Generating {max_retries} retry candidates with conservative base values: "
-                       f"exag={base_exaggeration:.2f}, cfg={base_cfg_weight:.2f}, temp={base_temperature:.2f}")
+            logger.debug(
+                f"Generating {max_retries} retry candidates with conservative base values: "
+                f"exag={base_exaggeration:.2f}, cfg={base_cfg_weight:.2f}, temp={base_temperature:.2f}"
+            )
 
             retry_candidates = []
-            
+
             for i in range(max_retries):
                 try:
                     # Calculate variation offset (-0.05 to +0.05)
@@ -620,31 +659,46 @@ class TaskExecutor:
                         variation_factor = 0.0  # First retry: exact conservative values
                     else:
                         # Spread variations evenly across ±0.05 range
-                        variation_factor = ((i - 1) / max(1, max_retries - 2)) * 2.0 - 1.0  # -1.0 to +1.0
+                        variation_factor = (
+                            (i - 1) / max(1, max_retries - 2)
+                        ) * 2.0 - 1.0  # -1.0 to +1.0
                         variation_factor *= 0.05  # Scale to ±0.05
-                    
+
                     # Apply variations to conservative parameters
-                    retry_exaggeration = max(0.1, min(1.0, base_exaggeration + variation_factor))
-                    retry_cfg_weight = max(0.1, min(1.0, base_cfg_weight + variation_factor))  
-                    retry_temperature = max(0.1, min(2.0, base_temperature + variation_factor))
-                    
+                    retry_exaggeration = max(
+                        0.1, min(1.0, base_exaggeration + variation_factor)
+                    )
+                    retry_cfg_weight = max(
+                        0.1, min(1.0, base_cfg_weight + variation_factor)
+                    )
+                    retry_temperature = max(
+                        0.1, min(2.0, base_temperature + variation_factor)
+                    )
+
                     # Set unique seed for this retry
-                    retry_seed = self.tts_generator.seed + (chunk.idx * 1000) + (start_candidate_idx + i) * 100
-                    
-                    logger.verbose(f"Retry {i+1}/{max_retries}: exag={retry_exaggeration:.3f}, "
-                                 f"cfg={retry_cfg_weight:.3f}, temp={retry_temperature:.3f}, seed={retry_seed}")
-                    
+                    retry_seed = (
+                        self.tts_generator.seed
+                        + (chunk.idx * 1000)
+                        + (start_candidate_idx + i) * 100
+                    )
+
+                    logger.debug(
+                        f"Retry {i+1}/{max_retries}: exag={retry_exaggeration:.3f}, "
+                        f"cfg={retry_cfg_weight:.3f}, temp={retry_temperature:.3f}, seed={retry_seed}"
+                    )
+
                     # Generate single candidate with these parameters
                     import torch
+
                     torch.manual_seed(retry_seed)
-                    
+
                     retry_audio = self.tts_generator.generate_single(
                         text=chunk.text,
                         exaggeration=retry_exaggeration,
                         cfg_weight=retry_cfg_weight,
                         temperature=retry_temperature,
                     )
-                    
+
                     # Create AudioCandidate with correct index
                     candidate_idx = start_candidate_idx + i
                     generation_params = {
@@ -657,9 +711,10 @@ class TaskExecutor:
                         "retry_attempt": i + 1,
                     }
 
-                    from utils.file_manager import AudioCandidate
                     from pathlib import Path
-                    
+
+                    from utils.file_manager import AudioCandidate
+
                     retry_candidate = AudioCandidate(
                         chunk_idx=chunk.idx,
                         candidate_idx=candidate_idx,
@@ -668,16 +723,20 @@ class TaskExecutor:
                         generation_params=generation_params,
                         chunk_text=chunk.text,
                     )
-                    
+
                     retry_candidates.append(retry_candidate)
-                    
-                    logger.verbose(f"✅ Generated retry candidate {i+1} (idx={candidate_idx}) with duration={retry_audio.shape[-1]/24000:.2f}s\n")
+
+                    logger.debug(
+                        f"✅ Generated retry candidate {i+1} (idx={candidate_idx}) with duration={retry_audio.shape[-1]/24000:.2f}s\n"
+                    )
 
                 except Exception as e:
                     logger.error(f"Failed to generate retry candidate {i+1}: {e}")
                     continue
-            
-            logger.verbose(f"Successfully generated {len(retry_candidates)}/{max_retries} retry candidates")
+
+            logger.debug(
+                f"Successfully generated {len(retry_candidates)}/{max_retries} retry candidates"
+            )
             return retry_candidates
 
         except Exception as e:
@@ -692,7 +751,8 @@ class TaskExecutor:
             True if successful
         """
         try:
-            logger.primary("Starting validation stage")
+            logger.info("=" * 50)
+            logger.info("Starting validation stage")
 
             # Load chunks and candidates
             chunks = self.file_manager.get_chunks()
@@ -704,9 +764,9 @@ class TaskExecutor:
 
             # Validate each candidate
             validation_results = {}
-            
-            logger.primary(f"🚦 VALIDATION PHASE: Processing {len(chunks)} chunks")
-            logger.primary("=" * 60)
+
+            logger.info(f"🚦 VALIDATION PHASE: Processing {len(chunks)} chunks")
+            logger.info("=" * 50)
 
             for chunk in chunks:
                 chunk_candidates = all_candidates.get(chunk.idx, [])
@@ -715,23 +775,25 @@ class TaskExecutor:
                     continue
 
                 chunk_num = chunk.idx + 1
-                logger.primary("")  # Empty line for spacing
-                logger.primary(f"🎯 CHUNK {chunk_num}/{len(chunks)}")
-                logger.verbose(f"Candidates to validate: {len(chunk_candidates)}")
-                logger.primary("-" * 40)
+                logger.info("")  # Empty line for spacing
+                logger.info(f"🎯 CHUNK {chunk_num}/{len(chunks)}")
+                logger.debug(f"Candidates to validate: {len(chunk_candidates)}")
+                logger.info("-" * 40)
 
                 chunk_results = {}
 
                 for candidate in chunk_candidates:
-                    candidate_num = candidate.candidate_idx + 1  # Start numbering from 1 for user display
-                    logger.verbose(f"🔍 Validating candidate {candidate_num}...")
-                    
+                    candidate_num = (
+                        candidate.candidate_idx + 1
+                    )  # Start numbering from 1 for user display
+                    logger.debug(f"🔍 Validating candidate {candidate_num}...")
+
                     # Check if whisper result already exists
                     existing_whisper = self.file_manager.get_whisper(
                         chunk.idx, candidate.candidate_idx
                     )
                     if candidate.candidate_idx in existing_whisper:
-                        logger.verbose(
+                        logger.debug(
                             f"✓ Whisper result already exists for candidate {candidate_num}"
                         )
                         chunk_results[candidate.candidate_idx] = existing_whisper[
@@ -770,35 +832,50 @@ class TaskExecutor:
                             chunk.idx, candidate.candidate_idx, combined_result
                         )
                         chunk_results[candidate.candidate_idx] = combined_result
-                        
+
                         # Log validation result with overall quality score for consistency
                         status = "✅ Valid" if whisper_result.is_valid else "❌ Invalid"
-                        logger.verbose(f"{status} - candidate {candidate_num} (similarity: {whisper_result.similarity_score:.3f}, quality: {whisper_result.quality_score:.3f}, overall: {quality_result.overall_score:.3f})")
+                        logger.debug(
+                            f"{status} - candidate {candidate_num} (similarity: {whisper_result.similarity_score:.3f}, quality: {whisper_result.quality_score:.3f}, overall: {quality_result.overall_score:.3f})"
+                        )
                     else:
                         logger.warning(
                             f"❌ Whisper validation failed for candidate {candidate_num}"
                         )
 
                 validation_results[chunk.idx] = chunk_results
-                valid_count = sum(1 for result in chunk_results.values() if result.get("is_valid", False))
-                
+                valid_count = sum(
+                    1
+                    for result in chunk_results.values()
+                    if result.get("is_valid", False)
+                )
+
                 # Log summary with overall quality scores for consistency with final metrics
                 if chunk_results:
-                    overall_scores = [result.get("overall_quality_score", 0.0) for result in chunk_results.values()]
+                    overall_scores = [
+                        result.get("overall_quality_score", 0.0)
+                        for result in chunk_results.values()
+                    ]
                     min_score = min(overall_scores)
                     max_score = max(overall_scores)
-                    logger.primary(f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid (overall scores: {min_score:.3f} to {max_score:.3f})")
+                    logger.info(
+                        f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid (overall scores: {min_score:.3f} to {max_score:.3f})"
+                    )
                 else:
-                    logger.primary(f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid")
+                    logger.info(
+                        f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid"
+                    )
 
                 # Only generate retry candidates during initial validation, not when re-running validation
                 generation_config = self.config.get("generation", {})
                 max_retries = generation_config.get("max_retries", 0)
                 num_candidates = generation_config.get("num_candidates", 5)
                 max_total_candidates = num_candidates + max_retries
-                
+
                 # Check if we should retry based on actual file count, not loaded candidates
-                chunk_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                chunk_dir = (
+                    self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                )
                 highest_candidate_idx = -1
                 if chunk_dir.exists():
                     # Find all candidate files and get the highest index
@@ -806,44 +883,62 @@ class TaskExecutor:
                     for candidate_file in candidate_files:
                         try:
                             # Extract candidate number from filename (candidate_05.wav -> 4)
-                            candidate_num = int(candidate_file.stem.split('_')[1])
+                            candidate_num = int(candidate_file.stem.split("_")[1])
                             candidate_idx = candidate_num - 1  # Convert to 0-based
-                            highest_candidate_idx = max(highest_candidate_idx, candidate_idx)
+                            highest_candidate_idx = max(
+                                highest_candidate_idx, candidate_idx
+                            )
                         except (IndexError, ValueError):
                             continue
-                
+
                 # Check if we've already reached the maximum number of candidates
                 max_candidate_idx = max_total_candidates - 1  # Convert to 0-based
                 already_at_max = highest_candidate_idx >= max_candidate_idx
-                
-                should_retry = valid_count == 0 and max_retries > 0 and not already_at_max
-                
+
+                should_retry = (
+                    valid_count == 0 and max_retries > 0 and not already_at_max
+                )
+
                 if already_at_max and valid_count == 0:
-                    logger.warning(f"⚠️ All candidates invalid but maximum retry limit reached (max: {max_total_candidates} candidates)")
+                    logger.warning(
+                        f"⚠️ All candidates invalid but maximum retry limit reached (max: {max_total_candidates} candidates)"
+                    )
                 elif should_retry:
                     # Calculate how many retries we can still generate
                     next_candidate_idx = highest_candidate_idx + 1
                     remaining_slots = max_total_candidates - (highest_candidate_idx + 1)
                     actual_retries = min(max_retries, remaining_slots)
-                    
-                    logger.primary(f"⚠️ All candidates invalid - generating {actual_retries} retry candidates")
-                    logger.debug(f"Highest existing candidate: {highest_candidate_idx}, next: {next_candidate_idx}, max allowed: {max_candidate_idx}")
-                    
+
+                    logger.info(
+                        f"⚠️ All candidates invalid - generating {actual_retries} retry candidates"
+                    )
+                    logger.debug(
+                        f"Highest existing candidate: {highest_candidate_idx}, next: {next_candidate_idx}, max allowed: {max_candidate_idx}"
+                    )
+
                     # Generate retry candidates with conservative parameters + variations
-                    retry_candidates = self._generate_retry_candidates(chunk, actual_retries, next_candidate_idx)
-                    
+                    retry_candidates = self._generate_retry_candidates(
+                        chunk, actual_retries, next_candidate_idx
+                    )
+
                     # Delete whisper files for retry candidates to ensure re-validation
                     for retry_candidate in retry_candidates:
-                        self._delete_whisper_file(chunk.idx, retry_candidate.candidate_idx + 1)
-                    
+                        self._delete_whisper_file(
+                            chunk.idx, retry_candidate.candidate_idx + 1
+                        )
+
                     if retry_candidates:
-                        logger.primary(f"🔁 Validating {len(retry_candidates)} retry candidates...")
-                        
+                        logger.info(
+                            f"🔁 Validating {len(retry_candidates)} retry candidates..."
+                        )
+
                         # Validate retry candidates immediately
                         for retry_candidate in retry_candidates:
                             candidate_num = retry_candidate.candidate_idx + 1
-                            logger.verbose(f"🔍 Validating retry candidate {candidate_num}...")
-                            
+                            logger.debug(
+                                f"🔍 Validating retry candidate {candidate_num}..."
+                            )
+
                             # Set chunk text for validation compatibility
                             retry_candidate.chunk_text = chunk.text
 
@@ -872,42 +967,75 @@ class TaskExecutor:
 
                                 # Save whisper result
                                 self.file_manager.save_whisper(
-                                    chunk.idx, retry_candidate.candidate_idx, combined_result
+                                    chunk.idx,
+                                    retry_candidate.candidate_idx,
+                                    combined_result,
                                 )
-                                chunk_results[retry_candidate.candidate_idx] = combined_result
-                                
+                                chunk_results[retry_candidate.candidate_idx] = (
+                                    combined_result
+                                )
+
                                 # Log validation result with overall quality score for consistency
-                                status = "✅ Valid" if whisper_result.is_valid else "❌ Invalid"
-                                logger.verbose(f"{status} - retry candidate {candidate_num} (similarity: {whisper_result.similarity_score:.3f}, quality: {whisper_result.quality_score:.3f}, overall: {quality_result.overall_score:.3f})")
+                                status = (
+                                    "✅ Valid"
+                                    if whisper_result.is_valid
+                                    else "❌ Invalid"
+                                )
+                                logger.debug(
+                                    f"{status} - retry candidate {candidate_num} (similarity: {whisper_result.similarity_score:.3f}, quality: {whisper_result.quality_score:.3f}, overall: {quality_result.overall_score:.3f})"
+                                )
 
                         # Add retry candidates to the chunk candidates list and update all_candidates
                         all_candidates[chunk.idx].extend(retry_candidates)
-                        
+
                         # Save the updated candidates list (original + retry) to disk
-                        if not self.file_manager.save_candidates(chunk.idx, all_candidates[chunk.idx], overwrite_existing=False):
-                            logger.warning(f"Failed to save retry candidates for chunk {chunk_num+1}")
+                        if not self.file_manager.save_candidates(
+                            chunk.idx,
+                            all_candidates[chunk.idx],
+                            overwrite_existing=False,
+                        ):
+                            logger.warning(
+                                f"Failed to save retry candidates for chunk {chunk_num+1}"
+                            )
                         else:
-                            logger.verbose(f"✓ Saved {len(retry_candidates)} retry candidates to disk")
-                        
+                            logger.debug(
+                                f"✓ Saved {len(retry_candidates)} retry candidates to disk"
+                            )
+
                         # Update validation results
                         validation_results[chunk.idx] = chunk_results
-                        
+
                         # Recalculate valid count and show updated overall scores
-                        new_valid_count = sum(1 for result in chunk_results.values() if result.get("is_valid", False))
+                        new_valid_count = sum(
+                            1
+                            for result in chunk_results.values()
+                            if result.get("is_valid", False)
+                        )
                         if chunk_results:
-                            overall_scores = [result.get("overall_quality_score", 0.0) for result in chunk_results.values()]
+                            overall_scores = [
+                                result.get("overall_quality_score", 0.0)
+                                for result in chunk_results.values()
+                            ]
                             min_score = min(overall_scores)
                             max_score = max(overall_scores)
-                            score_summary = f" (overall scores: {min_score:.3f} to {max_score:.3f})"
+                            score_summary = (
+                                f" (overall scores: {min_score:.3f} to {max_score:.3f})"
+                            )
                         else:
                             score_summary = ""
-                        
+
                         if new_valid_count > valid_count:
-                            logger.primary(f"🎉 Retry success: {new_valid_count-valid_count} additional valid candidates found!{score_summary}")
+                            logger.info(
+                                f"🎉 Retry success: {new_valid_count-valid_count} additional valid candidates found!{score_summary}"
+                            )
                         else:
-                            logger.primary(f"😞 Retry complete: Still no valid candidates{score_summary}")
+                            logger.info(
+                                f"😞 Retry complete: Still no valid candidates{score_summary}"
+                            )
                     else:
-                        logger.warning(f"Failed to generate retry candidates for chunk {chunk_num+1}")
+                        logger.warning(
+                            f"Failed to generate retry candidates for chunk {chunk_num+1}"
+                        )
 
             # Create and save enhanced metrics
             metrics = self._create_enhanced_metrics(
@@ -918,9 +1046,8 @@ class TaskExecutor:
                 logger.error("Failed to save validation metrics")
                 return False
 
-            logger.primary("")  # Empty line for spacing
-            logger.primary("=" * 60)
-            logger.primary("✅ Validation stage completed successfully")
+            logger.info("")  # Empty line for spacing
+            logger.info("✅ Validation stage completed successfully")
             return True
 
         except Exception as e:
@@ -932,10 +1059,10 @@ class TaskExecutor:
         chunks: List[TextChunk],
         candidates: Dict[int, List[AudioCandidate]],
         validation_results: Dict[int, Dict[int, dict]],
-    ) -> dict:
+    ) -> Dict[str, Any]:
         """
         Create enhanced metrics using unified QualityScorer logic.
-        
+
         This method now uses QualityScorer.select_best_candidate() for consistent
         candidate selection, whether from fresh validation or cached JSON results.
         """
@@ -957,22 +1084,23 @@ class TaskExecutor:
             # Convert cached JSON results back to ValidationResult objects
             validation_results_list = []
             candidates_list = []
-            
+
             for candidate in chunk_candidates:
                 if candidate.candidate_idx in chunk_validation:
                     result_dict = chunk_validation[candidate.candidate_idx]
-                    
+
                     # Reconstruct ValidationResult from cached JSON
                     from validation.whisper_validator import ValidationResult
+
                     validation_result = ValidationResult(
                         is_valid=result_dict.get("is_valid", False),
                         transcription=result_dict.get("transcription", ""),
                         similarity_score=result_dict.get("similarity_score", 0.0),
                         quality_score=result_dict.get("quality_score", 0.0),
                         validation_time=result_dict.get("validation_time", 0.0),
-                        error_message=result_dict.get("error_message")
+                        error_message=result_dict.get("error_message"),
                     )
-                    
+
                     validation_results_list.append(validation_result)
                     candidates_list.append(candidate)
 
@@ -984,20 +1112,22 @@ class TaskExecutor:
                 # Use already calculated overall_quality_score from validation results
                 best_candidate_idx = None
                 best_score_value = -1.0
-                
+
                 # Find candidate with highest overall_quality_score
                 for candidate in candidates_list:
                     result_dict = chunk_validation[candidate.candidate_idx]
                     candidate_score = result_dict.get("overall_quality_score", 0.0)
-                    
+
                     if candidate_score > best_score_value:
                         best_score_value = candidate_score
                         best_candidate_idx = candidate.candidate_idx
-                
+
                 # Create chunk metrics for reporting
                 chunk_metrics = {
                     "chunk_text": (
-                        chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text
+                        chunk.text[:100] + "..."
+                        if len(chunk.text) > 100
+                        else chunk.text
                     ),
                     "candidates": {},
                     "best_candidate": best_candidate_idx,
@@ -1010,7 +1140,7 @@ class TaskExecutor:
                     result_dict = chunk_validation[candidate.candidate_idx]
                     candidate_score = result_dict.get("overall_quality_score", 0.0)
                     candidate_scores.append(candidate_score)
-                    
+
                     chunk_metrics["candidates"][candidate.candidate_idx] = {
                         "transcription": result_dict.get("transcription", ""),
                         "similarity_score": result_dict.get("similarity_score", 0.0),
@@ -1024,21 +1154,30 @@ class TaskExecutor:
                 if candidate_scores:
                     min_score = min(candidate_scores)
                     max_score = max(candidate_scores)
-                    best_candidate_display = best_candidate_idx + 1 if best_candidate_idx is not None else 0
-                    
+                    best_candidate_display = (
+                        best_candidate_idx + 1 if best_candidate_idx is not None else 0
+                    )
+
                     # Get TTS parameters from best candidate for logging
                     if best_candidate_idx is not None:
-                        best_candidate_obj = next((c for c in candidates_list if c.candidate_idx == best_candidate_idx), None)
+                        best_candidate_obj = next(
+                            (
+                                c
+                                for c in candidates_list
+                                if c.candidate_idx == best_candidate_idx
+                            ),
+                            None,
+                        )
                         if best_candidate_obj and best_candidate_obj.generation_params:
                             best_params = best_candidate_obj.generation_params
-                            exaggeration = best_params.get('exaggeration', 0.0)
-                            cfg_weight = best_params.get('cfg_weight', 0.0) 
-                            temperature = best_params.get('temperature', 0.0)
+                            exaggeration = best_params.get("exaggeration", 0.0)
+                            cfg_weight = best_params.get("cfg_weight", 0.0)
+                            temperature = best_params.get("temperature", 0.0)
                         else:
                             exaggeration = cfg_weight = temperature = 0.0
                     else:
                         exaggeration = cfg_weight = temperature = 0.0
-                    
+
                     logger.info(
                         f"Chunk_{chunk.idx:02d}: score {min_score:.3f} to {max_score:.3f}. "
                         f"Best candidate: {best_candidate_display} of {len(candidates_list)} (score: {best_score_value:.3f}) "
@@ -1047,12 +1186,16 @@ class TaskExecutor:
 
                 metrics["chunks"][chunk.idx] = chunk_metrics
                 metrics["selected_candidates"][chunk.idx] = best_candidate_idx
-                
+
             except Exception as e:
-                logger.warning(f"Failed to select best candidate for chunk {chunk.idx}: {e}")
+                logger.warning(
+                    f"Failed to select best candidate for chunk {chunk.idx}: {e}"
+                )
                 # Fallback to first valid candidate
                 if candidates_list:
-                    metrics["selected_candidates"][chunk.idx] = candidates_list[0].candidate_idx
+                    metrics["selected_candidates"][chunk.idx] = candidates_list[
+                        0
+                    ].candidate_idx
 
         return metrics
 
@@ -1064,7 +1207,7 @@ class TaskExecutor:
             True if successful
         """
         try:
-            logger.primary("Starting assembly stage")
+            logger.info("Starting assembly stage")
 
             # Load metrics to get selected candidates
             metrics = self.file_manager.get_metrics()
@@ -1073,7 +1216,7 @@ class TaskExecutor:
                 return False
 
             selected_candidates = metrics["selected_candidates"]
-            logger.primary(
+            logger.info(
                 f"Assembling audio from {len(selected_candidates)} selected candidates"
             )
 
@@ -1095,9 +1238,13 @@ class TaskExecutor:
 
             # Apply post-processing if any component is enabled
             postprocessing_config = self.config.get("postprocessing", {})
-            audio_cleaning_enabled = postprocessing_config.get("audio_cleaning", {}).get("enabled", False)
-            auto_editor_enabled = postprocessing_config.get("auto_editor", {}).get("enabled", False)
-            
+            audio_cleaning_enabled = postprocessing_config.get(
+                "audio_cleaning", {}
+            ).get("enabled", False)
+            auto_editor_enabled = postprocessing_config.get("auto_editor", {}).get(
+                "enabled", False
+            )
+
             if audio_cleaning_enabled or auto_editor_enabled:
                 final_audio = self._apply_post_processing(final_audio)
 
@@ -1121,7 +1268,7 @@ class TaskExecutor:
                 logger.error("Failed to save final audio")
                 return False
 
-                            logger.primary("Assembly stage completed successfully")
+            logger.info("✅ Assembly stage completed successfully")
             return True
 
         except Exception as e:
@@ -1201,7 +1348,7 @@ class TaskExecutor:
                 )
 
                 processed_audio = audio_cleaner.clean_audio(processed_audio)
-                logger.verbose("Audio cleaning applied")
+                logger.debug("Audio cleaning applied")
 
             # Apply Auto-Editor if enabled and available
             auto_editor_config = postprocessing_config.get("auto_editor", {})
@@ -1221,23 +1368,38 @@ class TaskExecutor:
 
                     # Get reference audio path for threshold calculation
                     reference_audio_path = str(self.file_manager.get_reference_audio())
-                    
+
                     # Calculate custom threshold using noise_threshold_factor
                     custom_threshold = None
-                    noise_threshold_factor = postprocessing_config.get("noise_threshold_factor")
+                    noise_threshold_factor = postprocessing_config.get(
+                        "noise_threshold_factor"
+                    )
                     if noise_threshold_factor is not None:
                         # Get the recommended threshold from noise analysis
                         from postprocessing.noise_analyzer import NoiseAnalyzer
-                        noise_analyzer = NoiseAnalyzer(sample_rate=self.config.get("audio", {}).get("sample_rate", 24000))
-                        
+
+                        noise_analyzer = NoiseAnalyzer(
+                            sample_rate=self.config.get("audio", {}).get(
+                                "sample_rate", 24000
+                            )
+                        )
+
                         if reference_audio_path and Path(reference_audio_path).exists():
-                            profile = noise_analyzer.analyze_reference_audio(reference_audio_path)
+                            profile = noise_analyzer.analyze_reference_audio(
+                                reference_audio_path
+                            )
                         else:
-                            profile = noise_analyzer.analyze_noise_floor(processed_audio)
-                        
+                            profile = noise_analyzer.analyze_noise_floor(
+                                processed_audio
+                            )
+
                         # Apply noise_threshold_factor as multiplier
-                        custom_threshold = profile.recommended_threshold * noise_threshold_factor
-                        logger.verbose(f"Custom threshold: {profile.recommended_threshold:.6f} * {noise_threshold_factor} = {custom_threshold:.6f}")
+                        custom_threshold = (
+                            profile.recommended_threshold * noise_threshold_factor
+                        )
+                        logger.debug(
+                            f"Custom threshold: {profile.recommended_threshold:.6f} * {noise_threshold_factor} = {custom_threshold:.6f}"
+                        )
 
                     processed_audio = auto_editor.clean_audio(
                         processed_audio,
@@ -1247,7 +1409,7 @@ class TaskExecutor:
                         reference_audio_path=reference_audio_path,
                         custom_threshold=custom_threshold,
                     )
-                    logger.verbose("Auto-Editor processing applied")
+                    logger.debug("Auto-Editor processing applied")
 
                 except ImportError:
                     logger.warning("Auto-Editor not available, skipping")

@@ -12,9 +12,9 @@ from generation.model_cache import ChatterboxModelCache, ConditionalCache
 
 # Import the standardized AudioCandidate from file_manager
 from utils.file_manager import AudioCandidate
-from utils.logging_config import get_logger
+import logging
 
-logger = get_logger(__name__, verbose=True)
+logger = logging.getLogger(__name__)
 
 
 class TTSGenerator:
@@ -40,7 +40,7 @@ class TTSGenerator:
         self.model = ChatterboxModelCache.get_model(self.device)
         self.conditional_cache = ConditionalCache(self.model)
 
-        logger.verbose(
+        logger.debug(
             f"TTSGenerator initialized on device: {self.device} (using cached model)"
         )
 
@@ -64,9 +64,9 @@ class TTSGenerator:
         try:
             was_prepared = self.conditional_cache.ensure_conditionals(wav_fpath)
             if was_prepared:
-                logger.verbose("Conditionals prepared successfully (fresh)")
+                logger.debug("Conditionals prepared successfully (fresh)")
             else:
-                logger.verbose("Conditionals were already prepared (cached)")
+                logger.debug("Conditionals were already prepared (cached)")
         except Exception as e:
             logger.error(f"Error preparing conditionals: {e}")
             raise
@@ -194,7 +194,7 @@ class TTSGenerator:
         cfg_max_deviation = tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = tts_params.get("temperature_max_deviation", 0.2)
 
-        logger.primary(
+        logger.info(
             f"Generating {num_candidates} diverse candidates for text (len={len(text)})"
         )
         logger.debug(
@@ -205,7 +205,7 @@ class TTSGenerator:
 
         # Special case: 1 candidate + conservative enabled = only conservative
         if num_candidates == 1 and conservative_config and conservative_config.get("enabled", False):
-            logger.verbose("Single candidate mode with conservative enabled - generating only conservative candidate")
+            logger.debug("Single candidate mode with conservative enabled - generating only conservative candidate")
             try:
                 candidate_seed = self.seed + hash(text) % 10000
                 torch.manual_seed(candidate_seed)
@@ -225,7 +225,7 @@ class TTSGenerator:
                     **kwargs,
                 }
 
-                logger.verbose(
+                logger.debug(
                     f"Candidate 1 ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}"
                 )
 
@@ -246,14 +246,14 @@ class TTSGenerator:
                 )
 
                 candidates.append(candidate)
-                logger.verbose(
+                logger.debug(
                     f"Generated candidate 1/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s\n"
                 )
 
             except Exception as e:
                 logger.error(f"Failed to generate conservative candidate: {e}")
 
-            logger.verbose(f"Successfully generated {len(candidates)}/1 conservative candidate")
+            logger.debug(f"Successfully generated {len(candidates)}/1 conservative candidate")
             return candidates
 
         # Multi-candidate mode or single expressive mode
@@ -272,6 +272,8 @@ class TTSGenerator:
                 if is_conservative:
                     # Use conservative parameters for guaranteed correctness
                     logger.debug(f"Applying conservative parameters for candidate {i+1}")
+                    if conservative_config is None:
+                        raise RuntimeError("Conservative config is None but conservative mode is enabled")
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
@@ -314,7 +316,7 @@ class TTSGenerator:
                     **kwargs,
                 }
 
-                logger.verbose(
+                logger.debug(
                     f"Candidate {i+1} ({candidate_type}):"
                 )
 
@@ -336,7 +338,7 @@ class TTSGenerator:
 
                 candidates.append(candidate)
                 # NOTE: Using ChatterboxTTS native sample rate (24kHz) for duration calculation
-                logger.verbose(
+                logger.debug(
                     f"Generated candidate {i+1}/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s, idx={candidate.candidate_idx}" + f" exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}\n"
                 )
 
@@ -347,7 +349,7 @@ class TTSGenerator:
                 # Continue with remaining candidates
                 continue
 
-        logger.verbose(
+        logger.debug(
             f"Successfully generated {len(candidates)}/{num_candidates} diverse candidates"
         )
         return candidates
@@ -425,6 +427,8 @@ class TTSGenerator:
                 if is_conservative:
                     # Use conservative parameters
                     logger.debug(f"Applying conservative parameters for candidate {candidate_idx+1}")
+                    if conservative_config is None:
+                        raise RuntimeError("Conservative config is None but conservative mode is enabled")
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
@@ -462,7 +466,7 @@ class TTSGenerator:
                 }
 
                 logger.info(
-                    f"Specific Candidate {candidate_idx+1} ({candidate_type}): "
+                    f"▶️ Candidate {candidate_idx+1} ({candidate_type}): "
                     f"exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}"
                 )
 
@@ -485,16 +489,16 @@ class TTSGenerator:
                 candidates.append(candidate)
                 
                 logger.info(
-                    f"✅ Generated specific candidate {candidate_idx+1}: "
+                    f"✅ Generated candidate {candidate_idx+1}: "
                     f"duration={audio.shape[-1]/24000:.2f}s\n"
                 )
 
             except Exception as e:
-                logger.error(f"Failed to generate specific candidate {candidate_idx+1}: {e}")
+                logger.error(f"Failed to generate candidate {candidate_idx+1}: {e}")
                 continue
 
-        logger.info(
-            f"Successfully generated {len(candidates)}/{len(candidate_indices)} specific candidates"
+        logger.debug(
+            f"Successfully generated {len(candidates)}/{len(candidate_indices)} candidates"
         )
         return candidates
 

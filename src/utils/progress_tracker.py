@@ -8,6 +8,8 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
+import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,7 +87,7 @@ class ProgressTracker:
         if message:
             progress_msg += f" | {message}"
 
-        logger.primary(progress_msg)
+        logger.info(progress_msg)
 
     def finish(self) -> None:
         """Mark the process as finished and log final statistics."""
@@ -93,7 +95,7 @@ class ProgressTracker:
         total_time = end_time - self.start_time
         total_time_str = self._format_duration(total_time)
 
-        logger.primary(
+        logger.info(
             f"{self.description} COMPLETED - {self.total_items} items in {total_time_str}"
         )
 
@@ -124,7 +126,7 @@ class ValidationProgressTracker(ProgressTracker):
         super().__init__(total_items, description, bar_width)
         # Only log start for validation if there are multiple items
         if total_items > 1:
-            logger.verbose(f"Starting {description}: {total_items} candidates to validate")
+            logger.debug(f"Starting {description}: {total_items} candidates to validate")
 
     def update_with_texts(
         self,
@@ -141,17 +143,17 @@ class ValidationProgressTracker(ProgressTracker):
 
         # Display text comparison with clear separation
         if current_text or transcribed_text:
-            logger.verbose("=" * 80)
-            logger.verbose("TEXT COMPARISON")
-            logger.verbose("=" * 80)
+            logger.debug("=" * 80)
+            logger.debug("TEXT COMPARISON")
+            logger.debug("=" * 80)
 
             if current_text:
-                logger.verbose(f"ORIGINAL:")
-                logger.verbose(f"{current_text}")
+                logger.debug(f"ORIGINAL:")
+                logger.debug(f"{current_text}")
 
             if transcribed_text:
-                logger.verbose(f"WHISPER RESULT:")
-                logger.verbose(f"{transcribed_text}")
+                logger.debug(f"WHISPER RESULT:")
+                logger.debug(f"{transcribed_text}")
 
         if not success:
-            logger.primary("Validation failed")
+            logger.info("Validation failed")

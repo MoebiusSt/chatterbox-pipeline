@@ -12,7 +12,7 @@ import torchaudio
 
 
 def concatenate_audio_segments(
-    segments: List[torch.Tensor], sample_rate: int = None
+    segments: List[torch.Tensor], sample_rate: Optional[int] = None
 ) -> torch.Tensor:
     """
     Concatenate multiple audio segments into a single tensor.
@@ -42,7 +42,7 @@ def concatenate_audio_segments(
 def add_silence_between_segments(
     segments: List[torch.Tensor],
     silence_duration: float,
-    sample_rate: int = None,
+    sample_rate: Optional[int] = None,
     device: Optional[str] = None,
 ) -> List[torch.Tensor]:
     """
@@ -113,7 +113,7 @@ def apply_fade_in_out(
     audio: torch.Tensor,
     fade_in_duration: float = 0.01,
     fade_out_duration: float = 0.01,
-    sample_rate: int = None,
+    sample_rate: Optional[int] = None,
 ) -> torch.Tensor:
     """
     Apply fade in and fade out to audio.
@@ -176,7 +176,7 @@ def resample_audio(audio: torch.Tensor, orig_freq: int, new_freq: int) -> torch.
 def save_audio_tensor(
     audio: torch.Tensor,
     file_path: str,
-    sample_rate: int = None,  # Remove hardcoded default
+    sample_rate: Optional[int] = None,  # Remove hardcoded default
 ) -> None:
     """
     Save audio tensor to file.
@@ -212,7 +212,7 @@ def save_audio_tensor(
 
 
 def load_audio_tensor(
-    file_path: str, target_sample_rate: int = None  # Remove hardcoded default
+    file_path: str, target_sample_rate: Optional[int] = None  # Remove hardcoded default
 ) -> Tuple[torch.Tensor, int]:
     """
     Load audio file as tensor.
@@ -243,7 +243,7 @@ def load_audio_tensor(
 
 
 def calculate_duration(
-    audio: torch.Tensor, sample_rate: int = None  # Remove hardcoded default
+    audio: torch.Tensor, sample_rate: Optional[int] = None  # Remove hardcoded default
 ) -> float:
     """
     Calculate audio duration in seconds.
@@ -270,7 +270,7 @@ def calculate_duration(
 
 
 def create_silence(
-    duration: float, sample_rate: int = None  # Remove hardcoded default
+    duration: float, sample_rate: Optional[int] = None  # Remove hardcoded default
 ) -> torch.Tensor:
     """
     Create silence tensor of specified duration.
@@ -318,7 +318,7 @@ def detect_silence(
     audio: torch.Tensor,
     threshold: float = 0.01,
     min_duration: float = 0.1,
-    sample_rate: int = None,  # Remove hardcoded default
+    sample_rate: Optional[int] = None,  # Remove hardcoded default
 ) -> List[Tuple[float, float]]:
     """
     Detect silence regions in audio.

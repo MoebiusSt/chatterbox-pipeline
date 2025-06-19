@@ -59,6 +59,7 @@ class WhisperValidator:
         self.model_size = model_size
         self.similarity_threshold = similarity_threshold
         self.min_quality_score = min_quality_score
+        import logging
         self.logger = logging.getLogger(__name__)
 
         # Auto-detect device if needed
@@ -77,11 +78,11 @@ class WhisperValidator:
     def _load_model(self):
         """Load Whisper model."""
         try:
-            self.logger.verbose(
+            self.logger.debug(
                 f"Loading Whisper model '{self.model_size}' on device '{self.device}'..."
             )
             self.model = whisper.load_model(self.model_size, device=self.device)
-            self.logger.verbose(f"Whisper model loaded successfully")
+            self.logger.debug(f"Whisper model loaded successfully")
         except Exception as e:
             self.logger.error(f"Failed to load Whisper model: {e}")
             raise
@@ -121,6 +122,9 @@ class WhisperValidator:
                 audio_np = audio_resampled.numpy()
 
             # Transcribe with Whisper
+            if self.model is None:
+                raise RuntimeError("Whisper model not loaded. Call _load_model() first.")
+            
             result = self.model.transcribe(
                 audio_np,
                 language=language,
