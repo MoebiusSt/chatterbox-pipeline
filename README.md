@@ -309,6 +309,7 @@ This linear task process is wrapped by a job/task manager that orchestrates exec
   task_config.yaml
   ```
 - Each level can override settings
+- **3-Level Cascade**: Task configs inherit from their parent job config, which inherits from default config. Which means:
 - Each missing configuration line is taken from the higher level.
 - Enables flexible job and task-specific adjustments
 

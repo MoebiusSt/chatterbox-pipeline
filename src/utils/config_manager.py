@@ -73,23 +73,88 @@ class ConfigManager:
                 self._config_cache[config_key] = yaml.safe_load(f)
         return copy.deepcopy(self._config_cache[config_key])
 
+    def find_parent_job_config(self, task_config_path: Path) -> Optional[Path]:
+        """
+        Find the parent job-config file for a given task-config.
+        
+        Args:
+            task_config_path: Path to the task-config file
+            
+        Returns:
+            Path to the parent job-config file, or None if not found
+        """
+        if not self.is_task_config(task_config_path):
+            return None
+        
+        # Extract job_name from task-config data
+        task_data = self.load_job_config(task_config_path)
+        job_name = task_data.get("job", {}).get("name")
+        
+        if not job_name:
+            logger.warning(f"No job name found in task config: {task_config_path}")
+            return None
+        
+        # Search for job-config files in config directory
+        for config_file in self.config_dir.glob("*.yaml"):
+            if config_file.name == "default_config.yaml":
+                continue  # Skip default config
+                
+            try:
+                config_data = self.load_job_config(config_file)
+                if config_data.get("job", {}).get("name") == job_name:
+                    logger.debug(f"Found parent job config for {task_config_path}: {config_file}")
+                    return config_file
+            except Exception as e:
+                logger.warning(f"Error reading config {config_file}: {e}")
+        
+        logger.debug(f"No parent job config found for task: {task_config_path}")
+        return None
+
     def load_cascading_config(
-        self, job_config_path: Optional[Path] = None
+        self, config_path: Optional[Path] = None
     ) -> Dict[str, Any]:
         """
-        Load configuration with cascading logic.
-
+        Load configuration with true 3-level cascading logic:
+        default_config.yaml → job_config.yaml → task_config.yaml
+        
+        Each level only overrides values that are explicitly defined.
+        Missing values automatically fall through to the next higher level.
+        
+        Args:
+            config_path: Path to job-config or task-config file
+            
         Returns:
             Merged configuration dictionary
         """
-        # Start with default config
+        # Start with default config (complete base configuration)
         config = self.load_default_config()
-
-        # If job config is provided, merge it
-        if job_config_path:
-            job_config = self.load_job_config(job_config_path)
+        
+        if config_path is None:
+            return config
+        
+        if self.is_task_config(config_path):
+            # 3-level cascade: default → job → task
+            
+            # First, try to find and merge parent job-config
+            parent_job_config_path = self.find_parent_job_config(config_path)
+            if parent_job_config_path:
+                job_config = self.load_job_config(parent_job_config_path)
+                config = self.merge_configs(job_config, config)
+                logger.debug(f"Merged parent job config: {parent_job_config_path}")
+            else:
+                logger.debug(f"No parent job config found, using default config as base")
+            
+            # Then merge task-config on top
+            task_config = self.load_job_config(config_path)
+            config = self.merge_configs(task_config, config)
+            logger.debug(f"Merged task config: {config_path}")
+            
+        else:
+            # 2-level cascade: default → job
+            job_config = self.load_job_config(config_path)
             config = self.merge_configs(job_config, config)
-
+            logger.debug(f"Merged job config: {config_path}")
+        
         return config
 
     def merge_configs(
