@@ -7,8 +7,9 @@ Exports main classes and functionality for job management.
 
 # Do not import the core JobManager here to avoid conflicts
 # The facade JobManager is in the parent module
-from .execution_planner import ExecutionPlanner, ExecutionPlan, ExecutionStrategy
-from .user_interaction import UserInteraction, UserChoice
+from .execution_planner import ExecutionPlanner
+from .user_interaction import UserInteraction
+from .types import ExecutionPlan, ExecutionStrategy, UserChoice
 from .config_validator import ConfigValidator
 
 # Export components (JobManager is in parent module to avoid conflicts)

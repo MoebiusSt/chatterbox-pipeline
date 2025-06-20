@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from utils.config_manager import ConfigManager, TaskConfig
+from .types import ExecutionStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +138,7 @@ class JobManager:
         Returns:
             Tuple of (job_strategies_dict, global_strategy)
         """
-        # Import locally to avoid circular imports
-        from pipeline.job_manager.execution_planner import ExecutionStrategy
+        # ExecutionStrategy is now imported from types module
         
         if not mode_arg:
             return {}, None
@@ -146,9 +146,13 @@ class JobManager:
         def normalize_strategy(strategy: str) -> str:
             """Normalize strategy aliases to canonical form."""
             strategy = strategy.strip()
-            # Handle aliases
+            # Handle aliases - normalize to primary forms
             if strategy == "new-last":
-                return "last-new"
+                return "latest-new"
+            elif strategy == "last":
+                return "latest" 
+            elif strategy == "last-new":
+                return "latest-new"
             return strategy
             
         # Check if it contains job-specific format (contains colon)
@@ -173,5 +177,5 @@ class JobManager:
                 return {}, global_strategy
             except ValueError:
                 raise ValueError(
-                    f"Invalid --mode strategy '{mode_arg}'. Use: last/latest, all, new, last-new/new-last, all-new, or job-specific format 'job1:strategy,job2:strategy'"
+                    f"Invalid --mode strategy '{mode_arg}'. Use: latest/last, all, new, latest-new/last-new/new-last, all-new, or job-specific format 'job1:strategy,job2:strategy'"
                 ) 

@@ -5,26 +5,13 @@ User interaction functionality for job management.
 
 import logging
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 from typing import List
 
 from utils.config_manager import ConfigManager, TaskConfig
+from .types import UserChoice
 
 logger = logging.getLogger(__name__)
-
-
-class UserChoice(Enum):
-    """User selection options for task execution."""
-
-    LATEST = "latest"  # Use latest task
-    ALL = "all"  # Use all tasks
-    NEW = "new"  # Create new task
-    LATEST_NEW = "latest-new"  # Use latest task + new final audio
-    ALL_NEW = "all-new"  # Use all tasks + new final audio
-    SPECIFIC = "specific"  # Select specific task
-    SPECIFIC_NEW = "specific-new"  # Select specific task + new final audio
-    CANCEL = "cancel"  # Cancel execution
 
 
 class UserInteraction:

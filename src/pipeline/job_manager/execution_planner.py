@@ -4,35 +4,14 @@ Execution planning functionality for job management.
 """
 
 import logging
-from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import Any, List, Optional
 
 from utils.config_manager import ConfigManager, TaskConfig
-from .user_interaction import UserChoice, UserInteraction
+from .types import ExecutionStrategy, ExecutionPlan, UserChoice
+from .user_interaction import UserInteraction
 
 logger = logging.getLogger(__name__)
-
-
-class ExecutionStrategy(Enum):
-    """Strategy for task execution."""
-
-    LAST = "last"  # Use latest task
-    LATEST = "latest"  # Use latest task (alias for LAST)
-    ALL = "all"  # Use all tasks
-    NEW = "new"  # Create new task
-    LAST_NEW = "last-new"  # Use latest task + new final audio
-    ALL_NEW = "all-new"  # Use all tasks + new final audio
-
-
-@dataclass
-class ExecutionPlan:
-    """Plan for task execution."""
-
-    task_configs: List[TaskConfig]
-    execution_mode: str  # "single", "batch", "interactive"
-    requires_user_input: bool = False
 
 
 class ExecutionPlanner:
@@ -87,10 +66,10 @@ class ExecutionPlanner:
                     for task in task_configs:
                         task.add_final = True
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                elif strategy == ExecutionStrategy.LATEST or strategy == ExecutionStrategy.LAST:
                     # Use latest task
                     task_configs = [existing_tasks[0]]
-                elif strategy == ExecutionStrategy.LAST_NEW:
+                elif strategy == ExecutionStrategy.LATEST_NEW or strategy == ExecutionStrategy.LAST_NEW:
                     # Use latest task + force new final audio
                     task_config = existing_tasks[0]  # First in sorted list (newest)
                     task_config.add_final = True
@@ -182,9 +161,9 @@ class ExecutionPlanner:
                             for task in all_tasks:
                                 task.add_final = True
                             task_configs.extend(all_tasks)
-                        elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                        elif strategy == ExecutionStrategy.LATEST or strategy == ExecutionStrategy.LAST:
                             task_configs.append(existing_tasks[0])
-                        elif strategy == ExecutionStrategy.LAST_NEW:
+                        elif strategy == ExecutionStrategy.LATEST_NEW or strategy == ExecutionStrategy.LAST_NEW:
                             # Use latest task + force new final audio
                             task_config = existing_tasks[0]  # First in sorted list (newest)
                             task_config.add_final = True
@@ -259,9 +238,9 @@ class ExecutionPlanner:
                     for task in task_configs:
                         task.add_final = True
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                elif strategy == ExecutionStrategy.LATEST or strategy == ExecutionStrategy.LAST:
                     task_configs = [existing_tasks[0]]  # Use first (newest) not last
-                elif strategy == ExecutionStrategy.LAST_NEW:
+                elif strategy == ExecutionStrategy.LATEST_NEW or strategy == ExecutionStrategy.LAST_NEW:
                     # Use latest task + force new final audio
                     task_config = existing_tasks[0]  # First in sorted list (newest)
                     task_config.add_final = True

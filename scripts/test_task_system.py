@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.job_manager_facade import ExecutionStrategy, JobManager, UserChoice
+from pipeline.job_manager_facade import JobManager
+from pipeline.job_manager.types import ExecutionStrategy, UserChoice
 from utils.config_manager import ConfigManager
 
 # Path correction for imports
@@ -96,10 +97,12 @@ def test_user_choice_enum():
 
 def test_execution_strategy_enum():
     """Test ExecutionStrategy enum values."""
-    assert ExecutionStrategy.LAST.value == "last"
+    assert ExecutionStrategy.LATEST.value == "latest"
+    assert ExecutionStrategy.LAST.value == "latest"  # Alias
     assert ExecutionStrategy.ALL.value == "all"
     assert ExecutionStrategy.NEW.value == "new"
-    assert ExecutionStrategy.LAST_NEW.value == "last-new"
+    assert ExecutionStrategy.LATEST_NEW.value == "latest-new"
+    assert ExecutionStrategy.LAST_NEW.value == "latest-new"  # Alias
     assert ExecutionStrategy.ALL_NEW.value == "all-new"
 
 

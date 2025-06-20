@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List
 
 from utils.config_manager import ConfigManager, TaskConfig
-from .execution_planner import ExecutionPlan
+from .types import ExecutionPlan
 
 logger = logging.getLogger(__name__)
 
