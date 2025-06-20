@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from src.pipeline.job_manager import ExecutionStrategy, JobManager, UserChoice
-from src.utils.config_manager import ConfigManager
+from pipeline.job_manager_facade import ExecutionStrategy, JobManager, UserChoice
+from utils.config_manager import ConfigManager
 
 # Path correction for imports
 PROJECT_ROOT = (
@@ -21,7 +21,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(SRC_ROOT))
 
 from pipeline.task_executor import TaskExecutor
-from src.utils.file_manager import FileManager
+from utils.file_manager import FileManager
 
 # Configure logging
 logging.basicConfig(
@@ -75,7 +75,7 @@ def test_task_system():
             logger.warning(f"Reference audio not found: {reference_audio_path}")
 
         logger.info("✓ Task system test completed successfully")
-        return True
+        assert True  # Explicit assertion for pytest
 
     except Exception as e:
         logger.error(f"Task system test failed: {e}", exc_info=True)
@@ -115,17 +115,16 @@ def test_resolve_execution_plan():
     config_manager = ConfigManager(PROJECT_ROOT)
     job_manager = JobManager(config_manager)
 
+    # Create mock args object
+    args = type("Args", (), {"mode": "last-new", "job": None, "add_final": False})()
+    
     # Test global strategy
-    plan = job_manager.resolve_execution_plan(
-        job_name="test_job", args=type("Args", (), {"mode": "last-new"})()
-    )
+    plan = job_manager.resolve_execution_plan(args)
     assert plan is not None
 
     # Test job-specific strategy
-    plan = job_manager.resolve_execution_plan(
-        job_name="test_job",
-        args=type("Args", (), {"job_mode": "job1:last-new,job2:all-new"})(),
-    )
+    args = type("Args", (), {"mode": "job1:last-new,job2:all-new", "job": None, "add_final": False})()
+    plan = job_manager.resolve_execution_plan(args)
     assert plan is not None
 
 
@@ -146,11 +145,17 @@ def test_prompt_user_selection():
     def mock_input(prompt):
         return "ln"
 
+    # Create mock task with required attributes
+    mock_task = type("Task", (), {
+        "timestamp": "2024-03-20_120000",
+        "job_name": "test_job",
+        "run_label": "test_label",
+        "config_path": Path("/fake/path/config.yaml")
+    })()
+
     builtins.input = mock_input
     try:
-        choice = job_manager.prompt_user_selection(
-            [type("Task", (), {"timestamp": "2024-03-20_120000"})()]
-        )
+        choice = job_manager.prompt_user_selection([mock_task])
         assert choice == UserChoice.LATEST_NEW
     finally:
         builtins.input = original_input
