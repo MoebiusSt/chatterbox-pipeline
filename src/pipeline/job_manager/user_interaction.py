@@ -69,9 +69,9 @@ class UserInteraction:
             )
 
         print("\nSelect action:")
-        print("[Enter] - Run latest task (Check task)")
+        print("[Enter] - Run latest task (Check task if needs resuming)")
         print("n      - Create new task")
-        print("a      - Run all tasks (Check tasks)")
+        print("a      - Run all tasks (Check tasks if needs resuming)")
         print("ln     - Use latest task + force new final audio")
         print("an     - Run all tasks + force new final audio")
         print("1-{}   - Select specific task".format(len(tasks)))
@@ -92,8 +92,8 @@ class UserInteraction:
 
             print(f"\nSelected latest task: {latest_task.job_name} - {display_time}")
             print("\nWhat to do with this task?")
-            print("[Enter] - Run task (Check task)")
-            print("n      - Run task + force new final audio")
+            print("[Enter] - Run task (Check task if needs resuming)")
+            print("n      - Run task (repair if necessary) + force new final audio")
             print("c      - Cancel")
 
             sub_choice = input("\n> ").strip().lower()
@@ -130,8 +130,8 @@ class UserInteraction:
 
             print(f"\nSelected task: {selected_task.job_name} - {display_time}")
             print("\nWhat to do with this task?")
-            print("[Enter] - Run task (Check task)")
-            print("n      - Run task + force new final audio")
+            print("[Enter] - Run task (Check task if needs resuming)")
+            print("n      - Run task (repair if necessary) + force new final audio")
             print("c      - Cancel")
 
             sub_choice = input("\n> ").strip().lower()

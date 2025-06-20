@@ -1,6 +1,6 @@
 # Enhanced TTS Pipeline
 
-An enhanced Text-to-Speech pipeline based on DEVELOPMENT_PLAN.md that implements intelligent SpaCy-based text segmentation, candidate management, Whisper validation, and audio processing.
+An enhanced Text-to-Speech pipeline based on resemble-ai/chatterbox that implements intelligent SpaCy-based text chunking for longer generations, Whisper validation for best candidate selection, and a job and task pipeline to prepare JOb renderings like whole Magazine Articles, Chapters, or Books. BUT this is still a CLI. No fancy user interface here.
 
 ## Prerequisites
 
@@ -47,83 +47,54 @@ pip install openai-whisper python-Levenshtein fuzzywuzzy
 pip install auto-editor
 ```
 
-### 4. Initial Testing
-```bash
-# Simple chunker test (without TTS)
-python scripts/run_chunker.py
-
-# Mock pipeline test (simulated audio generation for CI/CD)
-python scripts/test_mock_pipeline.py
-
-# Basic pipeline test 
-python scripts/test_basic_pipeline.py
-
-# Run integration tests
-python -m pytest tests/test_integration.py -v
-```
-
-### 5. Production TTS Pipeline
+### 4. Production TTS Pipeline
 ```bash
 # Full pipeline with real TTS (requires ChatterboxTTS)
 python src/main.py
 ```
 
-### 6. Command Line Options
+### 5. Command Line Options
 ```bash
 # Standard mode (interactive)
-python src/main.py                              # Execute default job
+python src/main.py                              # Execute default job from /config/default_config.yaml
 python src/main.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
-python src/main.py --job "my_job"               # Execute job with specific name
-
-# Non-interactive execution
-python src/main.py --mode last                   # Non-interactive mode (auto-select latest task)
-python src/main.py --mode all                    # Non-interactive + specific strategy
+python src/main.py --job "my_job"               # Execute job with specific name present in a config or existing outputdirectory
 
 # Execution strategies (global)
-python src/main.py --mode last or latest        # Execute latest task for all given jobs
-python src/main.py --mode all                   # Execute all found tasks for all given jobs
-python src/main.py --mode new                   # Create new tasks for all given jobs
-python src/main.py --mode last-new or new-last  # Latest task + new final audio for all jobs
-python src/main.py --mode all-new               # All tasks + new final audio for all jobs
-
-# Execution strategies (job-specific)
+python src/main.py --mode last or latest        # Execute latest task (again) for all given jobs.(*)
+python src/main.py --mode all                   # Execute all found tasks (again) for all given jobs.(*)
+python src/main.py --mode new                   # Create new tasks for all given jobs.(*)
+python src/main.py --mode last-new or new-last  # Execute latest task but re-assemble a new final audio for all given jobs.(*) 
+python src/main.py --mode all-new               # Execute all tasks + new final audios for all given jobs.
 python src/main.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
 
+# (*) In this case in the default directory /data/output/default/, since no other job is specified
+
+
 # Force regeneration
-python src/main.py --add-final                  # Force regeneration of final audio from existing candidates
+python src/main.py --add-final                  # Another way of globally forcing the regeneration of final audio from existing candidates, sane as --mode new|last-new|all-new
 
 # Parallel processing
-python src/main.py --parallel                   # Parallel task execution
+python src/main.py --parallel                  # Parallel task execution
 python src/main.py --max-workers 4             # Adjust number of parallel workers
 python src/main.py -p                          # Short form of --parallel
 
 # Additional options
-python src/main.py --verbose                    # Detailed logging / forced to be on during dev
+python src/main.py --verbose or --v            # Detailed logging
 python src/main.py --device cuda               # Force GPU execution
-python src/main.py -v                          # Short form of --verbose
 python src/main.py -j "my_job"                 # Short form of --job
 
 # Combined examples
-python src/main.py -j "my_job" -p -v           # Job + parallel + verbose (short forms)
+python src/main.py -j "my_job" -p -v           # Job + parallel + verbose
 python src/main.py --job "job1" --add-final --parallel  # Complete non-interactive execution
-python src/main.py --mode "job1:new,job2:last" --parallel  # Job-specific strategies + non-interactive
 ```
 
 #### Execution Strategies
-- **last/latest**: Uses the latest task (Check task)
-- **all**: Uses all tasks (Check tasks)
+- **last/latest**: Uses the latest task (Checks task – final audio is present? If not resumes task, if yes skips)
+- **all**: Uses all tasks (Checks all tasks – final audio are present? If not resumes tasks, if yes skips)
 - **new**: Creates a new task
-- **last-new/new-last**: Uses the latest task + new final audio
-- **all-new**: Uses all tasks + new final audio
-
-#### Key Options
-- **`--mode`**: Unified execution strategy option that accepts:
-  - Global strategies: `--mode all`, `--mode new`, `--mode last`
-  - Job-specific strategies: `--mode "job1:new,job2:all,job3:last"`
-- **`--add-final`**: Force regeneration of final audio from existing candidates
-- **`--parallel/-p`**: Enable parallel execution for multiple tasks
-- **`--job/-j`**: Specify job name to execute
-- **`--verbose/-v`**: Enable detailed logging output
+- **last-new/new-last**: Checks latest task, resumes it, fills gaps, re-assembles new final audio
+- **all-new**: Checks all tasks, resumes tasks, fills gaps, re-assembles new final audio
 
 #### Interactive Selection
 When no strategy is specified, the user is prompted interactively:
@@ -148,15 +119,10 @@ When selecting a specific task:
 Selected task: Task 2024-03-20_110000
 
 What to do with this task?
-[Enter] - Run task (Check task)
-n      - Run task + force new final audio
+[Enter] - Run task (Check task if needs resuming)
+n      - Run task (repair if necessary) + force new final audio
 c      - Cancel
 ```
-
-#### Priorities
-1. Job-specific strategies from `--job-mode`
-2. Global strategy from `--mode`
-3. Interactive selection (when no strategy specified)
 
 ## Implementierte Features
 
@@ -172,97 +138,96 @@ c      - Cancel
 - **AudioProcessor**: Concatenation of audio segments with intelligent pause processing
 
 ### ✅ Phase 2: Validation-Modul
-- **WhisperValidator**: Speech-to-text validation with local Whisper integration
-- **FuzzyMatcher**: Advanced text similarity calculations (multiple algorithms)
-- **QualityScorer**: Multi-criteria evaluation and candidate selection
+- **WhisperValidator**: Speech-to-text re-validation with local Whisper integration
+- **FuzzyMatcher**: Advanced text similarity calculations
+- **QualityScorer**: Multi-criteria evaluation and best candidate selection (best match to input text)
 
 ### ✅ Pipeline-Orchestrierung
-- Complete end-to-end pipeline
-- YAML-based configuration management
-- Error handling and fallback mechanisms
+- YAML-based job and task configuration management
+- Complete Error handling and fallback mechanisms
 - Structured logging and progress tracking
 
 ## Projektstruktur
 ```
 tts_pipeline_enhanced/
 ├── config/
+│   ├── __init__.py
 │   ├── default_config.yaml        # Central default configuration
 │   └── example_job_config.yaml    # Example job configuration
-├── src/
-│   ├── main.py                    # Main pipeline script
-│   ├── chunking/                  # Text segmentation
-│   │   ├── base_chunker.py
-│   │   └── spacy_chunker.py
-│   ├── generation/                # Audio generation
-│   │   ├── tts_generator.py
-│   │   └── candidate_manager.py
-│   ├── validation/                # Quality validation
-│   │   ├── whisper_validator.py
-│   │   ├── fuzzy_matcher.py
-│   │   └── quality_scorer.py
-│   ├── postprocessing/            # Audio post-processing
-│   │   ├── auto_editor_wrapper.py
-│   │   └── audio_cleaner.py
-│   ├── pipeline/                  # Pipeline orchestration
-│   │   ├── job_manager.py
-│   │   └── task_executor.py
-│   ├── preprocessor/              # Text preprocessing
-│   │   └── text_preprocessor.py
-│   └── utils/                     # Helper functions
-│       ├── config_manager.py
-│       ├── file_manager.py
-│       └── logging_config.py
 ├── data/
 │   ├── input/
-│   │   ├── texts/                 # Input texts
-│   │   └── reference_audio/       # Reference audio files
+│   │   ├── reference_audio/       # Reference audio files
+│   │   │   └── stephan_moebius.wav
+│   │   └── texts/                 # Input texts
+│   │       └── input-document.txt
 │   └── output/                    # Job output directories
-├── scripts/
-│   ├── run_chunker.py            # Standalone chunker test
-│   ├── test_basic_pipeline.py    # Basic pipeline test
-│   ├── test_validation_pipeline.py # Validation test
-│   ├── test_postprocessing_pipeline.py # Post-processing test
-│   ├── test_regenerate_final.py  # Final audio regeneration
-│   ├── fix_formatting.py         # Code formatting
-│   └── fix_imports.py            # Import sorting
-├── .github/
-│   └── workflows/
-│       └── ci.yml                # CI/CD pipeline
-├── docs/                         # Documentation
-├── requirements.txt              # Production dependencies
+├── logs/                           # main.log
+├── scripts/                        # Unit Tests
+├── src/
+│   ├── __init__.py
+│   ├── chunking/                  # Text segmentation
+│   │   ├── __init__.py
+│   │   ├── base_chunker.py
+│   │   ├── chunk_validator.py
+│   │   └── spacy_chunker.py
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── github_config.py
+│   ├── generation/                # Audio generation
+│   │   ├── __init__.py
+│   │   ├── audio_processor.py
+│   │   ├── batch_processor.py
+│   │   ├── candidate_manager.py
+│   │   ├── model_cache.py
+│   │   ├── selection_strategies.py
+│   │   └── tts_generator.py
+│   ├── main.py                    # Main pipeline script
+│   ├── pipeline/                  # Pipeline orchestration
+│   │   ├── __init__.py
+│   │   ├── batch_executor.py
+│   │   ├── job_manager/
+│   │   │   ├── ...
+│   │   ├── job_manager_wrapper.py
+│   │   ├── task_executor/
+│   │   │   ├── __init__.py
+│   │   │   ├── retry_logic.py
+│   │   │   ├── stage_handlers/
+│   │   │   │   ├── ...
+│   │   │   └── task_executor.py
+│   │   └── task_executor_original.py
+│   ├── preprocessor/              # Text preprocessing
+│   │   ├── __init__.py
+│   │   └── text_preprocessor.py
+│   └── utils/                     # Helper functions
+│       ├── __init__.py
+│       ├── audio_utils.py
+│       ├── config_manager.py
+│       ├── file_manager/
+│       │   ├── __init__.py
+│       │   ├── file_manager.py
+│       │   ├── io_handlers/
+│       │   │   ├── ...
+│       │   ├── state_analyzer.py
+│       │   └── validation_helpers.py
+│       ├── file_manager.py
+│       ├── logging_config.py
+│       └── progress_tracker.py
+├── candidate_quality_scorer_diagram.md
+├── CONTRIBUTING.md
 ├── dev-requirements.txt          # Development dependencies
-└── pyproject.toml               # Project configuration
+├── DEVELOPMENT_PLAN.md
+├── mermaid_diagram.md
+├── mypy.ini
+├── pyproject.toml               # Project configuration
+├── README.md
+├── requirements.txt              # Production dependencies
+└── TECHNICAL_OVERVIEW.md
 ```
 
 ## Configuration
 
 Pipeline parameters can be adjusted in `config/default_config.yaml`:
 (Structure see below)
-
-## Successful Tests
-
-### Phase 1 (Basics)
-- ✅ SpaCy-based text segmentation: 8,883 characters → 15 linguistic chunks
-- ✅ Audio processing: Generation of 180.40 seconds of audio
-- ✅ Configurable parameters and YAML-based settings
-
-### Phase 2 (Validation)
-- ✅ Mock candidate generation: 3 variants per chunk
-- ✅ Fuzzy text matching: Multiple similarity algorithms
-- ✅ Quality scoring: Multi-criteria evaluation and candidate selection
-- ✅ Intelligent candidate selection: Automatic detection of best candidate
-
-## Next Steps (Planned Extensions)
-
-### Phase 3: Post-Processing
-- [ ] AutoEditor integration for artifact removal
-- [ ] NoiseAnalyzer for dynamic threshold calculation
-- [ ] Advanced audio cleaning
-
-### Phase 4: Complete Orchestration
-- ✅ Job manager for complete workflow control
-- ✅ Advanced error handling and recovery mechanisms
-- [ ] Performance optimizations (model caching)
 
 ## Technical Improvements over Original
 
@@ -273,32 +238,15 @@ Pipeline parameters can be adjusted in `config/default_config.yaml`:
 5. **Modular Architecture**: Clearly separated, testable components
 6. **Configurability**: YAML-based parameter control
 7. **Robust Error Handling**: Graceful fallbacks and comprehensive logging
-8. **Clean Code Separation**: Production pipeline without mock/test code
+8. **Clean Code Separation**:
 9. **CI/CD Integration**: Separate mock pipeline for automated tests
 
-## Successful Tests
-
-### Phase 1 (Basics)
-- ✅ SpaCy-based text segmentation: 8,883 characters → 15 linguistic chunks
-- ✅ Audio processing: Generation of 180.40 seconds of audio
-- ✅ Configurable parameters and YAML-based settings
-
-### Phase 2 (Validation)
-- ✅ Mock candidate generation: 3 variants per chunk
-- ✅ Fuzzy text matching: Multiple similarity algorithms
-- ✅ Quality scoring: Multi-criteria evaluation and candidate selection
-- ✅ Intelligent candidate selection: Automatic detection of best candidate
-
-### Phase 3 (Post-Processing)
-- [ ] NoiseAnalyzer: Noise Floor 0.028371, Confidence 0.800, Dynamic Range 27.84 dB
-- [ ] AudioCleaner: Multi-stage processing (DC removal, filtering, spectral gating, compression, normalization)
-- ✅ AutoEditorWrapper: Framework implemented (requires auto-editor installation)
 
 ## License
-
 According to the original Chatterbox license.
 
-## Technical Overview
+
+# Technical Overview
 
 ## Architecture
 
@@ -309,7 +257,7 @@ The pipeline is divided into two main components:
 [Text File] → [Chunks] → [Candidates] → [Validated] → [Final Audio]
 ```
 
-This linear task process is wrapped by a job/task manager that orchestrates execution. Interrupted tasks can also be resumed and completed.
+This linear task process is wrapped by a job/task manager that orchestrates execution. Interrupted tasks can also be resumed and completed. For instance You can delete errornous audio chunks and re-run the tasks to completion.
 
 ### 2. Job/Task Manager (Orchestration)
 ```
@@ -333,21 +281,21 @@ This linear task process is wrapped by a job/task manager that orchestrates exec
 ```
 
 #### Job Manager
-- Manages jobs as a higher-level unit, as project containers for tasks
+- Jobs are higher-level and serve as project containers for tasks
 - Stores job configurations in YAML files
-- Tracks job status and progress
-- Coordinates execution of multiple jobs
+- But they are basivally just a template for the tasks derived from them.
+- Jobs simply group taks by name and filefolder, nothing more
+- Used to coordinate execution of multiple jobs
 
 #### Task Executor
 - Executes tasks within a job sequentially
 - Automatic state detection and missing file (gap) analysis
-- Intelligent recovery from errors
+- Intelligent recovery from errors or interrupted tasks (no need to re-generate tons of text that are already done.)
 
 #### File-based State Management
 - Jobs and tasks are stored as directory structure
 - Each job has its own output directory
 - Tasks are tracked by their output files
-- Automatic resumption on interruptions
 
 #### Configuration System
 - Cascading configuration system:
@@ -361,6 +309,7 @@ This linear task process is wrapped by a job/task manager that orchestrates exec
   task_config.yaml
   ```
 - Each level can override settings
+- Each missing configuration line is taken from the higher level.
 - Enables flexible job and task-specific adjustments
 
 #### Job Search and Configuration
@@ -374,9 +323,8 @@ When using `--job "jobname"`, the system searches for job configurations in this
    - Searches for existing task configurations (`*_config.yaml`)
    - These are generated task files from previous executions
 
-To make a job discoverable via `--job` parameter, place the job configuration in the `config/` directory.
 
-### Detaillierter Datenfluss
+### Detailed data flow
 
 ```mermaid
 graph TD
@@ -436,7 +384,7 @@ graph TD
     style M fill:#ffebee
 ```
 
-### Haupt-Workflow (main.py)
+### Main-Workflow (main.py)
 
 ```python
 # Phase 1: Text Chunking
@@ -460,23 +408,23 @@ save_audio() → WAV file
 ### Intelligent Candidate Generation
 
 #### RAMP Strategy with Configurable Deviation Ranges
-The pipeline uses an intelligent **RAMP strategy** for generating diverse audio candidates:
+The pipeline uses a **RAMP strategy** for generating diverse audio candidates:
 
 **Principle:**
 - **Candidate 1**: Always uses exact config values for consistency
-- **Additional Candidates**: Linear interpolation (RAMP) from config values to extreme values
-- **Last Candidate**: Optional conservative parameters for guaranteed quality
+- **Additional Candidates**: Linear interpolation (RAMP) from config values to values with deviation (configurable)
+- **Last Candidate**: Optional conservative parameters form config for guaranteed quality
 
 **Parameter Behavior:**
-- `exaggeration`: **RAMP-DOWN** from MAX (config) to MIN (config-max_deviation)
-- `cfg_weight`: **RAMP-UP** from MIN (config) to MAX (config+max_deviation)  
-- `temperature`: **RAMP-UP** from MIN (config) to MAX (config+max_deviation)
+- `exaggeration`: **RAMP-DOWN** from MAX (config) to MIN (config - max_deviation)
+- `cfg_weight`: **RAMP-UP** from MIN (config) to MAX (config + max_deviation)  
+- `temperature`: **RAMP-UP** from MIN (config) to MAX (config + max_deviation)
 
 **Advantages:**
 - Predictable candidate variation
 - No random "wild" parameter combinations
 - User-controlled min/max ranges
-- Candidate 1 as reliable reference
+- 1 Candidate is at least exact or reliable reference (configurable)
 
 ### Kern-Klassen und Datenfluss
 
@@ -559,7 +507,7 @@ class QualityScore:
     transcription_score: float   # Transcription quality
 ```
 
-### Algorithmus-Details
+### Algorythm details
 
 #### Multi-Candidate Generation with RAMP Strategy
 ```python
@@ -644,54 +592,52 @@ job:
   run-label: ""
 
 input:
-  reference_audio: "fry.wav"        # Dateiname im reference_audio Ordner
-  text_file: "input-document.txt"   # Text-Datei im texts Ordner
+  reference_audio: "fry.wav"        # File name in the reference_audio folder
+  text_file: "input-document.txt"   # Text file in the texts folder
 
 preprocessing:
   enabled: true
   # Text normalization options
   normalize_line_endings: true    # Convert \r\n and \r to \n
-  # Future preprocessing options can be added here
+  # Future preprocessing options might be added here
   # normalize_quotes: false
   # remove_extra_whitespace: false
   # fix_encoding_issues: false
+  # foreign words -> to IPA -> to mock english pronunciation gibberish that will come out right.
 
 chunking:
-  target_chunk_limit: 480
-  max_chunk_limit: 600
+  target_chunk_limit: 380
+  max_chunk_limit: 460
   min_chunk_length: 50
   spacy_model: "en_core_web_sm"
 
 generation:
-  num_candidates: 2
-  max_retries: 2
+  num_candidates: 1
+  max_retries: 0
   tts_params:
-    # Base TTS parameters (candidate 1 uses these exact values)
-    exaggeration: 0.40
-    cfg_weight: 0.30
-    temperature: 0.8
-    # Maximum deviation ranges for candidate variation
-    exaggeration_max_deviation: 0.15    # Range: [0.25, 0.40] (ramp DOWN from MAX)
-    cfg_weight_max_deviation: 0.15      # Range: [0.30, 0.45] (ramp UP from MIN)
-    temperature_max_deviation: 0.2      # Range: [0.8, 1.0] (ramp UP from MIN)
+    # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
+    # - exaggeration: MAX value (ramps DOWN from here)
+    # - cfg_weight: MIN value (ramps UP from here)  
+    # - temperature: MIN value (ramps UP from here)
+    exaggeration: 0.40                  # MAX: give maximum here
+    exaggeration_max_deviation: 0.20    # Range: (ramp DOWN) [exaggeration, exaggeration-exag_max_deviation] 
+    cfg_weight: 0.2                    # MIN: give minimum
+    cfg_weight_max_deviation: 0.20      # Range: (ramp UP) [cfg_weight, cfg_weight+max_dev] 
+    temperature: 0.9                    # MIN: give minimum
+    temperature_max_deviation: 0.3      # Range: (ramp UP) [temp, temp+max_dev] 
+    
   # Conservative candidate parameters for guaranteed correctness
   conservative_candidate:
     enabled: true
-    exaggeration: 0.45
-    cfg_weight: 0.4
-    temperature: 0.7
+    exaggeration: 0.40
+    cfg_weight: 0.2
+    temperature: 0.8
+    
   
 validation:
   whisper_model: "small" # "base" "small" "medium" "large"
-  similarity_threshold: 0.85
-  min_quality_score: 0.8
-
-postprocessing:
-  auto_editor:
-    margin_before: 0.1
-    margin_after: 0.1
-    preserve_natural_sounds: true
-  noise_threshold_factor: 1.5
+  similarity_threshold: 0.8
+  min_quality_score: 0.75
 
 audio:
   silence_duration:
@@ -701,22 +647,6 @@ audio:
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
   # Only change this if ChatterboxTTS itself changes its output sample rate
   sample_rate: 24000 
-```
-
-### Error Handling Strategy
-
-#### Graceful Degradation
-```python
-try:
-    # Generate N candidates
-    candidates = generate_candidates(chunk, N)
-except Exception:
-    # Retry with conservative parameters
-    candidates = generate_candidates(chunk, N, conservative=True)
-    
-if not candidates:
-    # Emergency fallback
-    candidates = [create_silence_candidate()]
 ```
 
 ### Testing Architecture
@@ -731,9 +661,6 @@ MockAudioProcessor   # Basic audio operations
 
 #### Test Coverage
 - **Unit Tests**: Individual component testing
-
-
-### Development Guidelines
 
 #### Debugging Common Issues
 - **Memory Errors**: Reduce `num_candidates` in config

@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 from pipeline.batch_executor import BatchExecutor
 from pipeline.job_manager.types import ExecutionPlan
-from src.pipeline.job_manager_wrapper import JobManager
+from pipeline.job_manager_wrapper import JobManager
 from pipeline.task_executor import TaskExecutor
 from utils.config_manager import ConfigManager, TaskConfig
 from utils.file_manager import FileManager
