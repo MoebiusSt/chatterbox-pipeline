@@ -8,51 +8,7 @@ they can be saved as conds.pt and swapped in as
 model.conds = torch.load("your_new_conds.pt")
 
 
-IPA transcription of British RP work somewhat:
-/aɪ ˈrɪəli ɪnˈdʒɔɪ ˈlɜːnɪŋ ˈlæŋɡwɪdʒɪz/
-I really enjoy learning languages
-
-1. eng-to-ipa
-
-Specifically for English text.
-
-Uses the Carnegie-Mellon University Pronouncing Dictionary.
-
-Simple usage:
-
-python
-import eng_to_ipa as ipa
-ipa.convert("The quick brown fox jumped over the lazy dog.")
-# Output: 'ðə kwɪk braʊn fɑks ʤəmpt ˈoʊvər ðə ˈleɪzi dɔg.'
-Words not found in the dictionary are marked with an asterisk.
-
-2. Epitran
-
-Supports many languages, not just English.
-
-Designed for transliterating orthographic text to IPA.
-
-Suitable for research and multilingual applications.
-
-3. Gruut-IPA
-
-Manipulates IPA pronunciations and can convert between IPA, espeak, and sampa.
-
-Supports multiple languages including English, German, Spanish, Russian, and more.
-
-4. ipapy
-
-Focuses on working with IPA strings and characters.
-
-Useful for validating, parsing, and manipulating IPA, but not primarily for converting plain text to IPA.
-
-5. espeak-ng
-
-Command-line tool with Python bindings.
-
-Can output IPA transcriptions using the -x flag.
-
-
+-------------------------------------------
 
 Try:
 "[UH]": 604,
