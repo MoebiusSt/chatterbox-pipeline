@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from pipeline.job_manager_facade import JobManager
+from pipeline.job_manager import JobManager
 from pipeline.job_manager.types import ExecutionStrategy, UserChoice
 from utils.config_manager import ConfigManager
 

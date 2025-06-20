@@ -4,15 +4,11 @@ Transcribes generated audio and compares against original text.
 """
 
 import logging
-import os
-
-# Use absolute import to avoid relative import issues
 import sys
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import torch
 import torchaudio
@@ -20,12 +16,13 @@ import whisper
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.file_manager import AudioCandidate
+from .quality_calculator import QualityCalculator
+from .transcription_io import TranscriptionIO
 
 
 @dataclass
 class ValidationResult:
     """Result of audio validation process."""
-
     is_valid: bool
     transcription: str
     similarity_score: float
@@ -47,19 +44,9 @@ class WhisperValidator:
         similarity_threshold: float = 0.90,
         min_quality_score: float = 0.6,
     ):
-        """
-        Initialize WhisperValidator.
-
-        Args:
-            model_size: Whisper model size ("tiny", "base", "small", "medium", "large")
-            device: Device for computation ("auto", "cuda", "cpu")
-            similarity_threshold: Minimum similarity score for validation from config/default_config.yaml
-            min_quality_score: Minimum quality score for validation
-        """
         self.model_size = model_size
         self.similarity_threshold = similarity_threshold
         self.min_quality_score = min_quality_score
-        import logging
         self.logger = logging.getLogger(__name__)
 
         # Auto-detect device if needed
@@ -73,6 +60,8 @@ class WhisperValidator:
 
         self.device = device
         self.model = None
+        self.quality_calculator = QualityCalculator()
+        self.transcription_io = TranscriptionIO()
         self._load_model()
 
     def _load_model(self):
@@ -113,7 +102,6 @@ class WhisperValidator:
 
             # Resample to 16kHz if needed (Whisper requirement)
             if sample_rate != 16000:
-                # Use torchaudio for resampling
                 audio_tensor = torch.from_numpy(audio_np).unsqueeze(0)
                 resampler = torchaudio.transforms.Resample(
                     orig_freq=sample_rate, new_freq=16000
@@ -121,7 +109,6 @@ class WhisperValidator:
                 audio_resampled = resampler(audio_tensor).squeeze(0)
                 audio_np = audio_resampled.numpy()
 
-            # Transcribe with Whisper
             if self.model is None:
                 raise RuntimeError("Whisper model not loaded. Call _load_model() first.")
             
@@ -129,7 +116,7 @@ class WhisperValidator:
                 audio_np,
                 language=language,
                 task="transcribe",
-                fp16=False,  # Use fp32 for better compatibility
+                fp16=False,
             )
 
             transcription = result["text"].strip()
@@ -162,35 +149,29 @@ class WhisperValidator:
         start_time = datetime.now()
 
         try:
-            # Transcribe the audio
             transcription = self.transcribe_audio(
                 candidate.audio_tensor, sample_rate=sample_rate
             )
 
-            # Calculate similarity score (using simple approach for now)
-            similarity_score = self._calculate_similarity(original_text, transcription)
-
-            # Calculate quality score
-            quality_score = self._calculate_quality_score(
+            # Use QualityCalculator for scoring
+            similarity_score = self.quality_calculator.calculate_similarity(
+                original_text, transcription
+            )
+            quality_score = self.quality_calculator.calculate_quality_score(
                 candidate, transcription, similarity_score
             )
 
-            # Determine if validation passed - improved logic
-            # Allow some flexibility: if one metric is strong, be more lenient with the other
+            # Validation logic with flexibility
             strict_validation = (
                 similarity_score >= self.similarity_threshold 
                 and quality_score >= self.min_quality_score
             )
             
-            # Flexible validation: high quality score can compensate for slightly lower similarity
             flexible_validation = (
-                # Strong quality score allows lower similarity (0.1 tolerance)
                 (quality_score >= self.min_quality_score + 0.02 and 
                  similarity_score >= self.similarity_threshold - 0.1) or
-                # Strong similarity allows lower quality score (0.1 tolerance)  
                 (similarity_score >= self.similarity_threshold + 0.02 and 
                  quality_score >= self.min_quality_score - 0.1) or
-                # Both are reasonably close to thresholds (within 0.05)
                 (similarity_score >= self.similarity_threshold - 0.05 and 
                  quality_score >= self.min_quality_score - 0.05 and
                  (similarity_score + quality_score) >= (self.similarity_threshold + self.min_quality_score) - 0.05)
@@ -222,71 +203,6 @@ class WhisperValidator:
                 validation_time=validation_time,
                 error_message=str(e),
             )
-
-    def _calculate_similarity(self, original: str, transcription: str) -> float:
-        """
-        Calculate similarity between original text and transcription.
-        This is a simplified implementation - will be enhanced by FuzzyMatcher.
-
-        Args:
-            original: Original text
-            transcription: Transcribed text
-
-        Returns:
-            Similarity score (0.0 to 1.0)
-        """
-        try:
-            # Simple token-based similarity for now
-            original_tokens = set(original.lower().split())
-            transcription_tokens = set(transcription.lower().split())
-
-            if not original_tokens and not transcription_tokens:
-                return 1.0
-            if not original_tokens or not transcription_tokens:
-                return 0.0
-
-            intersection = original_tokens.intersection(transcription_tokens)
-            union = original_tokens.union(transcription_tokens)
-
-            similarity = len(intersection) / len(union) if union else 0.0
-            return min(1.0, max(0.0, similarity))
-
-        except Exception as e:
-            self.logger.warning(f"Similarity calculation failed: {e}")
-            return 0.0
-
-    def _calculate_quality_score(
-        self, candidate: AudioCandidate, transcription: str, similarity_score: float
-    ) -> float:
-        """
-        Calculate overall quality score for the candidate.
-
-        Args:
-            candidate: Audio candidate
-            transcription: Transcribed text
-            similarity_score: Text similarity score
-
-        Returns:
-            Quality score (0.0 to 1.0)
-        """
-        try:
-            # Length score - ratio of transcription length to original text length
-            if len(candidate.chunk_text) > 0:
-                length_score = min(1.0, len(transcription) / len(candidate.chunk_text))
-            else:
-                length_score = 1.0 if transcription else 0.0
-
-            # Combined quality score (removed unreliable audio duration length_score)
-            quality_score = (
-                similarity_score * 0.7  # 70% similarity (increased from 60%)
-                + length_score * 0.30   # 30% text length comparison
-            )
-
-            return min(1.0, max(0.0, quality_score))
-
-        except Exception as e:
-            self.logger.warning(f"Quality score calculation failed: {e}")
-            return similarity_score  # Fallback to similarity only
 
     def batch_validate(
         self,
@@ -324,105 +240,7 @@ class WhisperValidator:
         validation_data: Optional[List[dict]] = None,
         output_dir: Optional[str] = None,
     ) -> List[str]:
-        """
-        Save whisper transcriptions to text files with enhanced metrics format.
-
-        Args:
-            transcriptions: List of transcription strings
-            chunk_index: Index of the chunk these transcriptions belong to
-            candidate_indices: List of candidate indices corresponding to transcriptions
-            validation_data: List of dicts with enhanced validation metrics
-            output_dir: Directory to save transcriptions in (defaults to data/output/chunks)
-
-        Returns:
-            List of saved file paths
-        """
-        if output_dir is None:
-            # Default to project data/output/chunks directory (same as chunks)
-            project_root = Path(__file__).resolve().parents[2]
-            output_dir = project_root / "data" / "output" / "chunks"
-
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        saved_paths = []
-
-        for i, (transcription, candidate_idx) in enumerate(
-            zip(transcriptions, candidate_indices)
-        ):
-            try:
-                # Create filename matching the candidate format (without timestamp)
-                filename = (
-                    f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx+1:02d}_whisper.txt"
-                )
-                filepath = output_path / filename
-
-                # Get validation data for this candidate
-                val_data = (
-                    validation_data[i]
-                    if validation_data and i < len(validation_data)
-                    else {}
-                )
-
-                # Extract enhanced metrics
-                whisper_score = val_data.get("whisper_score", 0.0)
-                fuzzy_score = val_data.get("fuzzy_score", 0.0)
-                fuzzy_method = val_data.get("fuzzy_method", "unknown")
-                quality_score = val_data.get("quality_score", 0.0)
-                is_valid = val_data.get("is_valid", False)
-                generation_params = val_data.get("generation_params", {})
-                audio_duration = val_data.get("audio_duration", 0.0)
-                original_wordcount = val_data.get("original_wordcount", 0)
-                transcription_wordcount = val_data.get("transcription_wordcount", 0)
-                word_deviation = val_data.get("word_deviation", 0.0)
-                rank = val_data.get("rank", 0)
-                total_candidates = val_data.get("total_candidates", 0)
-
-                # Format generation parameters
-                if generation_params:
-                    exag = generation_params.get("exaggeration", 0.0)
-                    cfg = generation_params.get("cfg_weight", 0.0)
-                    temp = generation_params.get("temperature", 0.0)
-                    param_type = generation_params.get("type", "UNKNOWN")
-                    params_str = f"exag={exag:.2f}, cfg={cfg:.2f}, temp={temp:.2f}, type={param_type}"
-                else:
-                    params_str = "N/A"
-
-                # Create enhanced content format
-                content = f"=== WHISPER TRANSCRIPTION ===\n"
-                content += f"Chunk: {chunk_index:03d}\n"
-                content += f"Candidate: {candidate_idx:02d}\n"
-                content += f"Whisper Score: {whisper_score:.3f}\n"
-                content += f"Fuzzy Score: {fuzzy_score:.3f} (method: {fuzzy_method})\n"
-                content += f"Quality Score: {quality_score:.3f}\n"
-                content += f"Validation Status: {'VALID' if is_valid else 'INVALID'}\n"
-                content += f"Generation Params: {params_str}\n"
-                content += f"Audio Duration: {audio_duration:.2f}s\n"
-                content += f"Transcription Length: {len(transcription)} characters\n"
-                content += f"Word Count: {transcription_wordcount} (Original: {original_wordcount}, Deviation: {word_deviation:.1f}%)\n"
-                if total_candidates > 0:
-                    content += f"Rank: {rank}/{total_candidates}\n"
-                content += f"{'='*50}\n\n"
-                content += transcription
-
-                # Save to file
-                with open(filepath, "w", encoding="utf-8") as f:
-                    f.write(content)
-
-                saved_paths.append(str(filepath))
-                self.logger.debug(
-                    f"Saved enhanced transcription for chunk {chunk_index}, candidate {candidate_idx} to: {filepath}"
-                )
-
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to save transcription for chunk {chunk_index}, candidate {candidate_idx}: {e}"
-                )
-                continue
-
-        if saved_paths:
-            self.logger.debug(
-                f"Saved {len(saved_paths)} enhanced transcriptions for chunk {chunk_index}"
-            )
-
-        return saved_paths
+        """Delegate to TranscriptionIO for saving transcriptions."""
+        return self.transcription_io.save_transcriptions_to_disk(
+            transcriptions, chunk_index, candidate_indices, validation_data, output_dir
+        )
