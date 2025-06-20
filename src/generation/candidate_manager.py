@@ -8,25 +8,18 @@ import torchaudio
 
 from chunking.base_chunker import TextChunk
 from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import CandidateIOHandler
 
 from .tts_generator import TTSGenerator
+from .batch_processor import BatchProcessor, GenerationResult
+from .selection_strategies import SelectionStrategies
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-import logging
-
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class GenerationResult:
-    """Represents the result of candidate generation for a text chunk."""
 
-    chunk: TextChunk
-    candidates: List[AudioCandidate]
-    selected_candidate: Optional[AudioCandidate]
-    generation_attempts: int
-    success: bool
 
 
 class CandidateManager:
@@ -80,8 +73,13 @@ class CandidateManager:
             )
         self.candidates_dir = Path(candidates_dir)
 
+        # Initialize components
+        self.batch_processor = BatchProcessor(max_retries=max_retries)
+        self.selection_strategies = SelectionStrategies()
+        
+        # Initialize candidate IO handler
         if self.save_candidates:
-            self.candidates_dir.mkdir(parents=True, exist_ok=True)
+            self.candidate_io = CandidateIOHandler(self.candidates_dir, self.config)
             logger.info(f"💻 Candidates will be saved to: {self.candidates_dir}")
 
         logger.info(
@@ -111,13 +109,12 @@ class CandidateManager:
         )
 
         # Save candidates to disk
-        if result.candidates:
-            self.save_candidates_to_disk(
+        if result.candidates and self.save_candidates:
+            self.candidate_io.save_candidates_to_disk(
                 candidates=result.candidates,
                 chunk_index=chunk_index,
-                sample_rate=self.config.get("audio", {}).get(
-                    "sample_rate", 24000
-                ),  # ChatterboxTTS native sample rate
+                sample_rate=self.config.get("audio", {}).get("sample_rate", 24000),
+                output_dir=output_dir,
             )
 
         return result.candidates
@@ -168,7 +165,8 @@ class CandidateManager:
         for candidate in specific_candidates:
             try:
                 # Delete corresponding whisper file BEFORE saving new candidate (ensures re-validation)
-                self._delete_whisper_file(output_dir, chunk_index, candidate.candidate_idx + 1)
+                if self.save_candidates:
+                    self.candidate_io._delete_whisper_file(output_dir, chunk_index, candidate.candidate_idx + 1)
 
                 # Update candidate metadata for FileManager compatibility
                 candidate.chunk_idx = chunk_index
@@ -185,39 +183,13 @@ class CandidateManager:
                 continue
 
         # Use FileManager to save candidates in correct structure (chunk_XXX/candidate_YY.wav)
-        if saved_candidates and hasattr(self, 'file_manager'):
-            self.file_manager.save_candidates(chunk_index, saved_candidates)
-        elif saved_candidates:
-            # Fallback: save manually in correct structure if file_manager not available
-            self._save_candidates_in_correct_structure(saved_candidates, chunk_index)
+        if saved_candidates and self.save_candidates:
+            self.candidate_io._save_candidates_in_correct_structure(saved_candidates, chunk_index)
 
         logger.debug(
             f"✅ Successfully generated {len(saved_candidates)}/{len(candidate_indices)} specific candidates for chunk {chunk_index+1}"
         )
         return saved_candidates
-
-    def _delete_whisper_file(self, output_dir: Path, chunk_index: int, candidate_idx: int):
-        """
-        Delete corresponding whisper validation file for a candidate (ensures re-validation).
-        
-        Args:
-            output_dir: Output directory containing whisper subdirectory
-            chunk_index: Chunk index (0-based)
-            candidate_idx: Candidate index (1-based)
-        """
-        # CORRECTED: Whisper files are in whisper/ directory, not texts/
-        whisper_dir = output_dir / "whisper"
-        whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
-
-        if whisper_file.exists():
-            whisper_file.unlink()
-            logger.debug(f"🗑️ Deleted old whisper file: {whisper_file.name}")
-            
-        # Also try alternative naming patterns (in case of inconsistencies)
-        alt_whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
-        if alt_whisper_file.exists():
-            alt_whisper_file.unlink()
-            logger.debug(f"🗑️ Deleted old whisper TXT file: {alt_whisper_file.name}")
 
     def generate_candidates_for_chunk(
         self,
@@ -304,50 +276,20 @@ class CandidateManager:
         )
         return result
 
+    # Delegate methods to components
     def select_best_candidate(
         self, candidates: List[AudioCandidate], selection_strategy: str = "shortest"
     ) -> Optional[AudioCandidate]:
-        """
-        Selects the best audio candidate from a list based on a specified strategy.
+        return self.selection_strategies.select_best_candidate(candidates, selection_strategy)
 
-        Returns:
-            The best AudioCandidate or None if list is empty.
-        """
-        if not candidates:
-            logger.warning("No candidates provided for selection")
-            return None
-
-        if selection_strategy == "shortest":
-            # Select candidate with shortest audio duration (often indicates fewer artifacts)
-            selected = min(
-                candidates,
-                key=lambda c: (
-                    c.audio_tensor.shape[-1]
-                    if c.audio_tensor is not None
-                    else float("inf")
-                ),
-            )
-            logger.debug(
-                f"Selected shortest candidate with length: {selected.audio_tensor.shape[-1] if selected.audio_tensor is not None else 0}"
-            )
-
-        elif selection_strategy == "first":
-            selected = candidates[0]
-            logger.debug(f"Selected first candidate")
-
-        elif selection_strategy == "random":
-            import random
-
-            selected = random.choice(candidates)
-            logger.debug(f"Selected random candidate")
-
-        else:
-            logger.warning(
-                f"Unknown selection strategy: {selection_strategy}, using first"
-            )
-            selected = candidates[0]
-
-        return selected
+    def select_best_candidate_with_validation(
+        self,
+        candidates_with_validation: List[tuple],
+        prefer_valid: bool = True,
+    ) -> Optional[tuple]:
+        return self.selection_strategies.select_best_candidate_with_validation(
+            candidates_with_validation, prefer_valid
+        )
 
     def process_chunks(
         self,
@@ -355,236 +297,6 @@ class CandidateManager:
         tts_generator: TTSGenerator,
         generation_params: Dict[str, Any],
     ) -> List[GenerationResult]:
-        """
-        Processes a list of text chunks, generating and managing audio candidates for each.
-
-        Returns:
-            A list of GenerationResult objects, one for each chunk.
-        """
-        logger.info(f"Processing {len(chunks)} chunks for candidate generation")
-
-        results = []
-
-        for i, chunk in enumerate(chunks):
-            logger.info(f"Processing chunk {i+1}/{len(chunks)}")
-
-            try:
-                result = self.generate_candidates_for_chunk(
-                    chunk=chunk,
-                    tts_generator=tts_generator,
-                    generation_params=generation_params,
-                )
-                results.append(result)
-
-                if not result.success:
-                    logger.warning(
-                        f"Failed to generate sufficient candidates for chunk {i+1}"
-                    )
-
-            except Exception as e:
-                logger.error(f"Error processing chunk {i+1}: {e}")
-                # Create a failed result
-                failed_result = GenerationResult(
-                    chunk=chunk,
-                    candidates=[],
-                    selected_candidate=None,
-                    generation_attempts=self.max_retries + 1,
-                    success=False,
-                )
-                results.append(failed_result)
-
-        successful_chunks = sum(1 for r in results if r.success)
-        logger.info(
-            f"Candidate generation completed: {successful_chunks}/{len(chunks)} chunks successful"
+        return self.batch_processor.process_chunks(
+            chunks, tts_generator, generation_params, self
         )
-
-        return results
-
-    def save_candidates_to_disk(
-        self,
-        candidates: List[AudioCandidate],
-        chunk_index: int,
-        sample_rate: int = 24000,  # ChatterboxTTS native sample rate
-    ) -> List[str]:
-        """
-        Saves generated audio candidates to disk for inspection/debugging.
-
-        Returns:
-            List of file paths where candidates were saved.
-        """
-        if not self.save_candidates or not candidates:
-            return []
-
-        # Use FileManager structure: candidates/chunk_XXX/candidate_YY.wav
-        chunk_dir = self.candidates_dir / f"chunk_{chunk_index+1:03d}"
-        chunk_dir.mkdir(parents=True, exist_ok=True)
-
-        saved_paths = []
-
-        for candidate in candidates:
-            try:
-                # Use simple filename without timestamp (FileManager structure)
-                filename = f"candidate_{candidate.candidate_idx+1:02d}.wav"
-                filepath = chunk_dir / filename
-
-                # Delete corresponding whisper file if it exists (ensures re-validation)
-                if self.output_dir:
-                    self._delete_whisper_file(self.output_dir, chunk_index, candidate.candidate_idx + 1)
-
-                # Save audio to file
-                # Ensure audio tensor is 2D for torchaudio.save (channels, samples)
-                audio_tensor = candidate.audio_tensor.cpu()
-                if audio_tensor.ndim == 1:
-                    audio_tensor = audio_tensor.unsqueeze(0)  # Add channel dimension
-                
-                torchaudio.save(
-                    str(filepath), audio_tensor, sample_rate
-                )
-
-                # Update candidate metadata with correct path
-                candidate.audio_path = filepath
-
-                saved_paths.append(str(filepath))
-                logger.debug(f"Saved candidate to: {filepath}")
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to save candidate {candidate.candidate_idx+1} for chunk {chunk_index}: {e}"
-                )
-                continue
-
-        # Save candidate metadata (consistent with FileManager)
-        if saved_paths:
-            self._save_candidate_metadata(candidates, chunk_index, chunk_dir)
-
-        return saved_paths
-
-    def _save_candidates_in_correct_structure(self, candidates: List[AudioCandidate], chunk_index: int):
-        """
-        Helper to save candidates when FileManager is not directly available.
-        """
-        chunk_dir = self.candidates_dir / f"chunk_{chunk_index+1:03d}"
-        chunk_dir.mkdir(parents=True, exist_ok=True)
-
-        sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
-
-        for candidate in candidates:
-            try:
-                filename = f"candidate_{candidate.candidate_idx+1:02d}.wav"
-                filepath = chunk_dir / filename
-
-                # Save audio file
-                audio_tensor = candidate.audio_tensor.cpu()
-                if audio_tensor.ndim == 1:
-                    audio_tensor = audio_tensor.unsqueeze(0)
-
-                torchaudio.save(str(filepath), audio_tensor, sample_rate)
-                candidate.audio_path = filepath
-
-                logger.debug(f"Saved candidate to correct structure: {filepath}")
-
-            except Exception as e:
-                logger.error(f"Failed to save candidate {candidate.candidate_idx+1}: {e}")
-
-    def _save_candidate_metadata(self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path):
-        """
-        Saves metadata for generated candidates in a JSON file within the chunk directory.
-        """
-        try:
-            candidate_metadata = {
-                "chunk_idx": chunk_index,
-                "total_candidates": len(candidates),
-                "candidates": [
-                    {
-                        "candidate_idx": c.candidate_idx,
-                        "audio_filename": f"candidate_{c.candidate_idx+1:02d}.wav",
-                        "generation_params": c.generation_params,
-                    }
-                    for c in candidates
-                ],
-            }
-
-            metadata_path = chunk_dir / "candidates_metadata.json"
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                import json
-                json.dump(candidate_metadata, f, indent=2)
-
-            logger.debug(f"Saved candidate metadata: {metadata_path}")
-
-        except Exception as e:
-            logger.error(f"Failed to save candidate metadata: {e}")
-
-    def select_best_candidate_with_validation(
-        self,
-        candidates_with_validation: List[
-            tuple
-        ],  # [(candidate, validation_result, quality_score), ...]
-        prefer_valid: bool = True,
-    ) -> Optional[tuple]:
-        """
-        Selects the best candidate based on validation results and quality scores.
-
-        Returns:
-            The best candidate tuple (candidate, validation_result, quality_score) or None.
-        """
-        if not candidates_with_validation:
-            logger.warning("No candidates provided for selection")
-            return None
-
-        logger.debug(
-            f"🔍 Selecting best from {len(candidates_with_validation)} validated candidates..."
-        )
-
-        # Separate valid and invalid candidates if prefer_valid is True
-        if prefer_valid:
-            valid_candidates = [
-                (c, v, q) for c, v, q in candidates_with_validation if v.is_valid
-            ]
-            invalid_candidates = [
-                (c, v, q) for c, v, q in candidates_with_validation if not v.is_valid
-            ]
-
-            # Try valid candidates first
-            candidates_to_consider = (
-                valid_candidates if valid_candidates else invalid_candidates
-            )
-            selection_pool = "valid" if valid_candidates else "invalid (fallback)"
-        else:
-            candidates_to_consider = candidates_with_validation
-            selection_pool = "all"
-
-        logger.debug(
-            f"🎯 Considering {len(candidates_to_consider)} {selection_pool} candidates"
-        )
-
-        # Sort by quality score (descending), then by audio duration (ascending) for tie-breaking
-        def sort_key(item):
-            candidate, validation_result, quality_score = item
-            audio_duration = (
-                candidate.audio_tensor.shape[-1]
-                if candidate.audio_tensor is not None
-                else float("inf")
-            )
-            return (
-                -quality_score,
-                audio_duration,
-            )  # Negative quality for descending, positive duration for ascending
-
-        candidates_to_consider.sort(key=sort_key)
-
-        # Select the best candidate
-        best_candidate_tuple = candidates_to_consider[0]
-        candidate, validation_result, quality_score = best_candidate_tuple
-
-        audio_duration = (
-            candidate.audio_tensor.shape[-1]
-            if candidate.audio_tensor is not None
-            else 0
-        )
-
-        logger.debug(
-            f"✅ Selected candidate with quality={quality_score:.3f}, "
-            f"valid={validation_result.is_valid}, audio_duration={audio_duration} samples"
-        )
-
-        return best_candidate_tuple

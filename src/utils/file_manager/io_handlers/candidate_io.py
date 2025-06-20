@@ -242,6 +242,130 @@ class CandidateIOHandler:
         )
         return candidates
 
+    def save_candidates_to_disk(
+        self,
+        candidates: List[AudioCandidate],
+        chunk_index: int,
+        sample_rate: int = 24000,
+        output_dir: Optional[Path] = None,
+    ) -> List[str]:
+        """
+        Saves generated audio candidates to disk for inspection/debugging.
+        
+        Args:
+            candidates: List of AudioCandidate objects
+            chunk_index: Chunk index (0-based)
+            sample_rate: Audio sample rate
+            output_dir: Output directory for whisper file deletion
+        
+        Returns:
+            List of file paths where candidates were saved.
+        """
+        if not candidates:
+            return []
+
+        chunk_dir = self.candidates_dir / f"chunk_{chunk_index+1:03d}"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_paths = []
+
+        for candidate in candidates:
+            try:
+                filename = f"candidate_{candidate.candidate_idx+1:02d}.wav"
+                filepath = chunk_dir / filename
+
+                # Delete corresponding whisper file if it exists (ensures re-validation)
+                if output_dir:
+                    self._delete_whisper_file(output_dir, chunk_index, candidate.candidate_idx + 1)
+
+                # Ensure audio tensor is 2D for torchaudio.save (channels, samples)
+                audio_tensor = candidate.audio_tensor.cpu()
+                if audio_tensor.ndim == 1:
+                    audio_tensor = audio_tensor.unsqueeze(0)  # Add channel dimension
+                
+                torchaudio.save(str(filepath), audio_tensor, sample_rate)
+
+                # Update candidate metadata with correct path
+                candidate.audio_path = filepath
+
+                saved_paths.append(str(filepath))
+                logger.debug(f"Saved candidate to: {filepath}")
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to save candidate {candidate.candidate_idx+1} for chunk {chunk_index}: {e}"
+                )
+                continue
+
+        # Save candidate metadata (consistent with FileManager)
+        if saved_paths:
+            self._save_candidate_metadata(candidates, chunk_index, chunk_dir)
+
+        return saved_paths
+
+    def _save_candidates_in_correct_structure(self, candidates: List[AudioCandidate], chunk_index: int):
+        """Helper to save candidates when FileManager is not directly available."""
+        chunk_dir = self.candidates_dir / f"chunk_{chunk_index+1:03d}"
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+
+        sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
+
+        for candidate in candidates:
+            try:
+                filename = f"candidate_{candidate.candidate_idx+1:02d}.wav"
+                filepath = chunk_dir / filename
+
+                audio_tensor = candidate.audio_tensor.cpu()
+                if audio_tensor.ndim == 1:
+                    audio_tensor = audio_tensor.unsqueeze(0)
+
+                torchaudio.save(str(filepath), audio_tensor, sample_rate)
+                candidate.audio_path = filepath
+
+                logger.debug(f"Saved candidate to correct structure: {filepath}")
+
+            except Exception as e:
+                logger.error(f"Failed to save candidate {candidate.candidate_idx+1}: {e}")
+
+    def _save_candidate_metadata(self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path):
+        """Saves metadata for generated candidates in a JSON file within the chunk directory."""
+        try:
+            candidate_metadata = {
+                "chunk_idx": chunk_index,
+                "total_candidates": len(candidates),
+                "candidates": [
+                    {
+                        "candidate_idx": c.candidate_idx,
+                        "audio_filename": f"candidate_{c.candidate_idx+1:02d}.wav",
+                        "generation_params": c.generation_params,
+                    }
+                    for c in candidates
+                ],
+            }
+
+            metadata_path = chunk_dir / "candidates_metadata.json"
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump(candidate_metadata, f, indent=2)
+
+            logger.debug(f"Saved candidate metadata: {metadata_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to save candidate metadata: {e}")
+
+    def _delete_whisper_file(self, output_dir: Path, chunk_index: int, candidate_idx: int):
+        """Delete corresponding whisper validation file for a candidate (ensures re-validation)."""
+        whisper_dir = output_dir / "whisper"
+        whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
+
+        if whisper_file.exists():
+            whisper_file.unlink()
+            logger.debug(f"🗑️ Deleted old whisper file: {whisper_file.name}")
+            
+        alt_whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
+        if alt_whisper_file.exists():
+            alt_whisper_file.unlink()
+            logger.debug(f"🗑️ Deleted old whisper TXT file: {alt_whisper_file.name}")
+
     def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:
         """Remove corrupt candidate file - simplified version without validation data."""
         try:
