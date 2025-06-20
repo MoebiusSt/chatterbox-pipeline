@@ -25,15 +25,6 @@ class AudioProcessor:
         paragraph_silence_duration: float = 0.20,
         device: str = "cpu",
     ):
-        """
-        Initializes the AudioProcessor.
-
-        Args:
-            sample_rate: Audio sample rate.
-            normal_silence_duration: Duration of silence between normal chunks (seconds).
-            paragraph_silence_duration: Duration of silence between paragraph chunks (seconds).
-            device: Device to process audio on.
-        """
         self.sample_rate = sample_rate
         self.normal_silence_duration = normal_silence_duration
         self.paragraph_silence_duration = paragraph_silence_duration
@@ -47,10 +38,7 @@ class AudioProcessor:
 
     def _create_silence_tensor(self, duration: float) -> torch.Tensor:
         """
-        Creates a silence tensor of specified duration.
-
-        Args:
-            duration: Duration in seconds.
+        Creates a silence tensor of specified duration in seconds.
 
         Returns:
             Silence tensor.
@@ -62,17 +50,7 @@ class AudioProcessor:
     def add_silence(
         self, audio: torch.Tensor, duration: float, position: str = "after"
     ) -> torch.Tensor:
-        """
-        Adds silence to an audio tensor.
 
-        Args:
-            audio: Input audio tensor.
-            duration: Duration of silence in seconds.
-            position: Where to add silence ("before", "after", "both").
-
-        Returns:
-            Audio tensor with added silence.
-        """
         silence = self._create_silence_tensor(duration)
 
         if position == "before":
@@ -93,12 +71,6 @@ class AudioProcessor:
         """
         Concatenates audio segments with appropriate silence insertion.
 
-        Args:
-            audio_segments: List of audio tensors to concatenate.
-            has_paragraph_breaks: List indicating whether each segment has paragraph breaks.
-
-        Returns:
-            Concatenated audio tensor.
         """
         if not audio_segments:
             logger.warning("No audio segments provided for concatenation")
@@ -148,12 +120,6 @@ class AudioProcessor:
         """
         Concatenates audio from a list of AudioCandidate objects.
 
-        Args:
-            candidates: List of AudioCandidate objects.
-            has_paragraph_breaks: List indicating paragraph breaks.
-
-        Returns:
-            Concatenated audio tensor.
         """
         audio_segments = [candidate.audio_tensor for candidate in candidates]
         return self.concatenate_segments(audio_segments, has_paragraph_breaks)
@@ -163,11 +129,6 @@ class AudioProcessor:
     ) -> bool:
         """
         Saves audio tensor to file.
-
-        Args:
-            audio: Audio tensor to save.
-            output_path: Output file path.
-            sample_rate: Sample rate for saving (uses instance default if None).
 
         Returns:
             True if successful, False otherwise.
@@ -197,9 +158,6 @@ class AudioProcessor:
         """
         Loads audio file and returns tensor and sample rate.
 
-        Args:
-            input_path: Path to audio file.
-
         Returns:
             Tuple of (audio_tensor, sample_rate) or (None, None) if failed.
         """
@@ -224,11 +182,6 @@ class AudioProcessor:
         """
         Calculates the duration of an audio tensor in seconds.
 
-        Args:
-            audio: Audio tensor.
-
-        Returns:
-            Duration in seconds.
         """
         if audio.ndim == 1:
             length = audio.shape[0]

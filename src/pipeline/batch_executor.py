@@ -53,11 +53,6 @@ class BatchExecutor:
         """
         Execute multiple tasks in batch mode.
 
-        Args:
-            task_configs: List of TaskConfig objects to execute
-            parallel: Whether to execute tasks in parallel
-            max_workers: Maximum number of parallel workers
-
         Returns:
             BatchResult object with execution summary
         """
@@ -96,11 +91,6 @@ class BatchExecutor:
 
     def _execute_sequential(self, task_configs: List[TaskConfig]) -> List[TaskResult]:
         """
-        Execute tasks sequentially.
-
-        Args:
-            task_configs: List of TaskConfig objects
-
         Returns:
             List of TaskResult objects
         """
@@ -137,12 +127,6 @@ class BatchExecutor:
         self, task_configs: List[TaskConfig], max_workers: int
     ) -> List[TaskResult]:
         """
-        Execute tasks in parallel.
-
-        Args:
-            task_configs: List of TaskConfig objects
-            max_workers: Maximum number of parallel workers
-
         Returns:
             List of TaskResult objects
         """
@@ -191,13 +175,7 @@ class BatchExecutor:
 
     def _execute_single_task(self, task_config: TaskConfig) -> TaskResult:
         """
-        Execute a single task.
-
-        Args:
-            task_config: TaskConfig object
-
-        Returns:
-            TaskResult object
+        Returns: TaskResult object
         """
         # Load config once to avoid duplicate loading
         loaded_config = self.config_manager.load_cascading_config(task_config.config_path)
@@ -214,11 +192,6 @@ class BatchExecutor:
 
     def handle_task_dependencies(self, tasks: List[TaskConfig]) -> List[TaskConfig]:
         """
-        Analyze and handle task dependencies.
-
-        Args:
-            tasks: List of TaskConfig objects
-
         Returns:
             List of TaskConfig objects in dependency order
         """
@@ -244,12 +217,7 @@ class BatchExecutor:
         return ordered_tasks
 
     def _log_batch_summary(self, batch_result: BatchResult):
-        """
-        Log a summary of batch execution results.
 
-        Args:
-            batch_result: BatchResult object
-        """
         logger.info("\n" + "=" * 50)
         logger.info("📋 BATCH EXECUTION SUMMARY")
         logger.info("=" * 50)
@@ -273,12 +241,7 @@ class BatchExecutor:
         logger.info("=" * 50)
 
     def print_detailed_results(self, batch_result: BatchResult):
-        """
-        Print detailed results of batch execution.
 
-        Args:
-            batch_result: BatchResult object
-        """
         logger.info("")
         logger.info("=" * 80)
         logger.info("📊 DETAILED BATCH RESULTS")
@@ -307,12 +270,6 @@ class BatchExecutor:
         self, batch_result: BatchResult, output_path: Optional[Path] = None
     ) -> Path:
         """
-        Generate a detailed batch execution report.
-
-        Args:
-            batch_result: BatchResult object
-            output_path: Optional path for report file
-
         Returns:
             Path to generated report file
         """

@@ -25,15 +25,6 @@ class SpaCyChunker(BaseChunker):
         max_limit: int = 600,
         min_length: int = 200,
     ):
-        """
-        Initializes the SpaCyChunker.
-
-        Args:
-            model_name: The name of the SpaCy model to use.
-            target_limit: The target character limit for each chunk.
-            max_limit: The maximum character limit for each chunk.
-            min_length: The minimum character length for a chunk.
-        """
         self.target_limit = target_limit
         self.max_limit = max_limit
         self.min_length = min_length
@@ -50,12 +41,6 @@ class SpaCyChunker(BaseChunker):
         Chunks the text using SpaCy's sentence segmentation. It aims to create
         chunks that are close to the target limit without exceeding the max limit,
         while respecting sentence boundaries and paragraph breaks.
-
-        Args:
-            text: The text to be chunked.
-
-        Returns:
-            A list of TextChunk objects.
         """
         if not text or not text.strip():
             return []
@@ -185,30 +170,18 @@ class SpaCyChunker(BaseChunker):
         """
         Estimates the number of tokens in a text string.
         A simple proxy for token count.
-
-        Args:
-            text: The text to estimate token length for.
-
-        Returns:
-            The estimated number of tokens.
         """
         return len(text.split())
 
     def _find_optimal_split_point(self, sentences: List[Span]) -> int:
         """
         Finds the optimal split point within a list of sentences to form a chunk.
-        This is a placeholder for more complex logic that could be added later.
-        For now, we greedily add sentences.
-
         Args:
             sentences: A list of SpaCy Span objects (sentences).
 
         Returns:
             The index of the sentence to split after.
         """
-        # This is a simplified logic for now.
-        # A more complex implementation could analyze sentence lengths
-        # to find a better split point.
         return len(sentences)
 
     def _fallback_split_long_sentence(
@@ -217,13 +190,6 @@ class SpaCyChunker(BaseChunker):
         """
         Attempts to split a very long sentence ONCE at a good delimiter near the middle
         to avoid breaking Whisper's context window while minimally disrupting text flow.
-
-        Args:
-            sentence: The SpaCy sentence span that exceeds max_limit
-            max_limit: The maximum character limit for chunks
-
-        Returns:
-            List containing exactly 2 text chunks if split successful, or original text if no good split found
         """
         text = sentence.text_with_ws.strip()
         text_length = len(text)
@@ -294,32 +260,7 @@ class SpaCyChunker(BaseChunker):
     ) -> List[str]:
         """
         Save text chunks to individual text files for analysis and debugging.
-
-        RECOVERY SYSTEM DEPENDENCY WARNING:
-        ===================================
-        This method defines the chunk file naming scheme and content structure that the
-        Recovery System depends on for chunk reconstruction. If you modify:
-
-        1. FILENAME PATTERN: "chunk_{i+1:03d}_{timestamp}.txt" (already 1-based)
-           -> Update: src/recovery/audio_loader.py (load_chunk_text method)
-           -> Update: src/main.py (load_original_chunks_from_recovery function)
-           -> Update: Any recovery code that loads chunk files by pattern
-
-        2. FILE CONTENT STRUCTURE: The metadata header format (=== CHUNK XXX ===, Length:, etc.)
-           -> Update: src/main.py (_extract_text_from_chunk_file function)
-           -> Update: src/recovery/audio_loader.py (load_chunk_text parsing logic)
-
-        3. DIRECTORY STRUCTURE: output_dir (typically texts/ subdirectory)
-           -> Update: src/recovery/audio_loader.py (AudioCandidateLoader.__init__)
-           -> Update: All recovery modules that expect chunks in texts/ directory
-
-        The Recovery System parses these files to reconstruct original chunk text and
-        metadata for intelligent gap analysis and selective recovery operations.
-
-        Args:
-            chunks: List of TextChunk objects to save
-            output_dir: Directory to save chunks in (defaults to data/output/chunks)
-
+        
         Returns:
             List of saved file paths
         """

@@ -17,10 +17,6 @@ def concatenate_audio_segments(
     """
     Concatenate multiple audio segments into a single tensor.
 
-    Args:
-        segments: List of audio tensors to concatenate
-        sample_rate: Sample rate of audio (for validation)
-
     Returns:
         Concatenated audio tensor
     """
@@ -47,12 +43,6 @@ def add_silence_between_segments(
 ) -> List[torch.Tensor]:
     """
     Add silence between audio segments.
-
-    Args:
-        segments: List of audio segments
-        silence_duration: Duration of silence in seconds
-        sample_rate: Sample rate
-        device: Device for silence tensors
 
     Returns:
         List with silence inserted between segments
@@ -86,11 +76,6 @@ def normalize_audio(
     """
     Normalize audio to target RMS level.
 
-    Args:
-        audio: Input audio tensor
-        target_rms: Target RMS level
-        prevent_clipping: Whether to prevent clipping
-
     Returns:
         Normalized audio
     """
@@ -117,12 +102,6 @@ def apply_fade_in_out(
 ) -> torch.Tensor:
     """
     Apply fade in and fade out to audio.
-
-    Args:
-        audio: Input audio tensor
-        fade_in_duration: Fade in duration in seconds
-        fade_out_duration: Fade out duration in seconds
-        sample_rate: Sample rate
 
     Returns:
         Audio with fades applied
@@ -158,11 +137,6 @@ def resample_audio(audio: torch.Tensor, orig_freq: int, new_freq: int) -> torch.
     """
     Resample audio to a new sample rate.
 
-    Args:
-        audio: Input audio tensor
-        orig_freq: Original sample rate
-        new_freq: Target sample rate
-
     Returns:
         Resampled audio
     """
@@ -180,11 +154,6 @@ def save_audio_tensor(
 ) -> None:
     """
     Save audio tensor to file.
-
-    Args:
-        audio: Audio tensor to save
-        file_path: Output file path
-        sample_rate: Audio sample rate (REQUIRED - must be provided by caller)
     """
     # Require sample_rate to be provided explicitly
     if sample_rate is None:
@@ -217,10 +186,6 @@ def load_audio_tensor(
     """
     Load audio file as tensor.
 
-    Args:
-        file_path: Path to audio file
-        target_sample_rate: Target sample rate for resampling (optional)
-
     Returns:
         Tuple of (audio_tensor, actual_sample_rate)
     """
@@ -243,29 +208,15 @@ def load_audio_tensor(
 
 
 def calculate_duration(
-    audio: torch.Tensor, sample_rate: Optional[int] = None  # Remove hardcoded default
+    audio: torch.Tensor, sample_rate: Optional[int] = None
 ) -> float:
     """
     Calculate audio duration in seconds.
 
-    Args:
-        audio: Audio tensor
-        sample_rate: Audio sample rate (REQUIRED - must be provided by caller)
-
     Returns:
-        Duration in seconds
+        Duration in seconds.
     """
-    # Require sample_rate to be provided explicitly
-    if sample_rate is None:
-        raise ValueError(
-            "sample_rate must be provided explicitly. Check pipeline config for 'audio.sample_rate'."
-        )
-
-    if audio.dim() == 2:
-        num_samples = audio.shape[1]
-    else:
-        num_samples = audio.shape[0]
-
+    num_samples = audio.shape[1] if audio.ndim == 2 else audio.shape[0]
     return num_samples / sample_rate
 
 
@@ -274,10 +225,6 @@ def create_silence(
 ) -> torch.Tensor:
     """
     Create silence tensor of specified duration.
-
-    Args:
-        duration: Duration in seconds
-        sample_rate: Audio sample rate (REQUIRED - must be provided by caller)
 
     Returns:
         Silence tensor

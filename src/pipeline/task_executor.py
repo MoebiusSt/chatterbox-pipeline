@@ -59,6 +59,9 @@ class TaskExecutor:
     """
 
     def __init__(self, file_manager: FileManager, task_config: TaskConfig):
+        """
+        Initializes the TaskExecutor.
+        """
         self.file_manager = file_manager
         self.task_config = task_config
 
@@ -276,14 +279,12 @@ class TaskExecutor:
 
     def _execute_stages_from_state(self, task_state: TaskState) -> bool:
         """
-        Execute pipeline stages based on current state.
-
-        Args:
-            task_state: Current task state
+        Executes the pipeline stages based on the current task state.
 
         Returns:
-            True if execution successful
+            True if all required stages completed successfully, False otherwise.
         """
+        success = True
         if task_state.completion_stage == CompletionStage.COMPLETE:
             logger.info("Task already complete")
             return True
@@ -327,11 +328,12 @@ class TaskExecutor:
 
     def execute_preprocessing(self) -> bool:
         """
-        Execute preprocessing stage (text chunking).
+        Execute the text preprocessing stage.
 
         Returns:
-            True if successful
+            True if preprocessing is successful, False otherwise.
         """
+        logger.info("🚀 Starting Preprocessing Stage")
         try:
             logger.info("Starting preprocessing stage")
 
@@ -372,11 +374,12 @@ class TaskExecutor:
 
     def execute_generation(self) -> bool:
         """
-        Execute generation stage (TTS audio generation).
+        Execute the candidate generation stage.
 
         Returns:
-            True if successful
+            True if generation is successful, False otherwise.
         """
+        logger.info("🎙️ Starting Generation Stage")
         try:
             logger.info("")
             logger.info("Starting generation stage")
@@ -507,14 +510,12 @@ class TaskExecutor:
 
     def _generate_candidates_for_chunk(self, chunk: TextChunk) -> List[AudioCandidate]:
         """
-        Generate audio candidates for a single chunk.
-
-        Args:
-            chunk: TextChunk to generate audio for
+        Generates candidates for a single text chunk.
 
         Returns:
-            List of AudioCandidate objects
+            List of generated AudioCandidate objects.
         """
+        logger.debug(f"Generating {self.candidate_manager.max_candidates} candidates for chunk '{chunk.text[:50]}...'")
         try:
             # Use TTSGenerator's built-in candidate generation with parameter variation
             generation_config = self.config["generation"]
@@ -550,16 +551,12 @@ class TaskExecutor:
         self, chunk: TextChunk, missing_indices: List[int]
     ) -> List[AudioCandidate]:
         """
-        Generate missing candidates to fill gaps in the original candidate set.
-        Now uses CandidateManager.generate_specific_candidates for consistency.
-
-        Args:
-            chunk: TextChunk to generate audio for
-            missing_indices: List of specific candidate indices to generate (0-based)
+        Generates specific missing candidates for a chunk.
 
         Returns:
-            List of missing AudioCandidate objects
+            List of newly generated AudioCandidate objects.
         """
+        logger.info(f"Generating missing candidates {missing_indices} for chunk {chunk.idx+1}")
         try:
             logger.debug(
                 f"starting _generate_missing_candidates(): Generating {len(missing_indices)} candidates for indices: {missing_indices}"
@@ -587,45 +584,20 @@ class TaskExecutor:
 
     def _delete_whisper_file(self, chunk_index: int, candidate_idx: int):
         """
-        Delete corresponding whisper validation file for a candidate (ensures re-validation).
-
-        Args:
-            chunk_index: Chunk index (0-based)
-            candidate_idx: Candidate index (1-based)
+        Deletes a specific whisper validation file (e.g., when regenerating a candidate).
         """
-        whisper_dir = self.file_manager.task_directory / "whisper"
-        whisper_file = (
-            whisper_dir
-            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
-        )
-
-        if whisper_file.exists():
-            whisper_file.unlink()
-            logger.debug(f"🗑️ Deleted old whisper file: {whisper_file.name}")
-
-        # Also try alternative naming patterns (in case of inconsistencies)
-        alt_whisper_file = (
-            whisper_dir
-            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
-        )
-        if alt_whisper_file.exists():
-            alt_whisper_file.unlink()
-            logger.debug(f"🗑️ Deleted old whisper TXT file: {alt_whisper_file.name}")
+        self.candidate_manager._delete_whisper_file(self.file_manager.task_directory, chunk_index, candidate_idx)
 
     def _generate_retry_candidates(
         self, chunk: TextChunk, max_retries: int, start_candidate_idx: int
     ) -> List[AudioCandidate]:
         """
-        Generate retry candidates with conservative parameters and ±0.05 variations.
-
-        Args:
-            chunk: TextChunk to generate audio for
-            max_retries: Number of retry candidates to generate
-            start_candidate_idx: Starting candidate index for retry candidates
+        Generates additional conservative candidates if initial generation fails quality.
 
         Returns:
-            List of retry AudioCandidate objects
+            List of additional AudioCandidate objects.
         """
+        retry_candidates = []
         try:
             generation_config = self.config["generation"]
             conservative_config = generation_config.get("conservative_candidate", {})
@@ -648,8 +620,6 @@ class TaskExecutor:
                 f"Generating {max_retries} retry candidates with conservative base values: "
                 f"exag={base_exaggeration:.2f}, cfg={base_cfg_weight:.2f}, temp={base_temperature:.2f}"
             )
-
-            retry_candidates = []
 
             for i in range(max_retries):
                 try:
@@ -745,11 +715,12 @@ class TaskExecutor:
 
     def execute_validation(self) -> bool:
         """
-        Execute validation stage (Whisper validation and quality scoring).
+        Execute the validation stage.
 
         Returns:
-            True if successful
+            True if validation is successful, False otherwise.
         """
+        logger.info("🧐 Starting Validation Stage")
         try:
             logger.info("=" * 50)
             logger.info("Starting validation stage")
@@ -1061,10 +1032,10 @@ class TaskExecutor:
         validation_results: Dict[int, Dict[int, dict]],
     ) -> Dict[str, Any]:
         """
-        Create enhanced metrics using unified QualityScorer logic.
+        Creates a dictionary of enhanced metrics for all chunks and candidates.
 
-        This method now uses QualityScorer.select_best_candidate() for consistent
-        candidate selection, whether from fresh validation or cached JSON results.
+        Returns:
+            A dictionary where keys are chunk indices and values are lists of enhanced metrics for candidates.
         """
         metrics = {
             "timestamp": time.time(),
@@ -1206,6 +1177,7 @@ class TaskExecutor:
         Returns:
             True if successful
         """
+        logger.info("🎵 Starting Assembly Stage")
         try:
             logger.info("Starting assembly stage")
 
@@ -1286,7 +1258,7 @@ class TaskExecutor:
             has_paragraph_breaks: List indicating paragraph breaks
 
         Returns:
-            Assembled audio tensor
+            The concatenated final audio tensor.
         """
         if not audio_segments:
             return torch.tensor([])
@@ -1313,11 +1285,6 @@ class TaskExecutor:
 
     def _apply_post_processing(self, audio: torch.Tensor) -> torch.Tensor:
         """
-        Apply post-processing to the assembled audio.
-
-        Args:
-            audio: Input audio tensor
-
         Returns:
             Post-processed audio tensor
         """

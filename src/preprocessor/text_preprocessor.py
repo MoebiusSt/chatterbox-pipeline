@@ -20,9 +20,6 @@ class TextPreprocessor:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize text preprocessor.
-
-        Args:
-            config: Preprocessing configuration dictionary
         """
         self.config = config or {}
         self.enabled = self.config.get("enabled", True)
@@ -34,8 +31,6 @@ class TextPreprocessor:
         Process text file and save results to output directory.
 
         Args:
-            input_text_path: Path to original input text file
-            output_dir: Directory to save processed files
             text_base_name: Base name for output files (without extension)
 
         Returns:
@@ -82,9 +77,6 @@ class TextPreprocessor:
         """
         Apply text processing transformations.
 
-        Args:
-            text: Original text content
-
         Returns:
             Processed text content
         """
@@ -112,12 +104,6 @@ class TextPreprocessor:
         Validate that processed text exists and is valid.
         Regenerate if needed using run configuration.
 
-        Args:
-            processed_text_path: Path to processed text file
-            run_config_path: Path to run configuration (for regeneration)
-
-        Returns:
-            True if valid processed text exists
         """
         if not processed_text_path.exists():
             logger.warning(f"⚠️ Processed text file missing: {processed_text_path}")
@@ -148,11 +134,6 @@ class TextPreprocessor:
     ) -> bool:
         """
         Regenerate processed text from input copy using run configuration.
-
-        Args:
-            output_dir: Job output directory
-            text_base_name: Base name for files
-            run_config_path: Path to run configuration
 
         Returns:
             True if regeneration successful

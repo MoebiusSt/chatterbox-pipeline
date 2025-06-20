@@ -57,9 +57,6 @@ class TTSGenerator:
         """
         Prepares the model conditionals using reference audio.
         Uses conditional cache to avoid redundant preparation calls.
-
-        Args:
-            wav_fpath: Path to the reference audio file.
         """
         try:
             was_prepared = self.conditional_cache.ensure_conditionals(wav_fpath)
@@ -81,13 +78,6 @@ class TTSGenerator:
     ) -> torch.Tensor:
         """
         Generates a single audio output for the given text.
-
-        Args:
-            text: The text to convert to speech.
-            exaggeration: TTS exaggeration parameter.
-            cfg_weight: TTS CFG weight parameter.
-            temperature: TTS temperature parameter.
-            **kwargs: Additional parameters for the TTS model.
 
         Returns:
             Audio tensor containing the generated speech.
@@ -163,18 +153,6 @@ class TTSGenerator:
         - num_candidates=1 + conservative_enabled=false → 1 expressive candidate (exact config)
         - num_candidates>1 + conservative_enabled=true  → N-1 expressive + 1 conservative (last)
         - num_candidates>1 + conservative_enabled=false → N expressive (1 exact + N-1 ramped)
-
-        Args:
-            text: The text to convert to speech.
-            num_candidates: Number of candidates to generate.
-            exaggeration: Exaggeration MAX value (ramps down from here).
-            cfg_weight: CFG weight MIN value (ramps up from here).
-            temperature: Temperature MIN value (ramps up from here).
-            conservative_config: Conservative candidate configuration.
-            **kwargs: Additional parameters for the TTS model.
-
-        Returns:
-            List of AudioCandidate objects.
         """
         candidates = []
 
@@ -367,24 +345,21 @@ class TTSGenerator:
         **kwargs,
     ) -> List[AudioCandidate]:
         """
-        Generates only specific audio candidates by their indices (0-based).
-        Uses the same parameter variation logic as generate_candidates but generates
-        only the requested indices instead of all candidates.
+        Generates specific audio candidates for the same text input with parameter variation.
+        This method is designed to regenerate specific candidates for recovery or targeted testing.
+        
+        PARAMETER SEMANTICS (as specified by user requirements):
+        - exaggeration: Config value = MAX, ramps DOWN to (config - max_deviation)
+        - cfg_weight: Config value = MIN, ramps UP to (config + max_deviation)  
+        - temperature: Config value = MIN, ramps UP to (config + max_deviation)
 
-        Args:
-            text: The text to convert to speech.
-            candidate_indices: List of 0-based candidate indices to generate.
-            exaggeration: Exaggeration MAX value (ramps down from here).
-            cfg_weight: CFG weight MIN value (ramps up from here).
-            temperature: Temperature MIN value (ramps up from here).
-            conservative_config: Conservative candidate configuration.
-            tts_params: TTS parameters dictionary.
-            total_candidates: Total number of candidates in the complete set (for parameter calculation).
-            **kwargs: Additional parameters for the TTS model.
-
-        Returns:
-            List of AudioCandidate objects for the requested indices.
+        CANDIDATE LOGIC (for the specified candidates):
+        - The provided `candidate_indices` will be generated using parameters determined
+          by their position in the full `num_candidates` range, respecting the ramping logic.
+        - If a conservative candidate is requested, its parameters will be used.
         """
+        candidates = []
+
         if not candidate_indices:
             logger.warning("No candidate indices provided for specific generation")
             return []

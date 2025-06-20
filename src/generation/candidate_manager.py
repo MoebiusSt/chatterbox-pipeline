@@ -47,8 +47,6 @@ class CandidateManager:
         candidates_dir: Optional[str] = None,
     ):
         """
-        Initializes the CandidateManager.
-
         Args:
             tts_generator: TTSGenerator instance
             config: Pipeline configuration
@@ -96,11 +94,6 @@ class CandidateManager:
         """
         Generate all candidates for a chunk.
 
-        Args:
-            text_chunk: TextChunk object
-            chunk_index: Index of the chunk
-            output_dir: Output directory for saving
-
         Returns:
             List of AudioCandidate objects
         """
@@ -139,12 +132,6 @@ class CandidateManager:
         """
         Generate only specific candidate indices for a chunk (selective recovery).
         Uses TTSGenerator.generate_specific_candidates to generate ONLY the missing candidates.
-
-        Args:
-            text_chunk: TextChunk object
-            chunk_index: Index of the chunk
-            candidate_indices: List of specific candidate indices to generate (1-based)
-            output_dir: Output directory for saving
 
         Returns:
             List of AudioCandidate objects
@@ -247,11 +234,6 @@ class CandidateManager:
         3. Select best from all candidates (num_candidates + max_retries total)
         4. On quality ties, prefer shorter audio duration
 
-        Args:
-            chunk: The TextChunk to generate audio for.
-            tts_generator: The TTSGenerator instance to use.
-            generation_params: Parameters for TTS generation.
-
         Returns:
             GenerationResult containing candidates and metadata.
         """
@@ -326,14 +308,10 @@ class CandidateManager:
         self, candidates: List[AudioCandidate], selection_strategy: str = "shortest"
     ) -> Optional[AudioCandidate]:
         """
-        Selects the best candidate from a list of candidates.
-
-        Args:
-            candidates: List of AudioCandidate objects.
-            selection_strategy: Strategy for selection ("shortest", "random", "first").
+        Selects the best audio candidate from a list based on a specified strategy.
 
         Returns:
-            The selected AudioCandidate or None if list is empty.
+            The best AudioCandidate or None if list is empty.
         """
         if not candidates:
             logger.warning("No candidates provided for selection")
@@ -378,15 +356,10 @@ class CandidateManager:
         generation_params: Dict[str, Any],
     ) -> List[GenerationResult]:
         """
-        Processes multiple chunks and generates candidates for each.
-
-        Args:
-            chunks: List of TextChunk objects to process.
-            tts_generator: The TTSGenerator instance to use.
-            generation_params: Parameters for TTS generation.
+        Processes a list of text chunks, generating and managing audio candidates for each.
 
         Returns:
-            List of GenerationResult objects.
+            A list of GenerationResult objects, one for each chunk.
         """
         logger.info(f"Processing {len(chunks)} chunks for candidate generation")
 
@@ -434,23 +407,10 @@ class CandidateManager:
         sample_rate: int = 24000,  # ChatterboxTTS native sample rate
     ) -> List[str]:
         """
-        Save candidates to disk using CORRECT FileManager structure.
-
-        CORRECTED STRUCTURE:
-        ===================================
-        This method now uses the correct directory structure that FileManager expects:
-        - candidates/chunk_001/candidate_01.wav (NOT flat structure with timestamps)
-        - whisper/chunk_001_candidate_01_whisper.json (in whisper/ directory)
-
-        This ensures consistency with FileManager.save_candidates() and proper recovery support.
-
-        Args:
-            candidates: List of audio candidates to save
-            chunk_index: Index of the chunk these candidates belong to
-            sample_rate: Audio sample rate
+        Saves generated audio candidates to disk for inspection/debugging.
 
         Returns:
-            List of saved file paths
+            List of file paths where candidates were saved.
         """
         if not self.save_candidates or not candidates:
             return []
@@ -501,7 +461,7 @@ class CandidateManager:
 
     def _save_candidates_in_correct_structure(self, candidates: List[AudioCandidate], chunk_index: int):
         """
-        Fallback method to save candidates in correct FileManager structure.
+        Helper to save candidates when FileManager is not directly available.
         """
         chunk_dir = self.candidates_dir / f"chunk_{chunk_index+1:03d}"
         chunk_dir.mkdir(parents=True, exist_ok=True)
@@ -528,7 +488,7 @@ class CandidateManager:
 
     def _save_candidate_metadata(self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path):
         """
-        Save candidate metadata consistent with FileManager format.
+        Saves metadata for generated candidates in a JSON file within the chunk directory.
         """
         try:
             candidate_metadata = {
@@ -562,19 +522,10 @@ class CandidateManager:
         prefer_valid: bool = True,
     ) -> Optional[tuple]:
         """
-        Selects the best candidate from validated candidates with proper tie-breaking.
-
-        SELECTION LOGIC:
-        1. If prefer_valid=True, prioritize valid candidates over invalid ones
-        2. Among candidates of same validity, select highest quality score
-        3. On quality score ties, select candidate with shortest audio duration
-
-        Args:
-            candidates_with_validation: List of (candidate, validation_result, quality_score) tuples
-            prefer_valid: Whether to prefer valid candidates over invalid ones
+        Selects the best candidate based on validation results and quality scores.
 
         Returns:
-            The selected (candidate, validation_result, quality_score) tuple or None
+            The best candidate tuple (candidate, validation_result, quality_score) or None.
         """
         if not candidates_with_validation:
             logger.warning("No candidates provided for selection")

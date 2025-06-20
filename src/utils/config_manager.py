@@ -47,6 +47,9 @@ class ConfigManager:
     """
 
     def __init__(self, project_root: Path):
+        """
+        Initializes the ConfigManager.
+        """
         self.project_root = project_root
         self.config_dir = project_root / "config"
         self.output_dir = project_root / "data" / "output"
@@ -78,9 +81,6 @@ class ConfigManager:
         """
         Load configuration with cascading logic.
 
-        Args:
-            job_config_path: Path to job-yaml file, or None for default
-
         Returns:
             Merged configuration dictionary
         """
@@ -99,10 +99,6 @@ class ConfigManager:
     ) -> Dict[str, Any]:
         """
         Merge job-yaml with default-yaml using cascading logic.
-
-        Args:
-            job_config: Job-specific configuration
-            default_config: Default configuration (fallback)
 
         Returns:
             Merged configuration
@@ -127,9 +123,6 @@ class ConfigManager:
     def validate_config(self, config: Dict[str, Any]) -> bool:
         """
         Validate configuration completeness.
-
-        Args:
-            config: Configuration to validate
 
         Returns:
             True if configuration is valid
@@ -171,10 +164,6 @@ class ConfigManager:
         """
         Create a TaskConfig object from merged configuration.
 
-        Args:
-            config: Merged configuration dictionary
-            timestamp: Custom timestamp, or None for current time
-
         Returns:
             TaskConfig object
         """
@@ -211,9 +200,6 @@ class ConfigManager:
         """
         Save task configuration as task-yaml file.
 
-        Args:
-            task_config: TaskConfig to save
-
         Returns:
             Path to saved task-yaml file
         """
@@ -246,9 +232,6 @@ class ConfigManager:
         """
         Check if a config file is a task-yaml (located in job directory).
 
-        Args:
-            config_path: Path to configuration file
-
         Returns:
             True if it's a task-yaml file
         """
@@ -268,10 +251,7 @@ class ConfigManager:
 
     def load_task_config(self, config_path: Path) -> TaskConfig:
         """
-        Load a task-yaml configuration file.
-
-        Args:
-            config_path: Path to task-yaml file
+        Load a saved task-yaml configuration file.
 
         Returns:
             TaskConfig object
@@ -325,13 +305,10 @@ class ConfigManager:
 
     def find_configs_by_job_name(self, job_name: str) -> List[Path]:
         """
-        Find all configuration files for a specific job name.
-
-        Args:
-            job_name: Name of the job to search for
+        Find all configuration files (job-yamls) related to a specific job name.
 
         Returns:
-            List of configuration file paths
+            List of paths to job configuration files.
         """
         configs = []
 
@@ -354,10 +331,7 @@ class ConfigManager:
 
     def find_existing_tasks(self, job_name: str) -> List[TaskConfig]:
         """
-        Find existing task configurations for a job.
-
-        Args:
-            job_name: Name of the job
+        Find existing completed task configurations within the output directory for a given job.
 
         Returns:
             List of TaskConfig objects, sorted by timestamp (newest first)

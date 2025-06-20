@@ -28,9 +28,6 @@ class BaseChunker(ABC):
         """
         Splits a given text into a list of TextChunk objects.
 
-        Args:
-            text: The input text to be chunked.
-
         Returns:
             A list of TextChunk objects.
         """

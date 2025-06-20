@@ -208,9 +208,6 @@ class WhisperValidator:
                 validation_time=validation_time,
             )
 
-            # Note: Final validation decision is made in main.py after fuzzy matching improvements
-            # No logging here to avoid confusion with preliminary Whisper-only scores
-
             return result
 
         except Exception as e:
@@ -329,32 +326,6 @@ class WhisperValidator:
     ) -> List[str]:
         """
         Save whisper transcriptions to text files with enhanced metrics format.
-
-        RECOVERY SYSTEM DEPENDENCY WARNING:
-        ===================================
-        This method defines the transcription file naming scheme and content structure
-        that multiple Recovery System modules depend on. If you modify:
-
-        1. FILENAME PATTERN: "chunk_{chunk_index+1:03d}_candidate_{candidate_idx+1:02d}_whisper.txt"
-           -> Update: src/recovery/gap_analyzer.py (_analyze_transcriptions method)
-           -> Update: src/recovery/state_detector.py (_analyze_transcriptions_directory)
-           -> Update: src/recovery/metrics_loader.py (MetricsLoader._parse_transcription_file)
-           -> Update: src/recovery/validation_recovery.py (save_enhanced_metrics method)
-
-        2. FILE CONTENT FORMAT: The "=== WHISPER TRANSCRIPTION ===" header and metadata structure
-           -> Update: src/recovery/metrics_loader.py (_extract_metrics_from_content method)
-           -> Update: src/recovery/gap_analyzer.py (_validate_transcription_file method)
-           -> Update: src/recovery/validation_recovery.py (_format_enhanced_transcription)
-
-        3. METADATA FIELDS: Whisper Score, Fuzzy Score, Quality Score, Generation Params, etc.
-           -> Update: All recovery modules that parse these enhanced metrics
-           -> Update: src/recovery/metrics_loader.py field extraction methods
-
-        4. DIRECTORY STRUCTURE: output_dir (typically texts/ subdirectory)
-           -> Update: All recovery modules that expect transcriptions in texts/ directory
-
-        The Recovery System uses these files for intelligent analysis, candidate selection,
-        and enhanced validation recovery. Changes here affect recovery capabilities!
 
         Args:
             transcriptions: List of transcription strings

@@ -36,11 +36,6 @@ class ChunkValidator:
         """
         Validates if the chunk's length is within the acceptable limits.
 
-        Args:
-            chunk: The TextChunk to validate.
-
-        Returns:
-            True if the chunk length is valid, False otherwise.
         """
         chunk_len = len(chunk.text)
         if chunk_len > self.max_limit:
@@ -59,12 +54,6 @@ class ChunkValidator:
         """
         Validates that the chunk ends on what looks like a sentence boundary.
         This is a heuristic and may not cover all cases perfectly.
-
-        Args:
-            chunk: The TextChunk to validate.
-
-        Returns:
-            True if the chunk appears to end on a sentence boundary, False otherwise.
         """
         if not chunk.text:
             return True  # An empty chunk is valid in this context
@@ -89,15 +78,7 @@ class ChunkValidator:
         return True
 
     def run_all_validations(self, chunks: List[TextChunk]) -> bool:
-        """
-        Runs all validation checks on a list of chunks.
 
-        Args:
-            chunks: The list of TextChunk objects to validate.
-
-        Returns:
-            True if all chunks pass all validations, False otherwise.
-        """
         all_valid = True
         for i, chunk in enumerate(chunks):
             logger.info(f"Validating chunk {i+1}/{len(chunks)}...")
@@ -123,13 +104,6 @@ class ChunkValidator:
         """
         Validates if the chunk's length is within the acceptable limits, considering its position.
 
-        Args:
-            chunk: The TextChunk to validate.
-            chunk_number: The 1-based chunk number (for context).
-            total_chunks: Total number of chunks.
-
-        Returns:
-            True if the chunk length is valid, False otherwise.
         """
         chunk_len = len(chunk.text)
         is_last_chunk = chunk_number == total_chunks

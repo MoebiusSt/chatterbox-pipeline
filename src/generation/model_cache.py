@@ -136,9 +136,6 @@ class ConditionalCache:
     def __init__(self, model):
         """
         Initialize conditional cache for a model.
-
-        Args:
-            model: ChatterboxTTS model instance
         """
         self.model = model
         self.current_reference_audio = None
@@ -148,9 +145,6 @@ class ConditionalCache:
         """
         Ensure conditionals are prepared for the given reference audio.
         Only calls prepare_conditionals if the reference audio has changed.
-
-        Args:
-            reference_audio_path: Path to reference audio file
 
         Returns:
             True if conditionals were prepared, False if already cached

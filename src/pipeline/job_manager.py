@@ -68,9 +68,6 @@ class JobManager:
         """
         Check if config path points to a task-yaml file.
 
-        Args:
-            config_path: Path to configuration file
-
         Returns:
             True if it's a task-yaml file
         """
@@ -94,9 +91,6 @@ class JobManager:
     def find_jobs_by_name(self, job_name: str) -> List[TaskConfig]:
         """
         Find all jobs (configs) matching a specific job name.
-
-        Args:
-            job_name: Name of the job to search for
 
         Returns:
             List of TaskConfig objects
@@ -186,9 +180,6 @@ class JobManager:
         """
         Find existing task configurations for a job.
 
-        Args:
-            job_name: Name of the job
-
         Returns:
             List of TaskConfig objects for existing tasks
         """
@@ -218,7 +209,12 @@ class JobManager:
         return task_config
 
     def prompt_user_selection(self, tasks: List[TaskConfig]) -> UserChoice:
-        """Prompt user to select task execution strategy."""
+        """
+        Prompt user to select task execution strategy.
+
+        Returns:
+            UserChoice enum indicating the user's selection.
+        """
         if not tasks:
             return UserChoice.NEW
 
@@ -346,9 +342,7 @@ class JobManager:
         Parse the unified --mode argument that can be either:
         - Global strategy: "all", "new", "last"
         - Job-specific strategies: "job1:new,job2:all,job3:last"
-        
-        Args:
-            mode_arg: The --mode argument value
+    
             
         Returns:
             Tuple of (job_strategies_dict, global_strategy)
@@ -393,14 +387,10 @@ class JobManager:
         self, args: Any, config_files: Optional[List[Path]] = None
     ) -> ExecutionPlan:
         """
-        Resolve execution plan based on arguments and config files.
-
-        Args:
-            args: Command line arguments
-            config_files: List of config files to process
+        Resolves the execution plan based on CLI arguments and available job configurations.
 
         Returns:
-            ExecutionPlan object
+            An ExecutionPlan object detailing the tasks to be executed.
         """
         task_configs = []
         execution_mode = "single"
@@ -676,13 +666,8 @@ class JobManager:
 
     def validate_execution_plan(self, plan: ExecutionPlan) -> bool:
         """
-        Validate an execution plan.
+        Validates the generated execution plan.
 
-        Args:
-            plan: ExecutionPlan to validate
-
-        Returns:
-            True if plan is valid
         """
         # Allow cancelled execution plans
         if plan.execution_mode == "cancelled":
@@ -710,10 +695,6 @@ class JobManager:
     def _validate_mixed_configurations(self, task_configs: List[TaskConfig]) -> bool:
         """
         Validate that mixed task configurations are compatible.
-
-        Args:
-            task_configs: List of TaskConfig objects to validate
-
         Returns:
             True if configurations are compatible
         """
@@ -783,12 +764,7 @@ class JobManager:
         return True
 
     def print_execution_summary(self, plan: ExecutionPlan) -> None:
-        """
-        Print a summary of the execution plan.
 
-        Args:
-            plan: ExecutionPlan to summarize
-        """
         logger.info("")
         logger.info("=" * 50)
         logger.info("📋 EXECUTION PLAN SUMMARY")
