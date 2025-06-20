@@ -6,14 +6,58 @@
 
 ---
 
+## **🚀 UNIVERSELLE IMPORT-STRATEGIE**
+
+**Problemstellung**: Inkonsistente Import-Patterns führen zu `ModuleNotFoundError` beim Refactoring.
+
+### **Lösung: Einheitliche Import-Regeln**
+
+**1. Für Scripts (`scripts/`):**
+```bash
+# Terminal-Ausführung IMMER mit PYTHONPATH:
+PYTHONPATH=/path/to/project/src python3 script_name.py
+
+# Oder in Script mit aktiviertem venv:
+source venv/bin/activate && PYTHONPATH=$(pwd)/src python3 scripts/script_name.py
+```
+
+**2. Für Source-Module (`src/`):**
+```python
+# NEUE SUBMODULE: Verwende relative Imports zu src/ Ebene
+# Beispiel in src/pipeline/job_manager/execution_planner.py:
+from ...utils.config_manager import ConfigManager      # 3 Ebenen hoch zu src/
+from ...utils.file_manager import FileManager
+
+# BESTEHENDE MODULE: Verwende bestehende Pattern
+from utils.file_manager import FileManager             # Funktioniert bereits
+from pipeline.task_executor import TaskExecutor
+```
+
+**3. Test-Strategie:**
+```bash
+# Import-Test IMMER mit PYTHONPATH:
+PYTHONPATH=/path/to/project/src python3 -c "from module import Class"
+
+# Pipeline-Test:
+cd /path/to/project && PYTHONPATH=./src python3 src/main.py --mode new
+```
+
+**4. __init__.py Export-Regel:**
+```python
+# Neue Submodule MÜSSEN Hauptklassen exportieren:
+# src/pipeline/job_manager/__init__.py
+from .job_manager import JobManager
+from .execution_planner import ExecutionPlanner
+# Legacy-Kompatibilität für bestehende Imports
+```
+
+---
+
 ## **📊 Aktueller Zustand**
 
 ### **Problematische Datei**
 - `job_manager.py`: **804 Zeilen** 
 
-### **Identifizierte Probleme**
-4. **Redundante Kommentare**: Selbsterklärende oder allzu verbose Docstrings oder Kommentare enthalten? Dann reduzieren
-5. **Monolithische Klassen**: Mehrere Verantwortlichkeiten pro Klasse
 
 ---
 
@@ -88,34 +132,33 @@ _validate_mixed_configurations() (100 Zeilen)
 ...
 
 
-### **2.2 Imports.Inkonsistente Patterns prüfen:**
+### **2.2 Imports: Anwendung der universellen Strategie**
 
-Hat der neue Code nach der Aufteilung des Moduls inkosistente Import Patterns? 
-Als Beispiel:
+**Nach der Aufteilung SOFORT prüfen:**
 
 ```python
-# scripts/test_task_system.py - INKONSISTENT:
-from src.pipeline.job_manager import JobManager      # ← mit src. prefix
-from pipeline.task_executor import TaskExecutor     # ← ohne src. prefix
+# ✅ RICHTIG - Neue JobManager Submodule (3 Ebenen hoch zu src/):
+# src/pipeline/job_manager/execution_planner.py:
+from ...utils.config_manager import ConfigManager
+from ...utils.file_manager import FileManager, TaskConfig
+
+# ✅ RICHTIG - Neue JobManager (2 Ebenen hoch zu src/):
+# src/pipeline/job_manager/job_manager.py:
+from ..task_executor import TaskExecutor
+from .execution_planner import ExecutionPlanner
+
+# ✅ RICHTIG - Export in __init__.py:
+# src/pipeline/job_manager/__init__.py:
+from .job_manager import JobManager
+from .execution_planner import ExecutionPlanner
 ```
 
-**Vereinheitlichen zu:**
-```python
-# Für Scripts: IMMER src. prefix verwenden
-from src.pipeline.job_manager import JobManager
-from src.pipeline.task_executor import TaskExecutor
 
-# Für Source Files: IMMER relative imports
-from ..pipeline.job_manager import JobManager
-from .task_executor import TaskExecutor
-```
-
-
-### **2.3 Funktionstest**
+### **2.3 Funktionstest mit universeller Import-Strategie**
 
 **Test-Reihenfolge:**
-1. **Neue Abhängigkeiten**: Prüfe: Andere Stellen in der Code-Basis welche Funktionen des aufgeteilten Moduls verwenden - verwenden diese nun die neue Submodule?
-2. **Import-Test**: Beispielsweise `python -c "from src.main import main"`
-3. **Pipeline-Test**: `python src/main.py --mode new` (default-job ausführen)
-4. **Recovery-Test**: Vorhandene Task ausführen `python src/main.py --mode last` (letzten default-job nochmal prüfen lassen)
-5. **Fehler aufwicklung** Wenn Error oder Laufzeitabbrücke auftreten nach der Aufteilung des Moduls, verwende zum Debuggen als Referenz die Backupup-Datei 'src/pipeline/task_executor_backup-before-refactor.py', um zu sehen wie es vor der Aufteilung funktionierte.
+1. **Import-Test**: `PYTHONPATH=$(pwd)/src python3 -c "from pipeline.job_manager import JobManager"`
+2. **Pipeline-Test**: `cd $(pwd) && PYTHONPATH=./src python3 src/main.py --mode new`
+3. **Recovery-Test**: `cd $(pwd) && PYTHONPATH=./src python3 src/main.py --mode last`
+4. **Script-Test**: `source venv/bin/activate && PYTHONPATH=$(pwd)/src python3 scripts/test_task_system.py`
+5. **Fehler aufwicklung** Wenn Error oder Laufzeitabbrücke auftreten nach der Aufteilung des Moduls, verwende zum Debuggen als Referenz die Backupup-Datei 'src/pipeline/job_manager_backup-before-refactor.py', um zu sehen wie es vor der Aufteilung funktionierte.
