@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-JobManager facade for backward compatibility.
+JobManager wrapper for backward compatibility.
 Combines all job management modules into a single interface.
 """
 
@@ -28,7 +28,7 @@ ExecutionPlan = ExecutionPlan
 
 class JobManager:
     """
-    Facade JobManager that combines all job management functionality.
+    Wrapper JobManager that combines all job management functionality.
     Maintains backward compatibility with the original monolithic class.
     """
 
