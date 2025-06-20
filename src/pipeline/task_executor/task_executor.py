@@ -225,12 +225,18 @@ class TaskExecutor:
                             execution_time=time.time() - start_time,
                         )
 
+                    # Find the actual final audio file path
+                    final_audio_path = None
+                    final_files = list(self.file_manager.final_dir.glob("*_final.wav"))
+                    if final_files:
+                        final_audio_path = max(final_files, key=lambda f: f.stat().st_mtime)
+
                     return TaskResult(
                         task_config=self.task_config,
                         success=True,
                         completion_stage=CompletionStage.COMPLETE,
                         execution_time=time.time() - start_time,
-                        final_audio_path=self.file_manager.get_final_audio(),
+                        final_audio_path=final_audio_path,
                     )
 
             # Execute stages based on current state
@@ -243,8 +249,11 @@ class TaskExecutor:
                     execution_time=time.time() - start_time,
                 )
 
-            # Success - get final stage and paths
-            final_audio_path = self.file_manager.get_final_audio()
+            # Success - get final audio file path
+            final_audio_path = None
+            final_files = list(self.file_manager.final_dir.glob("*_final.wav"))
+            if final_files:
+                final_audio_path = max(final_files, key=lambda f: f.stat().st_mtime)
 
             return TaskResult(
                 task_config=self.task_config,
