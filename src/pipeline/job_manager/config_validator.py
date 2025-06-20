@@ -7,6 +7,7 @@ import logging
 from typing import Dict, List
 
 from utils.config_manager import ConfigManager, TaskConfig
+
 from .types import ExecutionPlan
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class ConfigValidator:
         # Allow cancelled execution plans
         if plan.execution_mode == "cancelled":
             return True
-            
+
         if not plan.task_configs:
             logger.error("No tasks in execution plan")
             return False
@@ -49,7 +50,10 @@ class ConfigValidator:
 
         # Group by job names
         jobs_by_name: Dict[str, List[TaskConfig]] = {}
-        task_configs_by_type: Dict[str, List[TaskConfig]] = {"job_config": [], "task_config": []}
+        task_configs_by_type: Dict[str, List[TaskConfig]] = {
+            "job_config": [],
+            "task_config": [],
+        }
 
         for task_config in task_configs:
             # Determine if this is from a job config or task config
@@ -108,4 +112,4 @@ class ConfigValidator:
         else:
             logger.info("✅ Configurations are fully compatible")
 
-        return True 
+        return True

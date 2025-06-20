@@ -76,14 +76,45 @@ class StructuredFormatter(logging.Formatter):
             return super().format(record)
 
         message = record.getMessage()
-        icon_list = ['🎯', '✅', '❌', '⚠️', '🔍', 'ℹ️', '🚨', '📝', '⚡', '🚦', '🔧', '▶️', '⏳', '📁', '🤖', '〰️', '⚙️', '🚀', '💾', '🎵', '📊', '🎙️', '🔄', '⏭️', '♻️', '🗑️', '✓', '🎛️', '💻', '🏁']
+        icon_list = [
+            "🎯",
+            "✅",
+            "❌",
+            "⚠️",
+            "🔍",
+            "ℹ️",
+            "🚨",
+            "📝",
+            "⚡",
+            "🚦",
+            "🔧",
+            "▶️",
+            "⏳",
+            "📁",
+            "🤖",
+            "〰️",
+            "⚙️",
+            "🚀",
+            "💾",
+            "🎵",
+            "📊",
+            "🎙️",
+            "🔄",
+            "⏭️",
+            "♻️",
+            "🗑️",
+            "✓",
+            "🎛️",
+            "💻",
+            "🏁",
+        ]
 
         # Multi-codepoint-safe Icon-Erkennung am Zeilenanfang
         stripped = message.lstrip()
         for icon in icon_list:
             if stripped.startswith(icon):
                 # Alles nach dem Icon (inkl. Whitespaces) entfernen, exakt ein Leerzeichen einfügen
-                rest = stripped[len(icon):].lstrip()
+                rest = stripped[len(icon) :].lstrip()
                 record.msg = f"{icon} {rest}" if rest else icon
                 record.args = None
                 return super().format(record)
@@ -104,7 +135,9 @@ class StructuredFormatter(logging.Formatter):
         """Check if we should skip adding an icon (for structural messages)."""
         return (
             # Has emoji (simple Unicode check) - improved to catch more cases
-            any(ord(c) > 0x1F300 for c in message[:30])  # Extended range and check more characters
+            any(
+                ord(c) > 0x1F300 for c in message[:30]
+            )  # Extended range and check more characters
             or set(message.strip()) <= {"=", "-", " "}
             or message.count(":") > 2
             or "TTS PIPELINE" in message

@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from utils.config_manager import ConfigManager, TaskConfig
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -224,10 +223,10 @@ class JobManager:
 
         job_name = tasks[0].job_name if tasks else "Unknown"
         print(f"\nFound existing tasks for job '{job_name}':")
-        
+
         # Store selected task index for SPECIFIC choice
         self.selected_task_index = 0  # Default to latest (first in sorted list)
-        
+
         for i, task in enumerate(tasks, 1):
             # Parse timestamp for better display
             try:
@@ -238,7 +237,7 @@ class JobManager:
                 # Fallback parsing for debugging
                 date_str = "Parse_Error"
                 time_str = task.timestamp
-            
+
             # Get text file name from task config
             text_file = "unknown"
             try:
@@ -253,13 +252,15 @@ class JobManager:
                 file_parts = config_name.split("_")
                 if len(file_parts) >= 1:
                     text_file = file_parts[0]
-            
+
             # Format display according to specification:
             # "1. {job-name} - {job-run-label} - {doc-name.txt} - {date as 16.07.2025} - {time as 19:15} (<-- latest)"
             latest_marker = " (<-- latest)" if i == 1 else ""  # First item is newest
             run_label_display = task.run_label if task.run_label else "no-label"
-            
-            print(f"{i}. {task.job_name} - {run_label_display} - {text_file}.txt - {date_str} - {time_str}{latest_marker}")
+
+            print(
+                f"{i}. {task.job_name} - {run_label_display} - {text_file}.txt - {date_str} - {time_str}{latest_marker}"
+            )
 
         print("\nSelect action:")
         print("[Enter] - Run latest task (Check task)")
@@ -275,14 +276,14 @@ class JobManager:
         if choice == "":
             # Latest task selected - ask for additional options like specific task selection
             latest_task = tasks[0]  # First in sorted list (newest)
-            
+
             # Parse timestamp for display
             try:
                 dt = datetime.strptime(latest_task.timestamp, "%Y%m%d_%H%M%S")
                 display_time = dt.strftime("%d.%m.%Y %H:%M")
             except ValueError:
                 display_time = latest_task.timestamp
-                
+
             print(f"\nSelected latest task: {latest_task.job_name} - {display_time}")
             print("\nWhat to do with this task?")
             print("[Enter] - Run task (Check task)")
@@ -313,14 +314,14 @@ class JobManager:
             # Store the selected task index (convert to 0-based)
             self.selected_task_index = int(choice) - 1
             selected_task = tasks[self.selected_task_index]
-            
+
             # Parse timestamp for display
             try:
                 dt = datetime.strptime(selected_task.timestamp, "%Y%m%d_%H%M%S")
                 display_time = dt.strftime("%d.%m.%Y %H:%M")
             except ValueError:
                 display_time = selected_task.timestamp
-                
+
             print(f"\nSelected task: {selected_task.job_name} - {display_time}")
             print("\nWhat to do with this task?")
             print("[Enter] - Run task (Check task)")
@@ -341,21 +342,23 @@ class JobManager:
         print("Invalid choice, defaulting to latest task")
         return UserChoice.LATEST
 
-    def parse_mode_argument(self, mode_arg: Optional[str]) -> tuple[Dict[str, ExecutionStrategy], Optional[ExecutionStrategy]]:
+    def parse_mode_argument(
+        self, mode_arg: Optional[str]
+    ) -> tuple[Dict[str, ExecutionStrategy], Optional[ExecutionStrategy]]:
         """
         Parse the unified --mode argument that can be either:
         - Global strategy: "all", "new", "last"
         - Job-specific strategies: "job1:new,job2:all,job3:last"
-        
+
         Args:
             mode_arg: The --mode argument value
-            
+
         Returns:
             Tuple of (job_strategies_dict, global_strategy)
         """
         if not mode_arg:
             return {}, None
-            
+
         def normalize_strategy(strategy: str) -> str:
             """Normalize strategy aliases to canonical form."""
             strategy = strategy.strip()
@@ -363,7 +366,7 @@ class JobManager:
             if strategy == "new-last":
                 return "last-new"
             return strategy
-            
+
         # Check if it contains job-specific format (contains colon)
         if ":" in mode_arg:
             # Job-specific strategies: "job1:new,job2:all"
@@ -372,7 +375,9 @@ class JobManager:
                 for pair in mode_arg.split(","):
                     job_name, strategy = pair.split(":")
                     normalized_strategy = normalize_strategy(strategy)
-                    job_strategies[job_name.strip()] = ExecutionStrategy(normalized_strategy)
+                    job_strategies[job_name.strip()] = ExecutionStrategy(
+                        normalized_strategy
+                    )
                 return job_strategies, None
             except ValueError:
                 raise ValueError(
@@ -437,7 +442,10 @@ class JobManager:
                     for task in task_configs:
                         task.add_final = True
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                elif (
+                    strategy == ExecutionStrategy.LAST
+                    or strategy == ExecutionStrategy.LATEST
+                ):
                     # Use latest task
                     task_configs = [existing_tasks[0]]
                 elif strategy == ExecutionStrategy.LAST_NEW:
@@ -455,19 +463,23 @@ class JobManager:
                         return ExecutionPlan([], "cancelled")
                     elif choice == UserChoice.LATEST:
                         if existing_tasks:
-                            task_configs = [existing_tasks[0]]  # First in sorted list (newest)
+                            task_configs = [
+                                existing_tasks[0]
+                            ]  # First in sorted list (newest)
                     elif choice == UserChoice.SPECIFIC:
-                        if existing_tasks and hasattr(self, 'selected_task_index'):
+                        if existing_tasks and hasattr(self, "selected_task_index"):
                             task_configs = [existing_tasks[self.selected_task_index]]
                         elif existing_tasks:
                             task_configs = [existing_tasks[0]]  # Fallback to latest
                     elif choice == UserChoice.LATEST_NEW:
                         if existing_tasks:
-                            task_config = existing_tasks[0]  # First in sorted list (newest)
+                            task_config = existing_tasks[
+                                0
+                            ]  # First in sorted list (newest)
                             task_config.add_final = True
                             task_configs = [task_config]
                     elif choice == UserChoice.SPECIFIC_NEW:
-                        if existing_tasks and hasattr(self, 'selected_task_index'):
+                        if existing_tasks and hasattr(self, "selected_task_index"):
                             task_config = existing_tasks[self.selected_task_index]
                             task_config.add_final = True
                             task_configs = [task_config]
@@ -532,11 +544,16 @@ class JobManager:
                             for task in all_tasks:
                                 task.add_final = True
                             task_configs.extend(all_tasks)
-                        elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                        elif (
+                            strategy == ExecutionStrategy.LAST
+                            or strategy == ExecutionStrategy.LATEST
+                        ):
                             task_configs.append(existing_tasks[0])
                         elif strategy == ExecutionStrategy.LAST_NEW:
                             # Use latest task + force new final audio
-                            task_config = existing_tasks[0]  # First in sorted list (newest)
+                            task_config = existing_tasks[
+                                0
+                            ]  # First in sorted list (newest)
                             task_config.add_final = True
                             task_configs.append(task_config)
                         else:
@@ -549,24 +566,40 @@ class JobManager:
                                 continue
                             elif choice == UserChoice.LATEST:
                                 if existing_tasks:
-                                    task_configs.append(existing_tasks[0])  # First in sorted list (newest)
+                                    task_configs.append(
+                                        existing_tasks[0]
+                                    )  # First in sorted list (newest)
                             elif choice == UserChoice.SPECIFIC:
-                                if existing_tasks and hasattr(self, 'selected_task_index'):
-                                    task_configs.append(existing_tasks[self.selected_task_index])
+                                if existing_tasks and hasattr(
+                                    self, "selected_task_index"
+                                ):
+                                    task_configs.append(
+                                        existing_tasks[self.selected_task_index]
+                                    )
                                 elif existing_tasks:
-                                    task_configs.append(existing_tasks[0])  # Fallback to latest
+                                    task_configs.append(
+                                        existing_tasks[0]
+                                    )  # Fallback to latest
                             elif choice == UserChoice.LATEST_NEW:
                                 if existing_tasks:
-                                    task_config = existing_tasks[0]  # First in sorted list (newest)
+                                    task_config = existing_tasks[
+                                        0
+                                    ]  # First in sorted list (newest)
                                     task_config.add_final = True
                                     task_configs.append(task_config)
                             elif choice == UserChoice.SPECIFIC_NEW:
-                                if existing_tasks and hasattr(self, 'selected_task_index'):
-                                    task_config = existing_tasks[self.selected_task_index]
+                                if existing_tasks and hasattr(
+                                    self, "selected_task_index"
+                                ):
+                                    task_config = existing_tasks[
+                                        self.selected_task_index
+                                    ]
                                     task_config.add_final = True
                                     task_configs.append(task_config)
                                 elif existing_tasks:
-                                    task_config = existing_tasks[0]  # Fallback to latest
+                                    task_config = existing_tasks[
+                                        0
+                                    ]  # Fallback to latest
                                     task_config.add_final = True
                                     task_configs.append(task_config)
                             elif choice == UserChoice.ALL_NEW:
@@ -594,7 +627,7 @@ class JobManager:
             existing_tasks = self.find_existing_tasks(job_name)
 
             if existing_tasks:
-                # Apply strategy for default job  
+                # Apply strategy for default job
                 strategy = job_strategies.get(job_name, global_strategy)
 
                 if strategy == ExecutionStrategy.NEW:
@@ -609,7 +642,10 @@ class JobManager:
                     for task in task_configs:
                         task.add_final = True
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LAST or strategy == ExecutionStrategy.LATEST:
+                elif (
+                    strategy == ExecutionStrategy.LAST
+                    or strategy == ExecutionStrategy.LATEST
+                ):
                     task_configs = [existing_tasks[0]]  # Use first (newest) not last
                 elif strategy == ExecutionStrategy.LAST_NEW:
                     # Use latest task + force new final audio
@@ -626,19 +662,23 @@ class JobManager:
                         return ExecutionPlan([], "cancelled")
                     elif choice == UserChoice.LATEST:
                         if existing_tasks:
-                            task_configs = [existing_tasks[0]]  # First in sorted list (newest)
+                            task_configs = [
+                                existing_tasks[0]
+                            ]  # First in sorted list (newest)
                     elif choice == UserChoice.SPECIFIC:
-                        if existing_tasks and hasattr(self, 'selected_task_index'):
+                        if existing_tasks and hasattr(self, "selected_task_index"):
                             task_configs = [existing_tasks[self.selected_task_index]]
                         elif existing_tasks:
                             task_configs = [existing_tasks[0]]  # Fallback to latest
                     elif choice == UserChoice.LATEST_NEW:
                         if existing_tasks:
-                            task_config = existing_tasks[0]  # First in sorted list (newest)
+                            task_config = existing_tasks[
+                                0
+                            ]  # First in sorted list (newest)
                             task_config.add_final = True
                             task_configs = [task_config]
                     elif choice == UserChoice.SPECIFIC_NEW:
-                        if existing_tasks and hasattr(self, 'selected_task_index'):
+                        if existing_tasks and hasattr(self, "selected_task_index"):
                             task_config = existing_tasks[self.selected_task_index]
                             task_config.add_final = True
                             task_configs = [task_config]
@@ -664,7 +704,7 @@ class JobManager:
                 task_configs = [new_task]
 
         # Set add_final flag for all tasks if requested
-        if hasattr(args, 'add_final') and args.add_final:
+        if hasattr(args, "add_final") and args.add_final:
             for task_config in task_configs:
                 task_config.add_final = True
 
@@ -687,7 +727,7 @@ class JobManager:
         # Allow cancelled execution plans
         if plan.execution_mode == "cancelled":
             return True
-            
+
         if not plan.task_configs:
             logger.error("No tasks in execution plan")
             return False

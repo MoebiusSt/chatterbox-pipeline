@@ -8,9 +8,10 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Union
 
-# Use absolute import pattern like existing modules
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.file_manager import AudioCandidate
+
+# Use absolute import pattern like existing modules
+
 
 
 class TranscriptionIO:
@@ -53,9 +54,7 @@ class TranscriptionIO:
             zip(transcriptions, candidate_indices)
         ):
             try:
-                filename = (
-                    f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx+1:02d}_whisper.txt"
-                )
+                filename = f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx+1:02d}_whisper.txt"
                 filepath = output_path / filename
 
                 val_data = (
@@ -121,4 +120,4 @@ class TranscriptionIO:
                 f"Saved {len(saved_paths)} enhanced transcriptions for chunk {chunk_index}"
             )
 
-        return saved_paths 
+        return saved_paths

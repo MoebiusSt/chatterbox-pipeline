@@ -14,11 +14,10 @@ from pathlib import Path
 
 import requests
 
-# Add src to Python path
-src_path = Path(__file__).parent.parent / "src"
-sys.path.append(str(src_path))
-
 from config.github_config import check_ci_status
+
+# Import statements - use PYTHONPATH=$(pwd)/src when running this script
+
 
 
 def extract_error_details(log_text: str) -> str:
@@ -156,7 +155,9 @@ def get_commit_sha(commit_ref: str = None) -> str:
     return result.stdout.strip()
 
 
-def check_workflow_status(commit_sha: str, token: str, log_file: Path = None, is_first_write: bool = True):
+def check_workflow_status(
+    commit_sha: str, token: str, log_file: Path = None, is_first_write: bool = True
+):
     """Check workflow status for a commit."""
     try:
         status = check_ci_status(commit_sha)
@@ -291,14 +292,14 @@ def main():
     if args.log:
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
-        
+
         # Handle case where user provides path with logs/ prefix
         log_filename = args.log
         if log_filename.startswith("logs/"):
             log_filename = log_filename[5:]  # Remove "logs/" prefix
         elif log_filename.startswith("logs\\"):
             log_filename = log_filename[5:]  # Remove "logs\" prefix (Windows)
-        
+
         log_file = log_dir / log_filename
 
     # Check status
@@ -311,7 +312,9 @@ def main():
         is_first_write = True
         while time.time() - start_time < max_wait_time:
             check_workflow_status(commit_sha, token, log_file, is_first_write)
-            is_first_write = False  # After first write, append mode for subsequent writes
+            is_first_write = (
+                False  # After first write, append mode for subsequent writes
+            )
 
             # Check if workflow is complete
             status = check_ci_status(commit_sha)

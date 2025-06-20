@@ -224,7 +224,7 @@ class AudioProcessor:
             if len(nonzero_indices) == 0:
                 logger.warning("No non-silent frames found")
                 return audio
-                
+
             start_idx = int(nonzero_indices[0].item())
             end_idx = int(nonzero_indices[-1].item()) + 1
 

@@ -12,15 +12,12 @@ from typing import List, Optional
 
 import torch
 
-# Path correction for imports
+# Project root detection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SRC_ROOT = PROJECT_ROOT / "src"
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(SRC_ROOT))
 
 from pipeline.batch_executor import BatchExecutor
-from pipeline.job_manager_wrapper import JobManager
 from pipeline.job_manager.types import ExecutionPlan
+from pipeline.job_manager_facade import JobManager
 from pipeline.task_executor import TaskExecutor
 from utils.config_manager import ConfigManager, TaskConfig
 from utils.file_manager import FileManager
@@ -193,8 +190,6 @@ def main() -> int:
         if verbose_mode:
             logging.getLogger().setLevel(logging.DEBUG)
 
-        
-
         logger.info("\n" + "=" * 50)
         logger.info("TTS PIPELINE - TASK-BASED EXECUTION SYSTEM")
         logger.info("=" * 50)
@@ -273,7 +268,7 @@ def main() -> int:
             task_executor = TaskExecutor(file_manager, task_config)
             # Set the loaded config directly to avoid re-loading in TaskExecutor
             task_executor.config = loaded_config
-            
+
             result = task_executor.execute_task()
 
             # Report results

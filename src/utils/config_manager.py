@@ -13,8 +13,6 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-import logging
-
 logger = logging.getLogger(__name__)
 
 
@@ -271,7 +269,7 @@ class ConfigManager:
             time_part = parts[-1]  # HHMMSS
             date_part = parts[-2]  # YYYYMMDD
             timestamp = f"{date_part}_{time_part}"  # YYYYMMDD_HHMMSS
-            
+
             if len(parts) >= 4:
                 run_label = parts[-3]
                 text_base = "_".join(parts[:-3])
@@ -354,6 +352,6 @@ class ConfigManager:
             except ValueError:
                 # Fallback for malformed timestamps - put them at the end
                 return datetime.min
-                
+
         tasks.sort(key=lambda t: parse_timestamp(t.timestamp), reverse=True)
         return tasks

@@ -20,7 +20,7 @@ class FinalAudioIOHandler:
     def __init__(self, final_dir: Path, candidates_dir: Path, config: dict):
         """
         Initialize FinalAudioIOHandler.
-        
+
         Args:
             final_dir: Directory for final audio files
             candidates_dir: Directory for candidate files
@@ -36,15 +36,20 @@ class FinalAudioIOHandler:
         try:
             text_base = Path(self.config["input"]["text_file"]).stem
             run_label = self.config["job"].get("run-label", "")
-            filename = f"{text_base}_{run_label}_final.wav" if run_label else f"{text_base}_final.wav"
-            
+            filename = (
+                f"{text_base}_{run_label}_final.wav"
+                if run_label
+                else f"{text_base}_final.wav"
+            )
+
             audio_path = self.final_dir / filename
             sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
             torchaudio.save(str(audio_path), audio.unsqueeze(0), sample_rate)
-            
-            metadata_path = self.final_dir / filename.replace('.wav', '_metadata.json')
+
+            metadata_path = self.final_dir / filename.replace(".wav", "_metadata.json")
             with open(metadata_path, "w", encoding="utf-8") as f:
                 import json
+
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
@@ -56,7 +61,7 @@ class FinalAudioIOHandler:
         final_files = list(self.final_dir.glob("*_final.wav"))
         if not final_files:
             return None
-        
+
         final_file = max(final_files, key=lambda f: f.stat().st_mtime)
         try:
             audio, _ = torchaudio.load(str(final_file))
@@ -65,7 +70,9 @@ class FinalAudioIOHandler:
             logger.error(f"Error loading final audio {final_file}: {e}")
             return None
 
-    def get_audio_segments(self, selected_candidates: Dict[int, int]) -> List[torch.Tensor]:
+    def get_audio_segments(
+        self, selected_candidates: Dict[int, int]
+    ) -> List[torch.Tensor]:
         """
         Load selected audio segments for assembly.
 
@@ -91,23 +98,25 @@ class FinalAudioIOHandler:
             if audio_file.exists():
                 try:
                     audio, _ = torchaudio.load(str(audio_file))
-                    
+
                     # VALIDATE loaded audio
                     if audio.numel() == 0:
                         raise ValueError("Empty audio file")
                     if torch.isnan(audio).any() or torch.isinf(audio).any():
                         raise ValueError("Audio contains NaN or Inf values")
-                        
+
                     audio_segments.append(audio.squeeze(0))  # Remove batch dimension
-                    
+
                 except Exception as e:
-                    logger.error(f"🚨 CORRUPT AUDIO DETECTED in final assembly: {audio_file}")
+                    logger.error(
+                        f"🚨 CORRUPT AUDIO DETECTED in final assembly: {audio_file}"
+                    )
                     logger.error(f"   Error: {e}")
                     logger.error(f"   Falling back to silence for chunk {chunk_idx}")
-                    
+
                     # Remove corrupt file and its validation data
                     self._remove_corrupt_candidate(chunk_idx, candidate_idx)
-                    
+
                     # Add silence as fallback instead of breaking the entire final audio
                     sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
                     silence_duration = 2.0  # 2 seconds of silence as fallback
@@ -133,5 +142,7 @@ class FinalAudioIOHandler:
                 logger.info(f"🗑️ Removed corrupt audio file: {audio_file}")
                 return True
         except Exception as e:
-            logger.error(f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}")
-        return False 
+            logger.error(
+                f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}"
+            )
+        return False

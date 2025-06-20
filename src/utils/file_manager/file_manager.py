@@ -10,18 +10,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from utils.config_manager import ConfigManager, TaskConfig
+
 from .io_handlers import (
+    CandidateIOHandler,
     ChunkIOHandler,
-    CandidateIOHandler, 
-    WhisperIOHandler,
+    FinalAudioIOHandler,
     MetricsIOHandler,
-    FinalAudioIOHandler
+    WhisperIOHandler,
 )
-from .state_analyzer import StateAnalyzer, TaskState, CompletionStage
-from .validation_helpers import ValidationHelpers
 
 # Re-export classes for backward compatibility
 from .io_handlers.candidate_io import AudioCandidate
+from .state_analyzer import CompletionStage, StateAnalyzer, TaskState
+from .validation_helpers import ValidationHelpers
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,11 @@ class FileManager:
     Delegates operations to specialized handlers.
     """
 
-    def __init__(self, task_config: Union[TaskConfig, Dict[str, Any]], preloaded_config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self,
+        task_config: Union[TaskConfig, Dict[str, Any]],
+        preloaded_config: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Initialize FileManager with task configuration.
 
@@ -42,7 +47,11 @@ class FileManager:
             preloaded_config: Optional pre-loaded config to avoid redundant loading
         """
         # Use duck typing instead of strict isinstance checks
-        if hasattr(task_config, 'base_output_dir') and hasattr(task_config, 'job_name') and hasattr(task_config, 'config_path'):
+        if (
+            hasattr(task_config, "base_output_dir")
+            and hasattr(task_config, "job_name")
+            and hasattr(task_config, "config_path")
+        ):
             # TaskConfig-like object (duck typing)
             self.task_config = task_config
             self.task_directory = task_config.base_output_dir
@@ -68,7 +77,9 @@ class FileManager:
             self.job_name = tc.job_name
 
         else:
-            raise TypeError(f"Expected TaskConfig-like object or dict, got {type(task_config)}")
+            raise TypeError(
+                f"Expected TaskConfig-like object or dict, got {type(task_config)}"
+            )
 
         # Set up directory structure
         self.task_directory.mkdir(parents=True, exist_ok=True)
@@ -96,22 +107,28 @@ class FileManager:
         # Initialize specialized handlers
         self._chunk_handler = ChunkIOHandler(self.texts_dir)
         self._candidate_handler = CandidateIOHandler(self.candidates_dir, self.config)
-        self._whisper_handler = WhisperIOHandler(self.whisper_dir, self.task_directory, self.candidates_dir)
+        self._whisper_handler = WhisperIOHandler(
+            self.whisper_dir, self.task_directory, self.candidates_dir
+        )
         self._metrics_handler = MetricsIOHandler(self.task_directory)
-        self._final_audio_handler = FinalAudioIOHandler(self.final_dir, self.candidates_dir, self.config)
-        
+        self._final_audio_handler = FinalAudioIOHandler(
+            self.final_dir, self.candidates_dir, self.config
+        )
+
         # Initialize helpers
-        self._validation_helpers = ValidationHelpers(self.candidates_dir, self.whisper_dir, self._whisper_handler)
+        self._validation_helpers = ValidationHelpers(
+            self.candidates_dir, self.whisper_dir, self._whisper_handler
+        )
         self._state_analyzer = StateAnalyzer(
-            self.task_directory, 
-            self.candidates_dir, 
+            self.task_directory,
+            self.candidates_dir,
             self.config,
             self._chunk_handler,
             self._candidate_handler,
             self._whisper_handler,
             self._metrics_handler,
             self._final_audio_handler,
-            self.get_input_text
+            self.get_input_text,
         )
 
     def _find_project_root(self) -> Path:
@@ -158,11 +175,20 @@ class FileManager:
         return self._chunk_handler.get_chunks()
 
     # Delegated Operations - Candidate Handler
-    def save_candidates(self, chunk_idx: int, candidates: List[AudioCandidate], overwrite_existing: bool = False) -> bool:
+    def save_candidates(
+        self,
+        chunk_idx: int,
+        candidates: List[AudioCandidate],
+        overwrite_existing: bool = False,
+    ) -> bool:
         """Save audio candidates for a chunk."""
-        return self._candidate_handler.save_candidates(chunk_idx, candidates, overwrite_existing)
+        return self._candidate_handler.save_candidates(
+            chunk_idx, candidates, overwrite_existing
+        )
 
-    def get_candidates(self, chunk_idx: Optional[int] = None) -> Dict[int, List[AudioCandidate]]:
+    def get_candidates(
+        self, chunk_idx: Optional[int] = None
+    ) -> Dict[int, List[AudioCandidate]]:
         """Load audio candidates."""
         return self._candidate_handler.get_candidates(chunk_idx)
 
@@ -171,7 +197,9 @@ class FileManager:
         """Save Whisper validation result."""
         return self._whisper_handler.save_whisper(chunk_idx, candidate_idx, result)
 
-    def get_whisper(self, chunk_idx: int, candidate_idx: Optional[int] = None) -> Dict[int, dict]:
+    def get_whisper(
+        self, chunk_idx: int, candidate_idx: Optional[int] = None
+    ) -> Dict[int, dict]:
         """Load Whisper validation results."""
         return self._whisper_handler.get_whisper(chunk_idx, candidate_idx)
 
@@ -179,9 +207,13 @@ class FileManager:
         """Migrate existing individual whisper files to enhanced_metrics.json format."""
         return self._whisper_handler.migrate_whisper_to_enhanced_metrics()
 
-    def cleanup_duplicate_whisper_files(self, keep_individual_files: bool = True) -> bool:
+    def cleanup_duplicate_whisper_files(
+        self, keep_individual_files: bool = True
+    ) -> bool:
         """Clean up duplicate validation data after successful migration."""
-        return self._whisper_handler.cleanup_duplicate_whisper_files(keep_individual_files)
+        return self._whisper_handler.cleanup_duplicate_whisper_files(
+            keep_individual_files
+        )
 
     # Delegated Operations - Metrics Handler
     def save_metrics(self, metrics: dict) -> bool:
@@ -213,4 +245,6 @@ class FileManager:
     # Delegated Operations - Validation Helpers
     def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:
         """Remove corrupt candidate file and its validation data."""
-        return self._validation_helpers.remove_corrupt_candidate(chunk_idx, candidate_idx) 
+        return self._validation_helpers.remove_corrupt_candidate(
+            chunk_idx, candidate_idx
+        )

@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 class PreprocessingHandler:
     """Handles text preprocessing stage."""
 
-    def __init__(self, file_manager: FileManager, config: Dict[str, Any], chunker: SpaCyChunker):
+    def __init__(
+        self, file_manager: FileManager, config: Dict[str, Any], chunker: SpaCyChunker
+    ):
         self.file_manager = file_manager
         self.config = config
         self.chunker = chunker
@@ -55,4 +57,4 @@ class PreprocessingHandler:
 
         except Exception as e:
             logger.error(f"Preprocessing stage failed: {e}", exc_info=True)
-            return False 
+            return False

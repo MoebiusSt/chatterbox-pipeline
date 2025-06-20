@@ -8,8 +8,6 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-import logging
-
 logger = logging.getLogger(__name__)
 
 
@@ -126,7 +124,9 @@ class ValidationProgressTracker(ProgressTracker):
         super().__init__(total_items, description, bar_width)
         # Only log start for validation if there are multiple items
         if total_items > 1:
-            logger.debug(f"Starting {description}: {total_items} candidates to validate")
+            logger.debug(
+                f"Starting {description}: {total_items} candidates to validate"
+            )
 
     def update_with_texts(
         self,

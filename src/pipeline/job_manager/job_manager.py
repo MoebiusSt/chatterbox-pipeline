@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from utils.config_manager import ConfigManager, TaskConfig
+
 from .types import ExecutionStrategy
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class JobManager:
     """
     Core job discovery and task creation.
-    
+
     Handles:
     - Job discovery and task creation
     - Task management operations
@@ -128,21 +129,23 @@ class JobManager:
         logger.info(f"Created new task: {task_config.config_path}")
         return task_config
 
-    def parse_mode_argument(self, mode_arg: Optional[str]) -> tuple[Dict[str, Any], Optional[Any]]:
+    def parse_mode_argument(
+        self, mode_arg: Optional[str]
+    ) -> tuple[Dict[str, Any], Optional[Any]]:
         """
         Parse the unified --mode argument that can be either:
         - Global strategy: "all", "new", "last"
         - Job-specific strategies: "job1:new,job2:all,job3:last"
-    
-            
+
+
         Returns:
             Tuple of (job_strategies_dict, global_strategy)
         """
         # ExecutionStrategy is now imported from types module
-        
+
         if not mode_arg:
             return {}, None
-            
+
         def normalize_strategy(strategy: str) -> str:
             """Normalize strategy aliases to canonical form."""
             strategy = strategy.strip()
@@ -150,11 +153,11 @@ class JobManager:
             if strategy == "new-last":
                 return "latest-new"
             elif strategy == "last":
-                return "latest" 
+                return "latest"
             elif strategy == "last-new":
                 return "latest-new"
             return strategy
-            
+
         # Check if it contains job-specific format (contains colon)
         if ":" in mode_arg:
             # Job-specific strategies: "job1:new,job2:all"
@@ -163,7 +166,9 @@ class JobManager:
                 for pair in mode_arg.split(","):
                     job_name, strategy = pair.split(":")
                     normalized_strategy = normalize_strategy(strategy)
-                    job_strategies[job_name.strip()] = ExecutionStrategy(normalized_strategy)
+                    job_strategies[job_name.strip()] = ExecutionStrategy(
+                        normalized_strategy
+                    )
                 return job_strategies, None
             except ValueError:
                 raise ValueError(
@@ -178,4 +183,4 @@ class JobManager:
             except ValueError:
                 raise ValueError(
                     f"Invalid --mode strategy '{mode_arg}'. Use: latest/last, all, new, latest-new/last-new/new-last, all-new, or job-specific format 'job1:strategy,job2:strategy'"
-                ) 
+                )

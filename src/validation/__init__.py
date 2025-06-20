@@ -4,10 +4,10 @@ Provides Whisper-based audio validation, fuzzy text matching, and quality scorin
 """
 
 from .fuzzy_matcher import FuzzyMatcher, MatchResult
-from .quality_scorer import QualityScore, QualityScorer, ScoringStrategy
-from .whisper_validator import ValidationResult, WhisperValidator
-from .transcription_io import TranscriptionIO
 from .quality_calculator import QualityCalculator
+from .quality_scorer import QualityScore, QualityScorer, ScoringStrategy
+from .transcription_io import TranscriptionIO
+from .whisper_validator import ValidationResult, WhisperValidator
 
 __all__ = [
     "WhisperValidator",

@@ -12,8 +12,6 @@ from typing import Any, Dict, Optional
 
 import torch
 
-import logging
-
 logger = logging.getLogger(__name__)
 
 
@@ -77,11 +75,21 @@ class ChatterboxModelCache:
         try:
             # Suppress PyTorch and Transformers warnings during model loading
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message=".*torch.backends.cuda.sdp_kernel.*", category=FutureWarning)
-                warnings.filterwarnings("ignore", message=".*LlamaModel is using LlamaSdpaAttention.*")
-                warnings.filterwarnings("ignore", message=".*does not support `output_attentions=True`.*")
-                warnings.filterwarnings("ignore", message=".*attn_implementation.*", category=FutureWarning)
-                
+                warnings.filterwarnings(
+                    "ignore",
+                    message=".*torch.backends.cuda.sdp_kernel.*",
+                    category=FutureWarning,
+                )
+                warnings.filterwarnings(
+                    "ignore", message=".*LlamaModel is using LlamaSdpaAttention.*"
+                )
+                warnings.filterwarnings(
+                    "ignore", message=".*does not support `output_attentions=True`.*"
+                )
+                warnings.filterwarnings(
+                    "ignore", message=".*attn_implementation.*", category=FutureWarning
+                )
+
                 # Import ChatterboxTTS
                 from chatterbox.tts import ChatterboxTTS
 

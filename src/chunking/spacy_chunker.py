@@ -260,7 +260,7 @@ class SpaCyChunker(BaseChunker):
     ) -> List[str]:
         """
         Save text chunks to individual text files for analysis and debugging.
-        
+
         Returns:
             List of saved file paths
         """

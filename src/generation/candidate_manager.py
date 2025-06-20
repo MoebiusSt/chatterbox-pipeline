@@ -10,16 +10,13 @@ from chunking.base_chunker import TextChunk
 from utils.file_manager import AudioCandidate
 from utils.file_manager.io_handlers.candidate_io import CandidateIOHandler
 
-from .tts_generator import TTSGenerator
 from .batch_processor import BatchProcessor, GenerationResult
 from .selection_strategies import SelectionStrategies
+from .tts_generator import TTSGenerator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-
 
 
 class CandidateManager:
@@ -76,7 +73,7 @@ class CandidateManager:
         # Initialize components
         self.batch_processor = BatchProcessor(max_retries=max_retries)
         self.selection_strategies = SelectionStrategies()
-        
+
         # Initialize candidate IO handler
         if self.save_candidates:
             self.candidate_io = CandidateIOHandler(self.candidates_dir, self.config)
@@ -166,7 +163,9 @@ class CandidateManager:
             try:
                 # Delete corresponding whisper file BEFORE saving new candidate (ensures re-validation)
                 if self.save_candidates:
-                    self.candidate_io._delete_whisper_file(output_dir, chunk_index, candidate.candidate_idx + 1)
+                    self.candidate_io._delete_whisper_file(
+                        output_dir, chunk_index, candidate.candidate_idx + 1
+                    )
 
                 # Update candidate metadata for FileManager compatibility
                 candidate.chunk_idx = chunk_index
@@ -184,7 +183,9 @@ class CandidateManager:
 
         # Use FileManager to save candidates in correct structure (chunk_XXX/candidate_YY.wav)
         if saved_candidates and self.save_candidates:
-            self.candidate_io._save_candidates_in_correct_structure(saved_candidates, chunk_index)
+            self.candidate_io._save_candidates_in_correct_structure(
+                saved_candidates, chunk_index
+            )
 
         logger.debug(
             f"✅ Successfully generated {len(saved_candidates)}/{len(candidate_indices)} specific candidates for chunk {chunk_index+1}"
@@ -212,16 +213,16 @@ class CandidateManager:
         logger.info(
             f"Starting candidate generation for chunk (length: {len(chunk.text)} chars)"
         )
-        logger.debug(f"Chunk text preview: '{chunk.text[:100]}{'...' if len(chunk.text) > 100 else ''}'")
+        logger.debug(
+            f"Chunk text preview: '{chunk.text[:100]}{'...' if len(chunk.text) > 100 else ''}'"
+        )
 
         all_candidates = []
         generation_attempts = 0
 
         # PHASE 1: Generate normal candidates
         generation_attempts += 1
-        logger.info(
-            f"Phase 1: Generating {self.max_candidates} normal candidates"
-        )
+        logger.info(f"Phase 1: Generating {self.max_candidates} normal candidates")
 
         try:
             params_for_attempt = generation_params.copy()
@@ -280,7 +281,9 @@ class CandidateManager:
     def select_best_candidate(
         self, candidates: List[AudioCandidate], selection_strategy: str = "shortest"
     ) -> Optional[AudioCandidate]:
-        return self.selection_strategies.select_best_candidate(candidates, selection_strategy)
+        return self.selection_strategies.select_best_candidate(
+            candidates, selection_strategy
+        )
 
     def select_best_candidate_with_validation(
         self,

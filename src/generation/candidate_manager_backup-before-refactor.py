@@ -181,7 +181,9 @@ class CandidateManager:
         for candidate in specific_candidates:
             try:
                 # Delete corresponding whisper file BEFORE saving new candidate (ensures re-validation)
-                self._delete_whisper_file(output_dir, chunk_index, candidate.candidate_idx + 1)
+                self._delete_whisper_file(
+                    output_dir, chunk_index, candidate.candidate_idx + 1
+                )
 
                 # Update candidate metadata for FileManager compatibility
                 candidate.chunk_idx = chunk_index
@@ -198,7 +200,7 @@ class CandidateManager:
                 continue
 
         # Use FileManager to save candidates in correct structure (chunk_XXX/candidate_YY.wav)
-        if saved_candidates and hasattr(self, 'file_manager'):
+        if saved_candidates and hasattr(self, "file_manager"):
             self.file_manager.save_candidates(chunk_index, saved_candidates)
         elif saved_candidates:
             # Fallback: save manually in correct structure if file_manager not available
@@ -209,10 +211,12 @@ class CandidateManager:
         )
         return saved_candidates
 
-    def _delete_whisper_file(self, output_dir: Path, chunk_index: int, candidate_idx: int):
+    def _delete_whisper_file(
+        self, output_dir: Path, chunk_index: int, candidate_idx: int
+    ):
         """
         Delete corresponding whisper validation file for a candidate (ensures re-validation).
-        
+
         Args:
             output_dir: Output directory containing whisper subdirectory
             chunk_index: Chunk index (0-based)
@@ -220,14 +224,20 @@ class CandidateManager:
         """
         # CORRECTED: Whisper files are in whisper/ directory, not texts/
         whisper_dir = output_dir / "whisper"
-        whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
+        whisper_file = (
+            whisper_dir
+            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
+        )
 
         if whisper_file.exists():
             whisper_file.unlink()
             logger.debug(f"🗑️ Deleted old whisper file: {whisper_file.name}")
-            
+
         # Also try alternative naming patterns (in case of inconsistencies)
-        alt_whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
+        alt_whisper_file = (
+            whisper_dir
+            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
+        )
         if alt_whisper_file.exists():
             alt_whisper_file.unlink()
             logger.debug(f"🗑️ Deleted old whisper TXT file: {alt_whisper_file.name}")
@@ -258,16 +268,16 @@ class CandidateManager:
         logger.info(
             f"Starting candidate generation for chunk (length: {len(chunk.text)} chars)"
         )
-        logger.debug(f"Chunk text preview: '{chunk.text[:100]}{'...' if len(chunk.text) > 100 else ''}'")
+        logger.debug(
+            f"Chunk text preview: '{chunk.text[:100]}{'...' if len(chunk.text) > 100 else ''}'"
+        )
 
         all_candidates = []
         generation_attempts = 0
 
         # PHASE 1: Generate normal candidates
         generation_attempts += 1
-        logger.info(
-            f"Phase 1: Generating {self.max_candidates} normal candidates"
-        )
+        logger.info(f"Phase 1: Generating {self.max_candidates} normal candidates")
 
         try:
             params_for_attempt = generation_params.copy()
@@ -469,17 +479,17 @@ class CandidateManager:
 
                 # Delete corresponding whisper file if it exists (ensures re-validation)
                 if self.output_dir:
-                    self._delete_whisper_file(self.output_dir, chunk_index, candidate.candidate_idx + 1)
+                    self._delete_whisper_file(
+                        self.output_dir, chunk_index, candidate.candidate_idx + 1
+                    )
 
                 # Save audio to file
                 # Ensure audio tensor is 2D for torchaudio.save (channels, samples)
                 audio_tensor = candidate.audio_tensor.cpu()
                 if audio_tensor.ndim == 1:
                     audio_tensor = audio_tensor.unsqueeze(0)  # Add channel dimension
-                
-                torchaudio.save(
-                    str(filepath), audio_tensor, sample_rate
-                )
+
+                torchaudio.save(str(filepath), audio_tensor, sample_rate)
 
                 # Update candidate metadata with correct path
                 candidate.audio_path = filepath
@@ -499,7 +509,9 @@ class CandidateManager:
 
         return saved_paths
 
-    def _save_candidates_in_correct_structure(self, candidates: List[AudioCandidate], chunk_index: int):
+    def _save_candidates_in_correct_structure(
+        self, candidates: List[AudioCandidate], chunk_index: int
+    ):
         """
         Fallback method to save candidates in correct FileManager structure.
         """
@@ -524,9 +536,13 @@ class CandidateManager:
                 logger.debug(f"Saved candidate to correct structure: {filepath}")
 
             except Exception as e:
-                logger.error(f"Failed to save candidate {candidate.candidate_idx+1}: {e}")
+                logger.error(
+                    f"Failed to save candidate {candidate.candidate_idx+1}: {e}"
+                )
 
-    def _save_candidate_metadata(self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path):
+    def _save_candidate_metadata(
+        self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path
+    ):
         """
         Save candidate metadata consistent with FileManager format.
         """
@@ -547,6 +563,7 @@ class CandidateManager:
             metadata_path = chunk_dir / "candidates_metadata.json"
             with open(metadata_path, "w", encoding="utf-8") as f:
                 import json
+
                 json.dump(candidate_metadata, f, indent=2)
 
             logger.debug(f"Saved candidate metadata: {metadata_path}")

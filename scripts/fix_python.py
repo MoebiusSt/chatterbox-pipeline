@@ -33,7 +33,7 @@ class PythonCodeFixer:
 
         # Use mypy.ini configuration to avoid path conflicts
         config_file = self.project_root / "mypy.ini"
-        
+
         result = subprocess.run(
             [
                 "mypy",
@@ -244,7 +244,9 @@ class PythonCodeFixer:
         """Run interactive fixing process."""
         print(f"🐍 Python Code Fixer - Project: {self.project_root.name}")
         print("=" * 50)
-        print("⚠️  SAFE MODE: Only formatting fixes (Black) will be applied automatically")
+        print(
+            "⚠️  SAFE MODE: Only formatting fixes (Black) will be applied automatically"
+        )
         print("⚠️  Import sorting and other changes require manual confirmation")
         print("=" * 50)
 
@@ -284,10 +286,12 @@ class PythonCodeFixer:
             for file_path, diff in isort_changes.items():
                 print(f"\n{file_path}:")
                 print(diff[:300] + "..." if len(diff) > 300 else diff)
-            
-            print("\n⚠️  WARNING: Import reordering can potentially break code in rare cases")
+
+            print(
+                "\n⚠️  WARNING: Import reordering can potentially break code in rare cases"
+            )
             print("   (e.g., if imports have side effects or circular dependencies)")
-            
+
             if not self.auto_fix:
                 if self._ask_user("Apply import sorting? (CAUTION: Review changes!)"):
                     self.apply_isort_formatting()
@@ -300,7 +304,7 @@ class PythonCodeFixer:
         if not flake8_ok:
             print("\n📋 MANUAL REVIEW REQUIRED:")
             print("   - F401 (unused imports): Remove carefully, may break code")
-            print("   - E402 (imports not at top): Often intentional, check context") 
+            print("   - E402 (imports not at top): Often intentional, check context")
             print("   - F811 (redefinition): Needs code restructuring")
             print("   - F821 (undefined name): Fix undefined variables")
             print("   - Other issues: Review and fix manually")
@@ -313,16 +317,16 @@ class PythonCodeFixer:
             f"{'✅' if mypy_ok else '❌'} MyPy:       {'PASS' if mypy_ok else 'FAIL'}"
         )
         print(f"✅ Black:      {'PASS' if black_ok else 'FAIL'}")
-        print(f"{'✅' if isort_ok else '⚠️ '} isort:      {'PASS' if isort_ok else 'NEEDS REVIEW'}")
+        print(
+            f"{'✅' if isort_ok else '⚠️ '} isort:      {'PASS' if isort_ok else 'NEEDS REVIEW'}"
+        )
         print(
             f"{'✅' if flake8_ok else '⚠️ '} flake8:     {'PASS' if flake8_ok else 'NEEDS MANUAL FIX'}"
         )
 
         # Only Black is critical for safe auto-fixing
         safe_critical_ok = syntax_ok and black_ok
-        print(
-            f"\n🎯 Safe Auto-Fix: {'COMPLETE' if safe_critical_ok else 'NEEDS WORK'}"
-        )
+        print(f"\n🎯 Safe Auto-Fix: {'COMPLETE' if safe_critical_ok else 'NEEDS WORK'}")
         if not isort_ok or not flake8_ok:
             print("⚠️  Manual review recommended for import sorting and linting issues")
 

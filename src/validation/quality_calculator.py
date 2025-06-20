@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 # Use absolute import pattern like existing modules
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+
 
 if TYPE_CHECKING:
     from utils.file_manager import AudioCandidate
@@ -74,11 +74,11 @@ class QualityCalculator:
 
             quality_score = (
                 similarity_score * 0.7  # 70% similarity (increased from 60%)
-                + length_score * 0.30   # 30% text length comparison
+                + length_score * 0.30  # 30% text length comparison
             )
 
             return min(1.0, max(0.0, quality_score))
 
         except Exception as e:
             self.logger.warning(f"Quality score calculation failed: {e}")
-            return similarity_score 
+            return similarity_score

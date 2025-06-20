@@ -43,12 +43,21 @@ class TaskState:
 class StateAnalyzer:
     """Analyzes task completion state."""
 
-    def __init__(self, task_directory: Path, candidates_dir: Path, config: dict,
-                 chunk_handler, candidate_handler, whisper_handler, 
-                 metrics_handler, final_audio_handler, get_input_text_func):
+    def __init__(
+        self,
+        task_directory: Path,
+        candidates_dir: Path,
+        config: dict,
+        chunk_handler,
+        candidate_handler,
+        whisper_handler,
+        metrics_handler,
+        final_audio_handler,
+        get_input_text_func,
+    ):
         """
         Initialize StateAnalyzer.
-        
+
         Args:
             task_directory: Main task directory
             candidates_dir: Directory for candidate files
@@ -96,23 +105,27 @@ class StateAnalyzer:
         # Check candidates - improved to check file system completeness
         candidates = self.candidate_handler.get_candidates()
         has_candidates = {}
-        expected_candidates_per_chunk = self.config.get("generation", {}).get("num_candidates", 5)
-        
+        expected_candidates_per_chunk = self.config.get("generation", {}).get(
+            "num_candidates", 5
+        )
+
         for chunk_idx in range(len(chunks)):
             chunk_candidates = candidates.get(chunk_idx, [])
             has_candidates[chunk_idx] = len(chunk_candidates)
-            
+
             # Also check file system for expected candidates
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
             if chunk_dir.exists():
                 # Count actual .wav files in chunk directory
                 actual_wav_files = list(chunk_dir.glob("candidate_*.wav"))
                 file_count = len(actual_wav_files)
-                
+
                 # Check if we have the expected number of candidates
                 if file_count < expected_candidates_per_chunk:
                     missing_components.append(f"candidates_chunk_{chunk_idx}")
-                    logger.debug(f"Chunk {chunk_idx}: expected {expected_candidates_per_chunk}, found {file_count} files")
+                    logger.debug(
+                        f"Chunk {chunk_idx}: expected {expected_candidates_per_chunk}, found {file_count} files"
+                    )
             else:
                 missing_components.append(f"candidates_chunk_{chunk_idx}")
 
@@ -121,30 +134,38 @@ class StateAnalyzer:
         for chunk_idx in range(len(chunks)):
             whisper_results = self.whisper_handler.get_whisper(chunk_idx)
             has_whisper[chunk_idx] = set(whisper_results.keys())
-            
+
             # Check against actual candidate files, not just loaded candidates
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
             if chunk_dir.exists():
                 actual_wav_files = list(chunk_dir.glob("candidate_*.wav"))
                 expected_whisper_count = len(actual_wav_files)
-                
+
                 if len(whisper_results) < expected_whisper_count:
                     missing_components.append(f"whisper_chunk_{chunk_idx}")
-                    logger.debug(f"Chunk {chunk_idx}: expected {expected_whisper_count} whisper validations, found {len(whisper_results)}")
-                    
+                    logger.debug(
+                        f"Chunk {chunk_idx}: expected {expected_whisper_count} whisper validations, found {len(whisper_results)}"
+                    )
+
                     # Log which specific candidates are missing whisper validation
                     for wav_file in actual_wav_files:
                         # Extract candidate index from filename (candidate_01.wav -> 0)
                         try:
-                            candidate_num = int(wav_file.stem.split('_')[1]) - 1
+                            candidate_num = int(wav_file.stem.split("_")[1]) - 1
                             if candidate_num not in whisper_results:
-                                logger.debug(f"Missing whisper validation for chunk {chunk_idx}, candidate {candidate_num}")
+                                logger.debug(
+                                    f"Missing whisper validation for chunk {chunk_idx}, candidate {candidate_num}"
+                                )
                         except (IndexError, ValueError):
-                            logger.warning(f"Could not parse candidate index from {wav_file}")
+                            logger.warning(
+                                f"Could not parse candidate index from {wav_file}"
+                            )
             else:
                 # No chunk directory means no candidates at all
                 if len(whisper_results) > 0:
-                    logger.warning(f"Found whisper results for chunk {chunk_idx} but no candidate directory")
+                    logger.warning(
+                        f"Found whisper results for chunk {chunk_idx} but no candidate directory"
+                    )
 
         # Check metrics
         metrics = self.metrics_handler.get_metrics()
@@ -183,4 +204,4 @@ class StateAnalyzer:
             has_final_audio=has_final_audio,
             completion_stage=completion_stage,
             missing_components=missing_components,
-        ) 
+        )

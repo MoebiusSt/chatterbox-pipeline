@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List
 
 from utils.config_manager import ConfigManager, TaskConfig
+
 from .types import UserChoice
 
 logger = logging.getLogger(__name__)
@@ -28,10 +29,10 @@ class UserInteraction:
 
         job_name = tasks[0].job_name if tasks else "Unknown"
         print(f"\nFound existing tasks for job '{job_name}':")
-        
+
         # Store selected task index for SPECIFIC choice
         self.selected_task_index = 0  # Default to latest (first in sorted list)
-        
+
         for i, task in enumerate(tasks, 1):
             # Parse timestamp for better display
             try:
@@ -42,7 +43,7 @@ class UserInteraction:
                 # Fallback parsing for debugging
                 date_str = "Parse_Error"
                 time_str = task.timestamp
-            
+
             # Get text file name from task config
             text_file = "unknown"
             try:
@@ -57,13 +58,15 @@ class UserInteraction:
                 file_parts = config_name.split("_")
                 if len(file_parts) >= 1:
                     text_file = file_parts[0]
-            
+
             # Format display according to specification:
             # "1. {job-name} - {job-run-label} - {doc-name.txt} - {date as 16.07.2025} - {time as 19:15} (<-- latest)"
             latest_marker = " (<-- latest)" if i == 1 else ""  # First item is newest
             run_label_display = task.run_label if task.run_label else "no-label"
-            
-            print(f"{i}. {task.job_name} - {run_label_display} - {text_file}.txt - {date_str} - {time_str}{latest_marker}")
+
+            print(
+                f"{i}. {task.job_name} - {run_label_display} - {text_file}.txt - {date_str} - {time_str}{latest_marker}"
+            )
 
         print("\nSelect action:")
         print("[Enter] - Run latest task (Check task)")
@@ -79,14 +82,14 @@ class UserInteraction:
         if choice == "":
             # Latest task selected - ask for additional options like specific task selection
             latest_task = tasks[0]  # First in sorted list (newest)
-            
+
             # Parse timestamp for display
             try:
                 dt = datetime.strptime(latest_task.timestamp, "%Y%m%d_%H%M%S")
                 display_time = dt.strftime("%d.%m.%Y %H:%M")
             except ValueError:
                 display_time = latest_task.timestamp
-                
+
             print(f"\nSelected latest task: {latest_task.job_name} - {display_time}")
             print("\nWhat to do with this task?")
             print("[Enter] - Run task (Check task)")
@@ -117,14 +120,14 @@ class UserInteraction:
             # Store the selected task index (convert to 0-based)
             self.selected_task_index = int(choice) - 1
             selected_task = tasks[self.selected_task_index]
-            
+
             # Parse timestamp for display
             try:
                 dt = datetime.strptime(selected_task.timestamp, "%Y%m%d_%H%M%S")
                 display_time = dt.strftime("%d.%m.%Y %H:%M")
             except ValueError:
                 display_time = selected_task.timestamp
-                
+
             print(f"\nSelected task: {selected_task.job_name} - {display_time}")
             print("\nWhat to do with this task?")
             print("[Enter] - Run task (Check task)")
@@ -143,4 +146,4 @@ class UserInteraction:
                 return UserChoice.SPECIFIC
 
         print("Invalid choice, defaulting to latest task")
-        return UserChoice.LATEST 
+        return UserChoice.LATEST

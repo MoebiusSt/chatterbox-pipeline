@@ -13,9 +13,6 @@ from pathlib import Path
 import torch
 import yaml
 
-# Add src to path for imports
-sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
-
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
 from generation.audio_processor import AudioProcessor
@@ -23,6 +20,9 @@ from generation.tts_generator import AudioCandidate
 from validation.fuzzy_matcher import FuzzyMatcher, MatchResult
 from validation.quality_scorer import QualityScorer, ScoringStrategy
 from validation.whisper_validator import ValidationResult, WhisperValidator
+
+# Import statements - use PYTHONPATH=$(pwd)/src when running this script
+
 
 # Configure logging
 logging.basicConfig(
@@ -74,7 +74,9 @@ def create_mock_candidates_with_variations(chunks, num_candidates=3):
             candidate = AudioCandidate(
                 chunk_idx=chunk_idx,
                 candidate_idx=candidate_idx + 1,  # 1-based indexing
-                audio_path=Path(f"mock_chunk_{chunk_idx}_candidate_{candidate_idx + 1}.wav"),
+                audio_path=Path(
+                    f"mock_chunk_{chunk_idx}_candidate_{candidate_idx + 1}.wav"
+                ),
                 audio_tensor=audio,
                 generation_params={
                     "mock": True,

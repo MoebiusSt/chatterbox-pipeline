@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 from chunking.base_chunker import TextChunk
 from utils.file_manager import AudioCandidate
+
 from .tts_generator import TTSGenerator
 
 logger = logging.getLogger(__name__)
@@ -10,8 +11,15 @@ logger = logging.getLogger(__name__)
 
 class GenerationResult:
     """Represents the result of candidate generation for a text chunk."""
-    def __init__(self, chunk: TextChunk, candidates: List[AudioCandidate], 
-                 selected_candidate=None, generation_attempts: int = 0, success: bool = False):
+
+    def __init__(
+        self,
+        chunk: TextChunk,
+        candidates: List[AudioCandidate],
+        selected_candidate=None,
+        generation_attempts: int = 0,
+        success: bool = False,
+    ):
         self.chunk = chunk
         self.candidates = candidates
         self.selected_candidate = selected_candidate
@@ -21,7 +29,7 @@ class GenerationResult:
 
 class BatchProcessor:
     """Handles batch processing of text chunks for candidate generation."""
-    
+
     def __init__(self, max_retries: int = 2):
         self.max_retries = max_retries
 
@@ -69,4 +77,4 @@ class BatchProcessor:
             f"Candidate generation completed: {successful_chunks}/{len(chunks)} chunks successful"
         )
 
-        return results 
+        return results

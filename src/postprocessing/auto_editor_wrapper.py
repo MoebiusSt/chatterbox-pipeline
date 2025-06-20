@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional
 import torch
 import torchaudio
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 from postprocessing.noise_analyzer import NoiseAnalyzer, NoiseProfile
 
 

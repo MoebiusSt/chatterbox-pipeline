@@ -19,8 +19,6 @@ import yaml
 from chunking.base_chunker import TextChunk
 from utils.config_manager import ConfigManager, TaskConfig
 
-import logging
-
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +67,11 @@ class FileManager:
     Maintains consistent file schemas and directory structures.
     """
 
-    def __init__(self, task_config: Union[TaskConfig, Dict[str, Any]], preloaded_config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self,
+        task_config: Union[TaskConfig, Dict[str, Any]],
+        preloaded_config: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Initialize FileManager with task configuration.
 
@@ -80,7 +82,11 @@ class FileManager:
         from utils.config_manager import ConfigManager
 
         # Use duck typing instead of strict isinstance checks
-        if hasattr(task_config, 'base_output_dir') and hasattr(task_config, 'job_name') and hasattr(task_config, 'config_path'):
+        if (
+            hasattr(task_config, "base_output_dir")
+            and hasattr(task_config, "job_name")
+            and hasattr(task_config, "config_path")
+        ):
             # TaskConfig-like object (duck typing)
             self.task_config = task_config
             self.task_directory = task_config.base_output_dir
@@ -106,7 +112,9 @@ class FileManager:
             self.job_name = tc.job_name
 
         else:
-            raise TypeError(f"Expected TaskConfig-like object or dict, got {type(task_config)}")
+            raise TypeError(
+                f"Expected TaskConfig-like object or dict, got {type(task_config)}"
+            )
 
         # Set up directory structure
         self.task_directory.mkdir(parents=True, exist_ok=True)
@@ -265,7 +273,12 @@ class FileManager:
         return chunks
 
     # Candidate Operations
-    def save_candidates(self, chunk_idx: int, candidates: List[AudioCandidate], overwrite_existing: bool = False) -> bool:
+    def save_candidates(
+        self,
+        chunk_idx: int,
+        candidates: List[AudioCandidate],
+        overwrite_existing: bool = False,
+    ) -> bool:
         """
         Save audio candidates for a chunk.
 
@@ -311,31 +324,49 @@ class FileManager:
                     # VALIDATE before copying to prevent corrupt files from propagating
                     try:
                         # Test if the file can be loaded properly
-                        test_waveform, test_sample_rate = torchaudio.load(str(candidate.audio_path))
+                        test_waveform, test_sample_rate = torchaudio.load(
+                            str(candidate.audio_path)
+                        )
                         if test_waveform.numel() == 0:
                             raise ValueError("Empty audio file")
-                        if torch.isnan(test_waveform).any() or torch.isinf(test_waveform).any():
+                        if (
+                            torch.isnan(test_waveform).any()
+                            or torch.isinf(test_waveform).any()
+                        ):
                             raise ValueError("Audio contains NaN or Inf values")
-                        
+
                         # File is valid, safe to copy
                         import shutil
+
                         shutil.copy2(candidate.audio_path, audio_path)
                         saved_count += 1
-                        logger.debug(f"Copied validated candidate file: {audio_filename}")
-                        
+                        logger.debug(
+                            f"Copied validated candidate file: {audio_filename}"
+                        )
+
                     except Exception as e:
                         # CRITICAL: Corrupt file detected - do NOT copy!
-                        logger.error(f"🚨 CORRUPT AUDIO FILE DETECTED: {candidate.audio_path}")
+                        logger.error(
+                            f"🚨 CORRUPT AUDIO FILE DETECTED: {candidate.audio_path}"
+                        )
                         logger.error(f"   Error: {e}")
-                        logger.error(f"   Skipping candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}")
-                        logger.error(f"   This candidate will be excluded from final audio assembly!")
-                        
+                        logger.error(
+                            f"   Skipping candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}"
+                        )
+                        logger.error(
+                            f"   This candidate will be excluded from final audio assembly!"
+                        )
+
                         # Remove the corrupt file and its validation data
-                        self._remove_corrupt_candidate(chunk_idx, candidate.candidate_idx)
+                        self._remove_corrupt_candidate(
+                            chunk_idx, candidate.candidate_idx
+                        )
                         continue  # Skip this candidate entirely
                 else:
                     # No audio tensor AND no valid audio file - this candidate is unusable
-                    logger.warning(f"⚠️ Unusable candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}: no audio tensor or valid file")
+                    logger.warning(
+                        f"⚠️ Unusable candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}: no audio tensor or valid file"
+                    )
                     continue  # Skip this candidate
 
                 # Update candidate path
@@ -360,9 +391,13 @@ class FileManager:
                 json.dump(candidate_metadata, f, indent=2)
 
             if overwrite_existing:
-                logger.debug(f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)")
+                logger.debug(
+                    f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)"
+                )
             else:
-                logger.debug(f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)")
+                logger.debug(
+                    f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)"
+                )
             return True
 
         except Exception as e:
@@ -393,7 +428,9 @@ class FileManager:
                 for d in self.candidates_dir.iterdir()
                 if d.is_dir() and d.name.startswith("chunk_")
             ]
-            chunk_indices = [int(d.name.split("_")[1]) - 1 for d in chunk_dirs]  # Convert back to 0-based
+            chunk_indices = [
+                int(d.name.split("_")[1]) - 1 for d in chunk_dirs
+            ]  # Convert back to 0-based
 
         for idx in chunk_indices:
             chunk_dir = self.candidates_dir / f"chunk_{idx+1:03d}"
@@ -413,7 +450,9 @@ class FileManager:
             audio_files = sorted(chunk_dir.glob("candidate_*.wav"))
             for audio_file in audio_files:
                 # Extract candidate index
-                candidate_idx = int(audio_file.stem.split("_")[1]) - 1  # Convert back to 0-based
+                candidate_idx = (
+                    int(audio_file.stem.split("_")[1]) - 1
+                )  # Convert back to 0-based
 
                 # Get metadata for this candidate
                 candidate_meta = None
@@ -469,27 +508,37 @@ class FileManager:
         """Save Whisper validation result to both individual file and enhanced metrics."""
         try:
             # Save individual file (for Recovery System compatibility)
-            filename = f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            filename = (
+                f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            )
             path = self.whisper_dir / filename
-            
+
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)
-            
+
             # Also sync to enhanced metrics (maintaining dual system consistency)
-            sync_success = self._sync_whisper_to_enhanced_metrics(chunk_idx, candidate_idx, result)
+            sync_success = self._sync_whisper_to_enhanced_metrics(
+                chunk_idx, candidate_idx, result
+            )
             if sync_success:
-                logger.debug(f"✓ Synced whisper result to enhanced metrics: chunk {chunk_idx}, candidate {candidate_idx}")
-            
+                logger.debug(
+                    f"✓ Synced whisper result to enhanced metrics: chunk {chunk_idx}, candidate {candidate_idx}"
+                )
+
             return True
         except Exception as e:
-            logger.error(f"Error saving Whisper result for chunk {chunk_idx}, candidate {candidate_idx}: {e}")
+            logger.error(
+                f"Error saving Whisper result for chunk {chunk_idx}, candidate {candidate_idx}: {e}"
+            )
             return False
 
-    def _sync_whisper_to_enhanced_metrics(self, chunk_idx: int, candidate_idx: int, result: dict) -> bool:
+    def _sync_whisper_to_enhanced_metrics(
+        self, chunk_idx: int, candidate_idx: int, result: dict
+    ) -> bool:
         """Synchronize whisper result to enhanced_metrics.json if it exists."""
         try:
             metrics_path = self.task_directory / "enhanced_metrics.json"
-            
+
             # Load existing metrics or create new structure
             if metrics_path.exists():
                 with open(metrics_path, "r", encoding="utf-8") as f:
@@ -500,9 +549,9 @@ class FileManager:
                     "timestamp": time.time(),
                     "total_chunks": 0,
                     "chunks": {},
-                    "selected_candidates": {}
+                    "selected_candidates": {},
                 }
-            
+
             # Ensure chunk structure exists
             chunk_key = str(chunk_idx)
             if chunk_key not in metrics["chunks"]:
@@ -510,9 +559,9 @@ class FileManager:
                     "chunk_text": "",  # Will be filled by validation stage
                     "candidates": {},
                     "best_candidate": None,
-                    "best_score": 0.0
+                    "best_score": 0.0,
                 }
-            
+
             # Update candidate data in enhanced metrics
             candidate_key = str(candidate_idx)
             candidate_data = {
@@ -521,31 +570,37 @@ class FileManager:
                 "validation_score": result.get("quality_score", 0.0),
                 "overall_quality_score": result.get("overall_quality_score", 0.0),
                 "quality_details": result.get("quality_details", {}),
-                "is_valid": result.get("is_valid", False)  # Store original validation result
+                "is_valid": result.get(
+                    "is_valid", False
+                ),  # Store original validation result
             }
-            
+
             metrics["chunks"][chunk_key]["candidates"][candidate_key] = candidate_data
-            
+
             # Save updated metrics back
             with open(metrics_path, "w", encoding="utf-8") as f:
                 json.dump(metrics, f, indent=2, ensure_ascii=False)
-                
+
             return True
-            
+
         except Exception as e:
             # Don't fail the whole operation if sync fails
             logger.warning(f"Failed to sync whisper result to enhanced metrics: {e}")
             return False
 
-    def get_whisper(self, chunk_idx: int, candidate_idx: Optional[int] = None) -> Dict[int, dict]:
+    def get_whisper(
+        self, chunk_idx: int, candidate_idx: Optional[int] = None
+    ) -> Dict[int, dict]:
         """
         Load Whisper validation results, preferring enhanced_metrics.json over individual files.
         Validates that corresponding audio files still exist to prevent stale validation data.
         """
         results = {}
-        
+
         # Try to load from enhanced metrics first (primary source)
-        enhanced_results = self._get_whisper_from_enhanced_metrics(chunk_idx, candidate_idx)
+        enhanced_results = self._get_whisper_from_enhanced_metrics(
+            chunk_idx, candidate_idx
+        )
         if enhanced_results:
             # Validate that audio files still exist for each result
             validated_results = {}
@@ -553,15 +608,19 @@ class FileManager:
                 if self._audio_file_exists(chunk_idx, cand_idx):
                     validated_results[cand_idx] = validation_data
                 else:
-                    logger.debug(f"Skipping stale validation data for chunk {chunk_idx}, candidate {cand_idx} - audio file no longer exists")
+                    logger.debug(
+                        f"Skipping stale validation data for chunk {chunk_idx}, candidate {cand_idx} - audio file no longer exists"
+                    )
                     # Clean up stale data from enhanced metrics
                     self._remove_stale_validation_data(chunk_idx, cand_idx)
-            
+
             results.update(validated_results)
-        
+
         # Fallback to individual files for missing data (compatibility)
         if candidate_idx is not None:
-            if candidate_idx not in results and self._audio_file_exists(chunk_idx, candidate_idx):
+            if candidate_idx not in results and self._audio_file_exists(
+                chunk_idx, candidate_idx
+            ):
                 filename = f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
                 path = self.whisper_dir / filename
                 if path.exists():
@@ -572,29 +631,33 @@ class FileManager:
             pattern = f"chunk_{chunk_idx+1:03d}_candidate_*_whisper.json"
             for file in self.whisper_dir.glob(pattern):
                 cand_idx = int(file.stem.split("_")[3]) - 1
-                if cand_idx not in results and self._audio_file_exists(chunk_idx, cand_idx):
+                if cand_idx not in results and self._audio_file_exists(
+                    chunk_idx, cand_idx
+                ):
                     with open(file, "r", encoding="utf-8") as f:
                         results[cand_idx] = json.load(f)
-        
+
         return results
 
-    def _get_whisper_from_enhanced_metrics(self, chunk_idx: int, candidate_idx: Optional[int] = None) -> Dict[int, dict]:
+    def _get_whisper_from_enhanced_metrics(
+        self, chunk_idx: int, candidate_idx: Optional[int] = None
+    ) -> Dict[int, dict]:
         """Extract whisper validation results from enhanced_metrics.json."""
         try:
             metrics_path = self.task_directory / "enhanced_metrics.json"
             if not metrics_path.exists():
                 return {}
-            
+
             with open(metrics_path, "r", encoding="utf-8") as f:
                 metrics = json.load(f)
-            
+
             chunk_key = str(chunk_idx)
             if chunk_key not in metrics.get("chunks", {}):
                 return {}
-            
+
             chunk_data = metrics["chunks"][chunk_key]
             candidates = chunk_data.get("candidates", {})
-            
+
             results = {}
             if candidate_idx is not None:
                 # Get specific candidate
@@ -609,8 +672,10 @@ class FileManager:
                         similarity_score = candidate_data.get("similarity_score", 0.0)
                         quality_score = candidate_data.get("validation_score", 0.0)
                         # Use config thresholds instead of hardcoded values
-                        original_is_valid = similarity_score >= 0.85 and quality_score >= 0.6
-                    
+                        original_is_valid = (
+                            similarity_score >= 0.85 and quality_score >= 0.6
+                        )
+
                     results[candidate_idx] = {
                         "is_valid": original_is_valid,
                         "transcription": candidate_data.get("transcription", ""),
@@ -618,14 +683,16 @@ class FileManager:
                         "quality_score": candidate_data.get("validation_score", 0.0),
                         "validation_time": 0.0,  # Not stored in enhanced metrics
                         "error_message": None,
-                        "overall_quality_score": candidate_data.get("overall_quality_score", 0.0),
-                        "quality_details": candidate_data.get("quality_details", {})
+                        "overall_quality_score": candidate_data.get(
+                            "overall_quality_score", 0.0
+                        ),
+                        "quality_details": candidate_data.get("quality_details", {}),
                     }
             else:
                 # Get all candidates for chunk
                 for candidate_key, candidate_data in candidates.items():
                     cand_idx = int(candidate_key)
-                    
+
                     # Use original is_valid from validation, don't recalculate
                     original_is_valid = candidate_data.get("is_valid", False)
                     if "is_valid" not in candidate_data:
@@ -633,8 +700,10 @@ class FileManager:
                         similarity_score = candidate_data.get("similarity_score", 0.0)
                         quality_score = candidate_data.get("validation_score", 0.0)
                         # Use config thresholds instead of hardcoded values
-                        original_is_valid = similarity_score >= 0.85 and quality_score >= 0.6
-                    
+                        original_is_valid = (
+                            similarity_score >= 0.85 and quality_score >= 0.6
+                        )
+
                     results[cand_idx] = {
                         "is_valid": original_is_valid,
                         "transcription": candidate_data.get("transcription", ""),
@@ -642,14 +711,18 @@ class FileManager:
                         "quality_score": candidate_data.get("validation_score", 0.0),
                         "validation_time": 0.0,
                         "error_message": None,
-                        "overall_quality_score": candidate_data.get("overall_quality_score", 0.0),
-                        "quality_details": candidate_data.get("quality_details", {})
+                        "overall_quality_score": candidate_data.get(
+                            "overall_quality_score", 0.0
+                        ),
+                        "quality_details": candidate_data.get("quality_details", {}),
                     }
-            
+
             return results
-            
+
         except Exception as e:
-            logger.warning(f"Failed to extract whisper results from enhanced metrics: {e}")
+            logger.warning(
+                f"Failed to extract whisper results from enhanced metrics: {e}"
+            )
             return {}
 
     def _audio_file_exists(self, chunk_idx: int, candidate_idx: int) -> bool:
@@ -659,7 +732,9 @@ class FileManager:
             audio_file = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
             return audio_file.exists()
         except Exception as e:
-            logger.warning(f"Error checking audio file existence for chunk {chunk_idx}, candidate {candidate_idx}: {e}")
+            logger.warning(
+                f"Error checking audio file existence for chunk {chunk_idx}, candidate {candidate_idx}: {e}"
+            )
             return False
 
     def _remove_stale_validation_data(self, chunk_idx: int, candidate_idx: int) -> bool:
@@ -668,131 +743,163 @@ class FileManager:
             metrics_path = self.task_directory / "enhanced_metrics.json"
             if not metrics_path.exists():
                 return True  # Nothing to clean up
-            
+
             with open(metrics_path, "r", encoding="utf-8") as f:
                 metrics = json.load(f)
-            
+
             chunk_key = str(chunk_idx)
             candidate_key = str(candidate_idx)
-            
+
             # Remove stale candidate data
-            if (chunk_key in metrics.get("chunks", {}) and 
-                candidate_key in metrics["chunks"][chunk_key].get("candidates", {})):
-                
+            if chunk_key in metrics.get("chunks", {}) and candidate_key in metrics[
+                "chunks"
+            ][chunk_key].get("candidates", {}):
+
                 del metrics["chunks"][chunk_key]["candidates"][candidate_key]
-                logger.debug(f"Removed stale validation data for chunk {chunk_idx}, candidate {candidate_idx}")
-                
+                logger.debug(
+                    f"Removed stale validation data for chunk {chunk_idx}, candidate {candidate_idx}"
+                )
+
                 # If no candidates left in chunk, clean up chunk-level data
                 if not metrics["chunks"][chunk_key]["candidates"]:
                     metrics["chunks"][chunk_key]["best_candidate"] = None
                     metrics["chunks"][chunk_key]["best_score"] = 0.0
-                    logger.debug(f"Reset chunk {chunk_idx} best candidate info due to no valid candidates")
-                
+                    logger.debug(
+                        f"Reset chunk {chunk_idx} best candidate info due to no valid candidates"
+                    )
+
                 # Remove from selected candidates if it was selected
-                if chunk_key in metrics.get("selected_candidates", {}) and metrics["selected_candidates"][chunk_key] == candidate_idx:
+                if (
+                    chunk_key in metrics.get("selected_candidates", {})
+                    and metrics["selected_candidates"][chunk_key] == candidate_idx
+                ):
                     del metrics["selected_candidates"][chunk_key]
-                    logger.debug(f"Removed stale selected candidate for chunk {chunk_idx}")
-                
+                    logger.debug(
+                        f"Removed stale selected candidate for chunk {chunk_idx}"
+                    )
+
                 # Save updated metrics
                 with open(metrics_path, "w", encoding="utf-8") as f:
                     json.dump(metrics, f, indent=2, ensure_ascii=False)
-                
+
                 return True
-            
+
         except Exception as e:
-            logger.warning(f"Failed to remove stale validation data for chunk {chunk_idx}, candidate {candidate_idx}: {e}")
-            
+            logger.warning(
+                f"Failed to remove stale validation data for chunk {chunk_idx}, candidate {candidate_idx}: {e}"
+            )
+
         return False
 
     def migrate_whisper_to_enhanced_metrics(self) -> bool:
         """
         Migrate existing individual whisper files to enhanced_metrics.json format.
         This ensures backward compatibility and unified data access.
-        
+
         Returns:
             True if migration successful
         """
         try:
-            logger.debug("🔄 Migrating existing whisper files to enhanced metrics format...")
-            
+            logger.debug(
+                "🔄 Migrating existing whisper files to enhanced metrics format..."
+            )
+
             # Find all existing whisper files
-            whisper_files = list(self.whisper_dir.glob("chunk_*_candidate_*_whisper.json"))
+            whisper_files = list(
+                self.whisper_dir.glob("chunk_*_candidate_*_whisper.json")
+            )
             if not whisper_files:
                 logger.debug("No existing whisper files found - no migration needed")
                 return True
-            
+
             migration_count = 0
-            
+
             for whisper_file in whisper_files:
                 try:
                     # Parse chunk and candidate indices from filename
                     parts = whisper_file.stem.split("_")
                     chunk_idx = int(parts[1]) - 1  # Convert from 1-based to 0-based
                     candidate_idx = int(parts[3]) - 1  # Convert from 1-based to 0-based
-                    
+
                     # Only migrate if corresponding audio file still exists
                     if not self._audio_file_exists(chunk_idx, candidate_idx):
-                        logger.debug(f"Skipping migration for chunk {chunk_idx}, candidate {candidate_idx} - audio file no longer exists")
+                        logger.debug(
+                            f"Skipping migration for chunk {chunk_idx}, candidate {candidate_idx} - audio file no longer exists"
+                        )
                         continue
-                    
+
                     # Load whisper result
                     with open(whisper_file, "r", encoding="utf-8") as f:
                         result = json.load(f)
-                    
+
                     # Sync to enhanced metrics (without saving individual file again)
-                    if self._sync_whisper_to_enhanced_metrics(chunk_idx, candidate_idx, result):
+                    if self._sync_whisper_to_enhanced_metrics(
+                        chunk_idx, candidate_idx, result
+                    ):
                         migration_count += 1
                         # logger.debug(f"✓ Migrated whisper result for chunk {chunk_idx}, candidate {candidate_idx}")
-                    
+
                 except Exception as e:
                     logger.warning(f"Failed to migrate {whisper_file}: {e}")
                     continue
-            
-            logger.debug(f"✅ Migration completed: {migration_count}/{len(whisper_files)} whisper files migrated to enhanced metrics")
+
+            logger.debug(
+                f"✅ Migration completed: {migration_count}/{len(whisper_files)} whisper files migrated to enhanced metrics"
+            )
             return True
-            
+
         except Exception as e:
             logger.error(f"Migration failed: {e}")
             return False
 
-    def cleanup_duplicate_whisper_files(self, keep_individual_files: bool = True) -> bool:
+    def cleanup_duplicate_whisper_files(
+        self, keep_individual_files: bool = True
+    ) -> bool:
         """
         Clean up duplicate validation data after successful migration.
-        
+
         Args:
             keep_individual_files: If True, keeps individual whisper files for Recovery System compatibility
                                  If False, removes them after successful migration to enhanced metrics
-        
+
         Returns:
             True if cleanup successful
         """
         if keep_individual_files:
-            logger.info("Keeping individual whisper files for Recovery System compatibility")
+            logger.info(
+                "Keeping individual whisper files for Recovery System compatibility"
+            )
             return True
-            
+
         try:
             logger.debug("🧹 Cleaning up individual whisper files after migration...")
-            
+
             # Verify enhanced metrics exists and has data
             metrics = self.get_metrics()
             if not metrics or "chunks" not in metrics:
-                logger.warning("Enhanced metrics not found or empty - skipping cleanup for safety")
+                logger.warning(
+                    "Enhanced metrics not found or empty - skipping cleanup for safety"
+                )
                 return False
-            
+
             # Remove individual whisper files
-            whisper_files = list(self.whisper_dir.glob("chunk_*_candidate_*_whisper.json"))
+            whisper_files = list(
+                self.whisper_dir.glob("chunk_*_candidate_*_whisper.json")
+            )
             removed_count = 0
-            
+
             for whisper_file in whisper_files:
                 try:
                     whisper_file.unlink()
                     removed_count += 1
                 except Exception as e:
                     logger.warning(f"Failed to remove {whisper_file}: {e}")
-            
-            logger.debug(f"✅ Cleanup completed: {removed_count} individual whisper files removed")
+
+            logger.debug(
+                f"✅ Cleanup completed: {removed_count} individual whisper files removed"
+            )
             return True
-            
+
         except Exception as e:
             logger.error(f"Cleanup failed: {e}")
             return False
@@ -815,23 +922,27 @@ class FileManager:
         if not path.exists():
             logger.debug(f"Metrics file not found: {path}")
             return {}
-        
+
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
 
-    # Final Audio Operations  
+    # Final Audio Operations
     def save_final_audio(self, audio: torch.Tensor, metadata: dict) -> bool:
         """Save final assembled audio with metadata."""
         try:
             text_base = Path(self.config["input"]["text_file"]).stem
             run_label = self.config["job"].get("run-label", "")
-            filename = f"{text_base}_{run_label}_final.wav" if run_label else f"{text_base}_final.wav"
-            
+            filename = (
+                f"{text_base}_{run_label}_final.wav"
+                if run_label
+                else f"{text_base}_final.wav"
+            )
+
             audio_path = self.final_dir / filename
             sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
             torchaudio.save(str(audio_path), audio.unsqueeze(0), sample_rate)
-            
-            metadata_path = self.final_dir / filename.replace('.wav', '_metadata.json')
+
+            metadata_path = self.final_dir / filename.replace(".wav", "_metadata.json")
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
             return True
@@ -844,7 +955,7 @@ class FileManager:
         final_files = list(self.final_dir.glob("*_final.wav"))
         if not final_files:
             return None
-        
+
         final_file = max(final_files, key=lambda f: f.stat().st_mtime)
         try:
             audio, _ = torchaudio.load(str(final_file))
@@ -881,23 +992,25 @@ class FileManager:
             if audio_file.exists():
                 try:
                     audio, _ = torchaudio.load(str(audio_file))
-                    
+
                     # VALIDATE loaded audio
                     if audio.numel() == 0:
                         raise ValueError("Empty audio file")
                     if torch.isnan(audio).any() or torch.isinf(audio).any():
                         raise ValueError("Audio contains NaN or Inf values")
-                        
+
                     audio_segments.append(audio.squeeze(0))  # Remove batch dimension
-                    
+
                 except Exception as e:
-                    logger.error(f"🚨 CORRUPT AUDIO DETECTED in final assembly: {audio_file}")
+                    logger.error(
+                        f"🚨 CORRUPT AUDIO DETECTED in final assembly: {audio_file}"
+                    )
                     logger.error(f"   Error: {e}")
                     logger.error(f"   Falling back to silence for chunk {chunk_idx}")
-                    
+
                     # Remove corrupt file and its validation data
                     self._remove_corrupt_candidate(chunk_idx, candidate_idx)
-                    
+
                     # Add silence as fallback instead of breaking the entire final audio
                     sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
                     silence_duration = 2.0  # 2 seconds of silence as fallback
@@ -916,17 +1029,17 @@ class FileManager:
     def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:
         """
         Remove corrupt candidate file and its validation data.
-        
+
         Args:
             chunk_idx: Chunk index
             candidate_idx: Candidate index
-            
+
         Returns:
             True if removal successful
         """
         try:
             removed_files = []
-            
+
             # Remove audio file
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
             audio_file = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
@@ -934,24 +1047,31 @@ class FileManager:
                 audio_file.unlink()
                 removed_files.append(str(audio_file))
                 logger.info(f"🗑️ Removed corrupt audio file: {audio_file}")
-            
+
             # Remove whisper validation file
-            whisper_file = self.whisper_dir / f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            whisper_file = (
+                self.whisper_dir
+                / f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            )
             if whisper_file.exists():
                 whisper_file.unlink()
                 removed_files.append(str(whisper_file))
                 logger.info(f"🗑️ Removed stale whisper validation: {whisper_file}")
-            
+
             # Remove from enhanced metrics
             self._remove_stale_validation_data(chunk_idx, candidate_idx)
-            
+
             if removed_files:
-                logger.warning(f"⚠️ Cleaned up {len(removed_files)} files for corrupt candidate {candidate_idx+1} in chunk {chunk_idx+1}")
-            
+                logger.warning(
+                    f"⚠️ Cleaned up {len(removed_files)} files for corrupt candidate {candidate_idx+1} in chunk {chunk_idx+1}"
+                )
+
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}")
+            logger.error(
+                f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}"
+            )
             return False
 
     # State Analysis
@@ -981,23 +1101,27 @@ class FileManager:
         # Check candidates - improved to check file system completeness
         candidates = self.get_candidates()
         has_candidates = {}
-        expected_candidates_per_chunk = self.config.get("generation", {}).get("num_candidates", 5)
-        
+        expected_candidates_per_chunk = self.config.get("generation", {}).get(
+            "num_candidates", 5
+        )
+
         for chunk_idx in range(len(chunks)):
             chunk_candidates = candidates.get(chunk_idx, [])
             has_candidates[chunk_idx] = len(chunk_candidates)
-            
+
             # Also check file system for expected candidates
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
             if chunk_dir.exists():
                 # Count actual .wav files in chunk directory
                 actual_wav_files = list(chunk_dir.glob("candidate_*.wav"))
                 file_count = len(actual_wav_files)
-                
+
                 # Check if we have the expected number of candidates
                 if file_count < expected_candidates_per_chunk:
                     missing_components.append(f"candidates_chunk_{chunk_idx}")
-                    logger.debug(f"Chunk {chunk_idx}: expected {expected_candidates_per_chunk}, found {file_count} files")
+                    logger.debug(
+                        f"Chunk {chunk_idx}: expected {expected_candidates_per_chunk}, found {file_count} files"
+                    )
             else:
                 missing_components.append(f"candidates_chunk_{chunk_idx}")
 
@@ -1006,30 +1130,38 @@ class FileManager:
         for chunk_idx in range(len(chunks)):
             whisper_results = self.get_whisper(chunk_idx)
             has_whisper[chunk_idx] = set(whisper_results.keys())
-            
+
             # Check against actual candidate files, not just loaded candidates
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
             if chunk_dir.exists():
                 actual_wav_files = list(chunk_dir.glob("candidate_*.wav"))
                 expected_whisper_count = len(actual_wav_files)
-                
+
                 if len(whisper_results) < expected_whisper_count:
                     missing_components.append(f"whisper_chunk_{chunk_idx}")
-                    logger.debug(f"Chunk {chunk_idx}: expected {expected_whisper_count} whisper validations, found {len(whisper_results)}")
-                    
+                    logger.debug(
+                        f"Chunk {chunk_idx}: expected {expected_whisper_count} whisper validations, found {len(whisper_results)}"
+                    )
+
                     # Log which specific candidates are missing whisper validation
                     for wav_file in actual_wav_files:
                         # Extract candidate index from filename (candidate_01.wav -> 0)
                         try:
-                            candidate_num = int(wav_file.stem.split('_')[1]) - 1
+                            candidate_num = int(wav_file.stem.split("_")[1]) - 1
                             if candidate_num not in whisper_results:
-                                logger.debug(f"Missing whisper validation for chunk {chunk_idx}, candidate {candidate_num}")
+                                logger.debug(
+                                    f"Missing whisper validation for chunk {chunk_idx}, candidate {candidate_num}"
+                                )
                         except (IndexError, ValueError):
-                            logger.warning(f"Could not parse candidate index from {wav_file}")
+                            logger.warning(
+                                f"Could not parse candidate index from {wav_file}"
+                            )
             else:
                 # No chunk directory means no candidates at all
                 if len(whisper_results) > 0:
-                    logger.warning(f"Found whisper results for chunk {chunk_idx} but no candidate directory")
+                    logger.warning(
+                        f"Found whisper results for chunk {chunk_idx} but no candidate directory"
+                    )
 
         # Check metrics
         metrics = self.get_metrics()

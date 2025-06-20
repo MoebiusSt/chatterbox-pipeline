@@ -60,6 +60,7 @@ class WhisperValidator:
         self.similarity_threshold = similarity_threshold
         self.min_quality_score = min_quality_score
         import logging
+
         self.logger = logging.getLogger(__name__)
 
         # Auto-detect device if needed
@@ -123,8 +124,10 @@ class WhisperValidator:
 
             # Transcribe with Whisper
             if self.model is None:
-                raise RuntimeError("Whisper model not loaded. Call _load_model() first.")
-            
+                raise RuntimeError(
+                    "Whisper model not loaded. Call _load_model() first."
+                )
+
             result = self.model.transcribe(
                 audio_np,
                 language=language,
@@ -178,24 +181,33 @@ class WhisperValidator:
             # Determine if validation passed - improved logic
             # Allow some flexibility: if one metric is strong, be more lenient with the other
             strict_validation = (
-                similarity_score >= self.similarity_threshold 
+                similarity_score >= self.similarity_threshold
                 and quality_score >= self.min_quality_score
             )
-            
+
             # Flexible validation: high quality score can compensate for slightly lower similarity
             flexible_validation = (
                 # Strong quality score allows lower similarity (0.1 tolerance)
-                (quality_score >= self.min_quality_score + 0.02 and 
-                 similarity_score >= self.similarity_threshold - 0.1) or
-                # Strong similarity allows lower quality score (0.1 tolerance)  
-                (similarity_score >= self.similarity_threshold + 0.02 and 
-                 quality_score >= self.min_quality_score - 0.1) or
+                (
+                    quality_score >= self.min_quality_score + 0.02
+                    and similarity_score >= self.similarity_threshold - 0.1
+                )
+                or
+                # Strong similarity allows lower quality score (0.1 tolerance)
+                (
+                    similarity_score >= self.similarity_threshold + 0.02
+                    and quality_score >= self.min_quality_score - 0.1
+                )
+                or
                 # Both are reasonably close to thresholds (within 0.05)
-                (similarity_score >= self.similarity_threshold - 0.05 and 
-                 quality_score >= self.min_quality_score - 0.05 and
-                 (similarity_score + quality_score) >= (self.similarity_threshold + self.min_quality_score) - 0.05)
+                (
+                    similarity_score >= self.similarity_threshold - 0.05
+                    and quality_score >= self.min_quality_score - 0.05
+                    and (similarity_score + quality_score)
+                    >= (self.similarity_threshold + self.min_quality_score) - 0.05
+                )
             )
-            
+
             is_valid = strict_validation or flexible_validation
 
             validation_time = (datetime.now() - start_time).total_seconds()
@@ -282,7 +294,7 @@ class WhisperValidator:
             # Combined quality score (removed unreliable audio duration length_score)
             quality_score = (
                 similarity_score * 0.7  # 70% similarity (increased from 60%)
-                + length_score * 0.30   # 30% text length comparison
+                + length_score * 0.30  # 30% text length comparison
             )
 
             return min(1.0, max(0.0, quality_score))
@@ -381,9 +393,7 @@ class WhisperValidator:
         ):
             try:
                 # Create filename matching the candidate format (without timestamp)
-                filename = (
-                    f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx+1:02d}_whisper.txt"
-                )
+                filename = f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx+1:02d}_whisper.txt"
                 filepath = output_path / filename
 
                 # Get validation data for this candidate

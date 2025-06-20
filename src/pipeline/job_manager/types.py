@@ -42,4 +42,4 @@ class ExecutionPlan:
 
     task_configs: List[TaskConfig]
     execution_mode: str  # "single", "batch", "interactive"
-    requires_user_input: bool = False 
+    requires_user_input: bool = False

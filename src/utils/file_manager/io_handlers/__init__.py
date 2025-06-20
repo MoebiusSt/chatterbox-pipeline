@@ -1,13 +1,13 @@
-from .chunk_io import ChunkIOHandler
 from .candidate_io import CandidateIOHandler
-from .whisper_io import WhisperIOHandler
-from .metrics_io import MetricsIOHandler
+from .chunk_io import ChunkIOHandler
 from .final_audio_io import FinalAudioIOHandler
+from .metrics_io import MetricsIOHandler
+from .whisper_io import WhisperIOHandler
 
 __all__ = [
     "ChunkIOHandler",
-    "CandidateIOHandler", 
+    "CandidateIOHandler",
     "WhisperIOHandler",
     "MetricsIOHandler",
-    "FinalAudioIOHandler"
-] 
+    "FinalAudioIOHandler",
+]

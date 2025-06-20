@@ -7,7 +7,7 @@ from .validation_handler import ValidationHandler
 
 __all__ = [
     "PreprocessingHandler",
-    "GenerationHandler", 
+    "GenerationHandler",
     "ValidationHandler",
     "AssemblyHandler",
-] 
+]

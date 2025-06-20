@@ -20,7 +20,7 @@ class ChunkIOHandler:
     def __init__(self, texts_dir: Path):
         """
         Initialize ChunkIOHandler.
-        
+
         Args:
             texts_dir: Directory for text chunk files
         """
@@ -123,4 +123,4 @@ class ChunkIOHandler:
         chunks.sort(key=lambda c: c.idx)
 
         logger.debug(f"Loaded {len(chunks)} chunks from {self.texts_dir}")
-        return chunks 
+        return chunks

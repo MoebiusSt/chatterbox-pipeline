@@ -37,6 +37,7 @@ class SelectionStrategies:
 
         elif selection_strategy == "random":
             import random
+
             selected = random.choice(candidates)
             logger.debug(f"Selected random candidate")
 
@@ -50,7 +51,9 @@ class SelectionStrategies:
 
     @staticmethod
     def select_best_candidate_with_validation(
-        candidates_with_validation: List[Tuple],  # [(candidate, validation_result, quality_score), ...]
+        candidates_with_validation: List[
+            Tuple
+        ],  # [(candidate, validation_result, quality_score), ...]
         prefer_valid: bool = True,
     ) -> Optional[Tuple]:
         """Selects the best candidate based on validation results and quality scores."""
@@ -107,4 +110,4 @@ class SelectionStrategies:
             f"valid={validation_result.is_valid}, audio_duration={audio_duration} samples"
         )
 
-        return best_candidate_tuple 
+        return best_candidate_tuple

@@ -120,13 +120,17 @@ def test_resolve_execution_plan():
 
     # Create mock args object
     args = type("Args", (), {"mode": "last-new", "job": None, "add_final": False})()
-    
+
     # Test global strategy
     plan = job_manager.resolve_execution_plan(args)
     assert plan is not None
 
     # Test job-specific strategy
-    args = type("Args", (), {"mode": "job1:last-new,job2:all-new", "job": None, "add_final": False})()
+    args = type(
+        "Args",
+        (),
+        {"mode": "job1:last-new,job2:all-new", "job": None, "add_final": False},
+    )()
     plan = job_manager.resolve_execution_plan(args)
     assert plan is not None
 
@@ -149,12 +153,16 @@ def test_prompt_user_selection():
         return "ln"
 
     # Create mock task with required attributes
-    mock_task = type("Task", (), {
-        "timestamp": "2024-03-20_120000",
-        "job_name": "test_job",
-        "run_label": "test_label",
-        "config_path": Path("/fake/path/config.yaml")
-    })()
+    mock_task = type(
+        "Task",
+        (),
+        {
+            "timestamp": "2024-03-20_120000",
+            "job_name": "test_job",
+            "run_label": "test_label",
+            "config_path": Path("/fake/path/config.yaml"),
+        },
+    )()
 
     builtins.input = mock_input
     try:

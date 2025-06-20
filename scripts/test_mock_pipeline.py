@@ -13,13 +13,13 @@ from pathlib import Path
 import torch
 import yaml
 
-# Add src to path
-sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
-
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
 from generation.audio_processor import AudioProcessor
 from utils.progress_tracker import ProgressTracker
+
+# Import statements - use PYTHONPATH=$(pwd)/src when running this script
+
 
 # Configure logging
 logging.basicConfig(

@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from utils.config_manager import ConfigManager, TaskConfig
-from .types import ExecutionStrategy, ExecutionPlan, UserChoice
+
+from .types import ExecutionPlan, ExecutionStrategy, UserChoice
 from .user_interaction import UserInteraction
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,9 @@ class ExecutionPlanner:
         requires_user_input = False
 
         # Parse unified --mode argument
-        job_strategies, global_strategy = self.job_manager.parse_mode_argument(args.mode)
+        job_strategies, global_strategy = self.job_manager.parse_mode_argument(
+            args.mode
+        )
 
         if args.job:
             # --job "jobname" scenario
@@ -66,10 +69,16 @@ class ExecutionPlanner:
                     for task in task_configs:
                         task.add_final = True
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LATEST or strategy == ExecutionStrategy.LAST:
+                elif (
+                    strategy == ExecutionStrategy.LATEST
+                    or strategy == ExecutionStrategy.LAST
+                ):
                     # Use latest task
                     task_configs = [existing_tasks[0]]
-                elif strategy == ExecutionStrategy.LATEST_NEW or strategy == ExecutionStrategy.LAST_NEW:
+                elif (
+                    strategy == ExecutionStrategy.LATEST_NEW
+                    or strategy == ExecutionStrategy.LAST_NEW
+                ):
                     # Use latest task + force new final audio
                     task_config = existing_tasks[0]  # First in sorted list (newest)
                     task_config.add_final = True
@@ -84,20 +93,34 @@ class ExecutionPlanner:
                         return ExecutionPlan([], "cancelled")
                     elif choice == UserChoice.LATEST:
                         if existing_tasks:
-                            task_configs = [existing_tasks[0]]  # First in sorted list (newest)
+                            task_configs = [
+                                existing_tasks[0]
+                            ]  # First in sorted list (newest)
                     elif choice == UserChoice.SPECIFIC:
-                        if existing_tasks and hasattr(self.user_interaction, 'selected_task_index'):
-                            task_configs = [existing_tasks[self.user_interaction.selected_task_index]]
+                        if existing_tasks and hasattr(
+                            self.user_interaction, "selected_task_index"
+                        ):
+                            task_configs = [
+                                existing_tasks[
+                                    self.user_interaction.selected_task_index
+                                ]
+                            ]
                         elif existing_tasks:
                             task_configs = [existing_tasks[0]]  # Fallback to latest
                     elif choice == UserChoice.LATEST_NEW:
                         if existing_tasks:
-                            task_config = existing_tasks[0]  # First in sorted list (newest)
+                            task_config = existing_tasks[
+                                0
+                            ]  # First in sorted list (newest)
                             task_config.add_final = True
                             task_configs = [task_config]
                     elif choice == UserChoice.SPECIFIC_NEW:
-                        if existing_tasks and hasattr(self.user_interaction, 'selected_task_index'):
-                            task_config = existing_tasks[self.user_interaction.selected_task_index]
+                        if existing_tasks and hasattr(
+                            self.user_interaction, "selected_task_index"
+                        ):
+                            task_config = existing_tasks[
+                                self.user_interaction.selected_task_index
+                            ]
                             task_config.add_final = True
                             task_configs = [task_config]
                         elif existing_tasks:
@@ -161,41 +184,69 @@ class ExecutionPlanner:
                             for task in all_tasks:
                                 task.add_final = True
                             task_configs.extend(all_tasks)
-                        elif strategy == ExecutionStrategy.LATEST or strategy == ExecutionStrategy.LAST:
+                        elif (
+                            strategy == ExecutionStrategy.LATEST
+                            or strategy == ExecutionStrategy.LAST
+                        ):
                             task_configs.append(existing_tasks[0])
-                        elif strategy == ExecutionStrategy.LATEST_NEW or strategy == ExecutionStrategy.LAST_NEW:
+                        elif (
+                            strategy == ExecutionStrategy.LATEST_NEW
+                            or strategy == ExecutionStrategy.LAST_NEW
+                        ):
                             # Use latest task + force new final audio
-                            task_config = existing_tasks[0]  # First in sorted list (newest)
+                            task_config = existing_tasks[
+                                0
+                            ]  # First in sorted list (newest)
                             task_config.add_final = True
                             task_configs.append(task_config)
                         else:
                             # No strategy specified - interactive selection
                             if global_strategy is None:
                                 requires_user_input = True
-                            choice = self.user_interaction.prompt_user_selection(existing_tasks)
+                            choice = self.user_interaction.prompt_user_selection(
+                                existing_tasks
+                            )
 
                             if choice == UserChoice.CANCEL:
                                 continue
                             elif choice == UserChoice.LATEST:
                                 if existing_tasks:
-                                    task_configs.append(existing_tasks[0])  # First in sorted list (newest)
+                                    task_configs.append(
+                                        existing_tasks[0]
+                                    )  # First in sorted list (newest)
                             elif choice == UserChoice.SPECIFIC:
-                                if existing_tasks and hasattr(self.user_interaction, 'selected_task_index'):
-                                    task_configs.append(existing_tasks[self.user_interaction.selected_task_index])
+                                if existing_tasks and hasattr(
+                                    self.user_interaction, "selected_task_index"
+                                ):
+                                    task_configs.append(
+                                        existing_tasks[
+                                            self.user_interaction.selected_task_index
+                                        ]
+                                    )
                                 elif existing_tasks:
-                                    task_configs.append(existing_tasks[0])  # Fallback to latest
+                                    task_configs.append(
+                                        existing_tasks[0]
+                                    )  # Fallback to latest
                             elif choice == UserChoice.LATEST_NEW:
                                 if existing_tasks:
-                                    task_config = existing_tasks[0]  # First in sorted list (newest)
+                                    task_config = existing_tasks[
+                                        0
+                                    ]  # First in sorted list (newest)
                                     task_config.add_final = True
                                     task_configs.append(task_config)
                             elif choice == UserChoice.SPECIFIC_NEW:
-                                if existing_tasks and hasattr(self.user_interaction, 'selected_task_index'):
-                                    task_config = existing_tasks[self.user_interaction.selected_task_index]
+                                if existing_tasks and hasattr(
+                                    self.user_interaction, "selected_task_index"
+                                ):
+                                    task_config = existing_tasks[
+                                        self.user_interaction.selected_task_index
+                                    ]
                                     task_config.add_final = True
                                     task_configs.append(task_config)
                                 elif existing_tasks:
-                                    task_config = existing_tasks[0]  # Fallback to latest
+                                    task_config = existing_tasks[
+                                        0
+                                    ]  # Fallback to latest
                                     task_config.add_final = True
                                     task_configs.append(task_config)
                             elif choice == UserChoice.ALL_NEW:
@@ -223,7 +274,7 @@ class ExecutionPlanner:
             existing_tasks = self.job_manager.find_existing_tasks(job_name)
 
             if existing_tasks:
-                # Apply strategy for default job  
+                # Apply strategy for default job
                 strategy = job_strategies.get(job_name, global_strategy)
 
                 if strategy == ExecutionStrategy.NEW:
@@ -238,9 +289,15 @@ class ExecutionPlanner:
                     for task in task_configs:
                         task.add_final = True
                     execution_mode = "batch"
-                elif strategy == ExecutionStrategy.LATEST or strategy == ExecutionStrategy.LAST:
+                elif (
+                    strategy == ExecutionStrategy.LATEST
+                    or strategy == ExecutionStrategy.LAST
+                ):
                     task_configs = [existing_tasks[0]]  # Use first (newest) not last
-                elif strategy == ExecutionStrategy.LATEST_NEW or strategy == ExecutionStrategy.LAST_NEW:
+                elif (
+                    strategy == ExecutionStrategy.LATEST_NEW
+                    or strategy == ExecutionStrategy.LAST_NEW
+                ):
                     # Use latest task + force new final audio
                     task_config = existing_tasks[0]  # First in sorted list (newest)
                     task_config.add_final = True
@@ -255,20 +312,34 @@ class ExecutionPlanner:
                         return ExecutionPlan([], "cancelled")
                     elif choice == UserChoice.LATEST:
                         if existing_tasks:
-                            task_configs = [existing_tasks[0]]  # First in sorted list (newest)
+                            task_configs = [
+                                existing_tasks[0]
+                            ]  # First in sorted list (newest)
                     elif choice == UserChoice.SPECIFIC:
-                        if existing_tasks and hasattr(self.user_interaction, 'selected_task_index'):
-                            task_configs = [existing_tasks[self.user_interaction.selected_task_index]]
+                        if existing_tasks and hasattr(
+                            self.user_interaction, "selected_task_index"
+                        ):
+                            task_configs = [
+                                existing_tasks[
+                                    self.user_interaction.selected_task_index
+                                ]
+                            ]
                         elif existing_tasks:
                             task_configs = [existing_tasks[0]]  # Fallback to latest
                     elif choice == UserChoice.LATEST_NEW:
                         if existing_tasks:
-                            task_config = existing_tasks[0]  # First in sorted list (newest)
+                            task_config = existing_tasks[
+                                0
+                            ]  # First in sorted list (newest)
                             task_config.add_final = True
                             task_configs = [task_config]
                     elif choice == UserChoice.SPECIFIC_NEW:
-                        if existing_tasks and hasattr(self.user_interaction, 'selected_task_index'):
-                            task_config = existing_tasks[self.user_interaction.selected_task_index]
+                        if existing_tasks and hasattr(
+                            self.user_interaction, "selected_task_index"
+                        ):
+                            task_config = existing_tasks[
+                                self.user_interaction.selected_task_index
+                            ]
                             task_config.add_final = True
                             task_configs = [task_config]
                         elif existing_tasks:
@@ -293,7 +364,7 @@ class ExecutionPlanner:
                 task_configs = [new_task]
 
         # Set add_final flag for all tasks if requested
-        if hasattr(args, 'add_final') and args.add_final:
+        if hasattr(args, "add_final") and args.add_final:
             for task_config in task_configs:
                 task_config.add_final = True
 
@@ -315,4 +386,4 @@ class ExecutionPlanner:
             logger.info(f"  {i}. {task.job_name}: {task.task_name}{run_label}")
             logger.info(f"     └─ {task.base_output_dir}")
 
-        logger.info("=" * 50) 
+        logger.info("=" * 50)

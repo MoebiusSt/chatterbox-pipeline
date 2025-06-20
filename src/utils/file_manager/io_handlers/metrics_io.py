@@ -17,7 +17,7 @@ class MetricsIOHandler:
     def __init__(self, task_directory: Path):
         """
         Initialize MetricsIOHandler.
-        
+
         Args:
             task_directory: Main task directory
         """
@@ -40,6 +40,6 @@ class MetricsIOHandler:
         if not path.exists():
             logger.debug(f"Metrics file not found: {path}")
             return {}
-        
+
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f) 
+            return json.load(f)

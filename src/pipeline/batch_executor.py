@@ -31,7 +31,11 @@ class BatchResult:
     @property
     def success_rate(self) -> float:
         """Calculate success rate as percentage."""
-        return (self.successful_tasks / self.total_tasks) * 100 if self.total_tasks > 0 else 0.0
+        return (
+            (self.successful_tasks / self.total_tasks) * 100
+            if self.total_tasks > 0
+            else 0.0
+        )
 
 
 class BatchExecutor:
@@ -63,28 +67,28 @@ class BatchExecutor:
         logger.info(f"🚀 Starting batch execution of {total_tasks} tasks")
 
         results = []
-        
+
         if total_tasks == 1:
             # Single task - execute directly for better logging
             logger.info("📋 EXECUTION PLAN SUMMARY")
             logger.info("  Mode: SINGLE")
             logger.info(f"  Tasks: {total_tasks}")
-            
+
             task_config = task_configs[0]
             logger.info(f"  1. {task_config.job_name}: {task_config.task_name}")
             logger.info(f"     └─ {task_config.base_output_dir}")
             logger.info("=" * 50)
-            
+
             result = self._execute_single_task(task_config)
             results.append(result)
-            
+
         else:
             # Multiple tasks - use parallel execution
             logger.info("📋 EXECUTION PLAN SUMMARY")
             logger.info("  Mode: PARALLEL")
             logger.info(f"  Tasks: {total_tasks}")
             logger.info(f"  Max Workers: {self.max_workers or 'auto'}")
-            
+
             for i, task_config in enumerate(task_configs, 1):
                 logger.info(f"  {i}. {task_config.job_name}: {task_config.task_name}")
                 logger.info(f"     └─ {task_config.base_output_dir}")
@@ -103,13 +107,15 @@ class BatchExecutor:
                     try:
                         result = future.result()
                         results.append(result)
-                        
+
                         # Log completion
                         status = "✅ SUCCESS" if result.success else "❌ FAILED"
                         logger.info(f"{status}: {config.job_name}:{config.task_name}")
-                        
+
                     except Exception as e:
-                        logger.error(f"❌ FAILED: {config.job_name}:{config.task_name} - {e}")
+                        logger.error(
+                            f"❌ FAILED: {config.job_name}:{config.task_name} - {e}"
+                        )
                         # Create a failed result
                         failed_result = TaskResult(
                             task_config=config,
@@ -117,7 +123,7 @@ class BatchExecutor:
                             completion_stage=CompletionStage.NOT_STARTED,
                             execution_time=0.0,
                             error_message=str(e),
-                            final_audio_path=None
+                            final_audio_path=None,
                         )
                         results.append(failed_result)
 
@@ -151,13 +157,13 @@ class BatchExecutor:
         # Load config once to avoid duplicate loading
         project_root = Path.cwd()  # Assume we're running from project root
         config_manager = ConfigManager(project_root)
-        
+
         # Debug output
         logger.debug(f"task_config.config_path: {task_config.config_path}")
         logger.debug(f"task_config.config_path type: {type(task_config.config_path)}")
-        
+
         loaded_config = config_manager.load_cascading_config(task_config.config_path)
-        
+
         # Create file manager with preloaded config
         file_manager = FileManager(task_config, preloaded_config=loaded_config)
 
@@ -181,7 +187,7 @@ class BatchExecutor:
         total_tasks = len(results)
         successful_tasks = sum(1 for r in results if r.success)
         failed_tasks = total_tasks - successful_tasks
-        
+
         # Calculate total execution time
         total_execution_time = sum(r.execution_time for r in results)
 
@@ -190,5 +196,5 @@ class BatchExecutor:
             successful_tasks=successful_tasks,
             failed_tasks=failed_tasks,
             execution_time=total_execution_time,
-            task_results=results
+            task_results=results,
         )

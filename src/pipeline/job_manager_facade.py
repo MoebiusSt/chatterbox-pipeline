@@ -12,17 +12,22 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from utils.config_manager import ConfigManager, TaskConfig
-from .job_manager.job_manager import JobManager as CoreJobManager
-from .job_manager.execution_planner import ExecutionPlanner, ExecutionPlan, ExecutionStrategy
-from .job_manager.user_interaction import UserInteraction, UserChoice
+
 from .job_manager.config_validator import ConfigValidator
+from .job_manager.execution_planner import (
+    ExecutionPlan,
+    ExecutionPlanner,
+    ExecutionStrategy,
+)
+from .job_manager.job_manager import JobManager as CoreJobManager
+from .job_manager.user_interaction import UserChoice, UserInteraction
 
 logger = logging.getLogger(__name__)
 
 
 # Re-export enums and dataclasses for backward compatibility
 UserChoice = UserChoice
-ExecutionStrategy = ExecutionStrategy  
+ExecutionStrategy = ExecutionStrategy
 ExecutionPlan = ExecutionPlan
 
 
@@ -35,7 +40,7 @@ class JobManager:
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager
         self.project_root = config_manager.project_root
-        
+
         # Initialize components
         self.core_manager = CoreJobManager(config_manager)
         self.execution_planner = ExecutionPlanner(self.core_manager, config_manager)
@@ -61,14 +66,16 @@ class JobManager:
     def create_new_task(self, job_config: Dict[str, Any]) -> TaskConfig:
         return self.core_manager.create_new_task(job_config)
 
-    def parse_mode_argument(self, mode_arg: Optional[str]) -> tuple[Dict[str, ExecutionStrategy], Optional[ExecutionStrategy]]:
+    def parse_mode_argument(
+        self, mode_arg: Optional[str]
+    ) -> tuple[Dict[str, ExecutionStrategy], Optional[ExecutionStrategy]]:
         return self.core_manager.parse_mode_argument(mode_arg)
 
     # Delegate to user interaction
     def prompt_user_selection(self, tasks: List[TaskConfig]) -> UserChoice:
         choice = self.user_interaction.prompt_user_selection(tasks)
         # Copy selected_task_index for backward compatibility
-        if hasattr(self.user_interaction, 'selected_task_index'):
+        if hasattr(self.user_interaction, "selected_task_index"):
             self.selected_task_index = self.user_interaction.selected_task_index
         return choice
 

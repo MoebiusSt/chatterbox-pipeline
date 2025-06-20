@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.file_manager import AudioCandidate
 from validation.fuzzy_matcher import MatchResult
 from validation.whisper_validator import ValidationResult
@@ -80,12 +79,13 @@ class QualityScorer:
         """
         self.sample_rate = sample_rate
         import logging
+
         self.logger = logging.getLogger(__name__)
 
         # Default weights for weighted average strategy
         self.weights = weights or {
-            "similarity": 0.57,     # 57% - text similarity from FuzzyMatcher or WhisperValidator
-            "length": 0.43,         # 43% - text length comparison (original vs transcribed text)
+            "similarity": 0.57,  # 57% - text similarity from FuzzyMatcher or WhisperValidator
+            "length": 0.43,  # 43% - text length comparison (original vs transcribed text)
         }
 
         # Normalize weights to ensure they sum to 1.0
@@ -120,9 +120,7 @@ class QualityScorer:
                 validation_result, match_result
             )
 
-            length_score = self._calculate_length_score(
-                candidate, validation_result
-            )
+            length_score = self._calculate_length_score(candidate, validation_result)
 
             penalty_score = self._calculate_penalty_score(candidate, validation_result)
 
@@ -151,15 +149,17 @@ class QualityScorer:
                         "similarity_score": similarity_score,
                         "length_score": length_score,
                         "penalty_score": penalty_score,
-                        "overall_score": overall_score
+                        "overall_score": overall_score,
                     },
                     # Raw validation metrics from Whisper
                     "validation_metrics": {
                         "whisper_similarity": validation_result.similarity_score,
                         "whisper_quality": validation_result.quality_score,
                         "transcription_length": len(validation_result.transcription),
-                        "original_text_length": len(candidate.chunk_text) if candidate.chunk_text else 0
-                    }
+                        "original_text_length": (
+                            len(candidate.chunk_text) if candidate.chunk_text else 0
+                        ),
+                    },
                 },
             )
 
@@ -223,8 +223,6 @@ class QualityScorer:
         except Exception as e:
             self.logger.warning(f"Length score calculation failed: {e}")
             return 0.5
-
-
 
     def _calculate_penalty_score(
         self, candidate: AudioCandidate, validation_result: ValidationResult
@@ -306,8 +304,8 @@ class QualityScorer:
     ) -> List[Tuple[AudioCandidate, QualityScore]]:
         """
         Rank multiple candidates by quality score.
-        
-        Candidates are sorted by overall_score (descending). 
+
+        Candidates are sorted by overall_score (descending).
         In case of tied scores, shorter audio duration is preferred as tie-breaker.
 
         Args:
@@ -336,8 +334,8 @@ class QualityScorer:
 
         # Sort by overall score (descending), then by audio duration (ascending) as tie-breaker
         scored_candidates.sort(
-            key=lambda x: (x[1].overall_score, -self._get_audio_duration(x[0])), 
-            reverse=True
+            key=lambda x: (x[1].overall_score, -self._get_audio_duration(x[0])),
+            reverse=True,
         )
 
         # Get chunk info for better logging
@@ -345,14 +343,14 @@ class QualityScorer:
         best_score = scored_candidates[0][1].overall_score
         worst_score = scored_candidates[-1][1].overall_score
         best_candidate = scored_candidates[0][0]
-        
+
         # Get TTS parameters from best candidate
         best_params = best_candidate.generation_params or {}
-        exaggeration = best_params.get('exaggeration', 0.0)
-        cfg_weight = best_params.get('cfg_weight', 0.0) 
-        temperature = best_params.get('temperature', 0.0)
+        exaggeration = best_params.get("exaggeration", 0.0)
+        cfg_weight = best_params.get("cfg_weight", 0.0)
+        temperature = best_params.get("temperature", 0.0)
         best_idx = best_candidate.candidate_idx + 1  # Display as 1-based
-        
+
         self.logger.info(
             f"Chunk_{chunk_idx:02d}: score {worst_score:.3f} to {best_score:.3f}. "
             f"Best candidate: {best_idx} of {len(candidates)} (score: {best_score:.3f}) "

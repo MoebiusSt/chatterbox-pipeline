@@ -4,12 +4,11 @@ from pathlib import Path
 
 import yaml
 
-# Add src to the Python path to allow for absolute imports
-# This is a common practice for development scripts
-sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
-
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
+
+# Import statements - use PYTHONPATH=$(pwd)/src when running this script
+
 
 # Configure basic logging
 logging.basicConfig(

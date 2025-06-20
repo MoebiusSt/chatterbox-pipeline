@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from generation.candidate_manager import CandidateManager
 from generation.tts_generator import TTSGenerator
 from utils.file_manager import AudioCandidate, FileManager, TextChunk
+
 from ..retry_logic import RetryLogic
 
 logger = logging.getLogger(__name__)
@@ -158,7 +159,9 @@ class GenerationHandler:
                 exaggeration=tts_params.get("exaggeration"),
                 cfg_weight=tts_params.get("cfg_weight"),
                 temperature=tts_params.get("temperature"),
-                conservative_config=generation_config.get("conservative_candidate", None),
+                conservative_config=generation_config.get(
+                    "conservative_candidate", None
+                ),
                 tts_params=tts_params,
             )
 
@@ -214,4 +217,4 @@ class GenerationHandler:
         """Generate additional conservative candidates if initial generation fails quality."""
         return self.retry_logic.generate_retry_candidates(
             chunk, max_retries, start_candidate_idx
-        ) 
+        )

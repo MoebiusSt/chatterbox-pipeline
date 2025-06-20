@@ -122,4 +122,4 @@ class RetryLogic:
 
         except Exception as e:
             logger.error(f"Error in retry candidate generation: {e}")
-            return [] 
+            return []

@@ -27,7 +27,6 @@ from utils.file_manager import (
     TaskState,
     TextChunk,
 )
-import logging
 from utils.progress_tracker import ProgressTracker
 from validation.fuzzy_matcher import FuzzyMatcher
 from validation.quality_scorer import QualityScorer
@@ -200,9 +199,7 @@ class TaskExecutor:
                 )
 
                 if has_missing_candidates:
-                    logger.info(
-                        "⚠️ Missing candidates detected - must generate first"
-                    )
+                    logger.info("⚠️ Missing candidates detected - must generate first")
                     task_state.completion_stage = CompletionStage.GENERATION
                 elif has_missing_whisper:
                     logger.info(
@@ -515,7 +512,9 @@ class TaskExecutor:
         Returns:
             List of generated AudioCandidate objects.
         """
-        logger.debug(f"Generating {self.candidate_manager.max_candidates} candidates for chunk '{chunk.text[:50]}...'")
+        logger.debug(
+            f"Generating {self.candidate_manager.max_candidates} candidates for chunk '{chunk.text[:50]}...'"
+        )
         try:
             # Use TTSGenerator's built-in candidate generation with parameter variation
             generation_config = self.config["generation"]
@@ -556,7 +555,9 @@ class TaskExecutor:
         Returns:
             List of newly generated AudioCandidate objects.
         """
-        logger.info(f"Generating missing candidates {missing_indices} for chunk {chunk.idx+1}")
+        logger.info(
+            f"Generating missing candidates {missing_indices} for chunk {chunk.idx+1}"
+        )
         try:
             logger.debug(
                 f"starting _generate_missing_candidates(): Generating {len(missing_indices)} candidates for indices: {missing_indices}"
@@ -586,7 +587,9 @@ class TaskExecutor:
         """
         Deletes a specific whisper validation file (e.g., when regenerating a candidate).
         """
-        self.candidate_manager._delete_whisper_file(self.file_manager.task_directory, chunk_index, candidate_idx)
+        self.candidate_manager._delete_whisper_file(
+            self.file_manager.task_directory, chunk_index, candidate_idx
+        )
 
     def _generate_retry_candidates(
         self, chunk: TextChunk, max_retries: int, start_candidate_idx: int

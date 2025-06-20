@@ -4,9 +4,9 @@ import logging
 import time
 from typing import Any, Dict, List
 
-from validation.whisper_validator import WhisperValidator, ValidationResult
-from validation.quality_scorer import QualityScorer
 from utils.file_manager import AudioCandidate, FileManager, TextChunk
+from validation.quality_scorer import QualityScorer
+from validation.whisper_validator import ValidationResult, WhisperValidator
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,9 @@ class ValidationHandler:
                     )
 
                 # Retry logic if no valid candidates
-                if not self._handle_retry_logic(chunk, chunk_results, all_candidates, validation_results):
+                if not self._handle_retry_logic(
+                    chunk, chunk_results, all_candidates, validation_results
+                ):
                     return False
 
             # Create and save enhanced metrics
@@ -163,12 +165,18 @@ class ValidationHandler:
             logger.error(f"Validation stage failed: {e}", exc_info=True)
             return False
 
-    def _handle_retry_logic(self, chunk: TextChunk, chunk_results: dict, all_candidates: dict, validation_results: dict) -> bool:
+    def _handle_retry_logic(
+        self,
+        chunk: TextChunk,
+        chunk_results: dict,
+        all_candidates: dict,
+        validation_results: dict,
+    ) -> bool:
         """Handle retry logic for chunks with no valid candidates."""
         valid_count = sum(
             1 for result in chunk_results.values() if result.get("is_valid", False)
         )
-        
+
         if valid_count > 0:
             return True
 
@@ -220,7 +228,9 @@ class ValidationHandler:
                 )
 
             if retry_candidates:
-                logger.info(f"🔁 Validating {len(retry_candidates)} retry candidates...")
+                logger.info(
+                    f"🔁 Validating {len(retry_candidates)} retry candidates..."
+                )
 
                 # Validate retry candidates
                 for retry_candidate in retry_candidates:
@@ -265,15 +275,21 @@ class ValidationHandler:
                 if not self.file_manager.save_candidates(
                     chunk.idx, all_candidates[chunk.idx], overwrite_existing=False
                 ):
-                    logger.warning(f"Failed to save retry candidates for chunk {chunk.idx+1}")
+                    logger.warning(
+                        f"Failed to save retry candidates for chunk {chunk.idx+1}"
+                    )
                 else:
-                    logger.debug(f"✓ Saved {len(retry_candidates)} retry candidates to disk")
+                    logger.debug(
+                        f"✓ Saved {len(retry_candidates)} retry candidates to disk"
+                    )
 
                 validation_results[chunk.idx] = chunk_results
 
                 # Log results
                 new_valid_count = sum(
-                    1 for result in chunk_results.values() if result.get("is_valid", False)
+                    1
+                    for result in chunk_results.values()
+                    if result.get("is_valid", False)
                 )
                 if chunk_results:
                     overall_scores = [
@@ -282,7 +298,9 @@ class ValidationHandler:
                     ]
                     min_score = min(overall_scores)
                     max_score = max(overall_scores)
-                    score_summary = f" (overall scores: {min_score:.3f} to {max_score:.3f})"
+                    score_summary = (
+                        f" (overall scores: {min_score:.3f} to {max_score:.3f})"
+                    )
                 else:
                     score_summary = ""
 
@@ -291,9 +309,13 @@ class ValidationHandler:
                         f"🎉 Retry success: {new_valid_count-valid_count} additional valid candidates found!{score_summary}"
                     )
                 else:
-                    logger.info(f"😞 Retry complete: Still no valid candidates{score_summary}")
+                    logger.info(
+                        f"😞 Retry complete: Still no valid candidates{score_summary}"
+                    )
             else:
-                logger.warning(f"Failed to generate retry candidates for chunk {chunk.idx+1}")
+                logger.warning(
+                    f"Failed to generate retry candidates for chunk {chunk.idx+1}"
+                )
 
         return True
 
@@ -355,7 +377,9 @@ class ValidationHandler:
 
                 chunk_metrics = {
                     "chunk_text": (
-                        chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text
+                        chunk.text[:100] + "..."
+                        if len(chunk.text) > 100
+                        else chunk.text
                     ),
                     "candidates": {},
                     "best_candidate": best_candidate_idx,
@@ -415,8 +439,12 @@ class ValidationHandler:
                 metrics["selected_candidates"][chunk.idx] = best_candidate_idx
 
             except Exception as e:
-                logger.warning(f"Failed to select best candidate for chunk {chunk.idx}: {e}")
+                logger.warning(
+                    f"Failed to select best candidate for chunk {chunk.idx}: {e}"
+                )
                 if candidates_list:
-                    metrics["selected_candidates"][chunk.idx] = candidates_list[0].candidate_idx
+                    metrics["selected_candidates"][chunk.idx] = candidates_list[
+                        0
+                    ].candidate_idx
 
-        return metrics 
+        return metrics

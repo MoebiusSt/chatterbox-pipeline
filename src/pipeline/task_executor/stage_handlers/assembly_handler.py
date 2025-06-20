@@ -6,8 +6,8 @@ from typing import Any, Dict, List
 
 import torch
 
-from utils.file_manager import FileManager, TextChunk
 from utils.config_manager import TaskConfig
+from utils.file_manager import FileManager, TextChunk
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 class AssemblyHandler:
     """Handles assembly stage (audio concatenation and post-processing)."""
 
-    def __init__(self, file_manager: FileManager, config: Dict[str, Any], task_config: TaskConfig):
+    def __init__(
+        self, file_manager: FileManager, config: Dict[str, Any], task_config: TaskConfig
+    ):
         self.file_manager = file_manager
         self.config = config
         self.task_config = task_config
@@ -215,4 +217,4 @@ class AssemblyHandler:
 
         except Exception as e:
             logger.warning(f"Post-processing failed, using original audio: {e}")
-            return audio 
+            return audio

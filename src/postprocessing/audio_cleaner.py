@@ -16,7 +16,6 @@ import numpy as np
 import torch
 import torchaudio
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 from postprocessing.noise_analyzer import NoiseAnalyzer, NoiseProfile
 
 

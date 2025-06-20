@@ -14,8 +14,8 @@ import torch
 import torchaudio
 import whisper
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils.file_manager import AudioCandidate
+
 from .quality_calculator import QualityCalculator
 from .transcription_io import TranscriptionIO
 
@@ -23,6 +23,7 @@ from .transcription_io import TranscriptionIO
 @dataclass
 class ValidationResult:
     """Result of audio validation process."""
+
     is_valid: bool
     transcription: str
     similarity_score: float
@@ -110,8 +111,10 @@ class WhisperValidator:
                 audio_np = audio_resampled.numpy()
 
             if self.model is None:
-                raise RuntimeError("Whisper model not loaded. Call _load_model() first.")
-            
+                raise RuntimeError(
+                    "Whisper model not loaded. Call _load_model() first."
+                )
+
             result = self.model.transcribe(
                 audio_np,
                 language=language,
@@ -163,20 +166,27 @@ class WhisperValidator:
 
             # Validation logic with flexibility
             strict_validation = (
-                similarity_score >= self.similarity_threshold 
+                similarity_score >= self.similarity_threshold
                 and quality_score >= self.min_quality_score
             )
-            
+
             flexible_validation = (
-                (quality_score >= self.min_quality_score + 0.02 and 
-                 similarity_score >= self.similarity_threshold - 0.1) or
-                (similarity_score >= self.similarity_threshold + 0.02 and 
-                 quality_score >= self.min_quality_score - 0.1) or
-                (similarity_score >= self.similarity_threshold - 0.05 and 
-                 quality_score >= self.min_quality_score - 0.05 and
-                 (similarity_score + quality_score) >= (self.similarity_threshold + self.min_quality_score) - 0.05)
+                (
+                    quality_score >= self.min_quality_score + 0.02
+                    and similarity_score >= self.similarity_threshold - 0.1
+                )
+                or (
+                    similarity_score >= self.similarity_threshold + 0.02
+                    and quality_score >= self.min_quality_score - 0.1
+                )
+                or (
+                    similarity_score >= self.similarity_threshold - 0.05
+                    and quality_score >= self.min_quality_score - 0.05
+                    and (similarity_score + quality_score)
+                    >= (self.similarity_threshold + self.min_quality_score) - 0.05
+                )
             )
-            
+
             is_valid = strict_validation or flexible_validation
 
             validation_time = (datetime.now() - start_time).total_seconds()

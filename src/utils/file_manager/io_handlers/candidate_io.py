@@ -8,7 +8,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 import torch
 import torchaudio
@@ -18,11 +18,16 @@ logger = logging.getLogger(__name__)
 
 class AudioCandidate:
     """Audio candidate data structure."""
-    
-    def __init__(self, chunk_idx: int, candidate_idx: int, audio_path: Path, 
-                 audio_tensor: Optional[torch.Tensor] = None,
-                 generation_params: Optional[Dict[str, Any]] = None,
-                 chunk_text: Optional[str] = None):
+
+    def __init__(
+        self,
+        chunk_idx: int,
+        candidate_idx: int,
+        audio_path: Path,
+        audio_tensor: Optional[torch.Tensor] = None,
+        generation_params: Optional[Dict[str, Any]] = None,
+        chunk_text: Optional[str] = None,
+    ):
         self.chunk_idx = chunk_idx
         self.candidate_idx = candidate_idx
         self.audio_path = audio_path
@@ -37,7 +42,7 @@ class CandidateIOHandler:
     def __init__(self, candidates_dir: Path, config: dict):
         """
         Initialize CandidateIOHandler.
-        
+
         Args:
             candidates_dir: Directory for candidate files
             config: Configuration dictionary
@@ -46,7 +51,12 @@ class CandidateIOHandler:
         self.config = config
         self.candidates_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_candidates(self, chunk_idx: int, candidates: List[AudioCandidate], overwrite_existing: bool = False) -> bool:
+    def save_candidates(
+        self,
+        chunk_idx: int,
+        candidates: List[AudioCandidate],
+        overwrite_existing: bool = False,
+    ) -> bool:
         """
         Save audio candidates for a chunk.
 
@@ -92,30 +102,47 @@ class CandidateIOHandler:
                     # VALIDATE before copying to prevent corrupt files from propagating
                     try:
                         # Test if the file can be loaded properly
-                        test_waveform, test_sample_rate = torchaudio.load(str(candidate.audio_path))
+                        test_waveform, test_sample_rate = torchaudio.load(
+                            str(candidate.audio_path)
+                        )
                         if test_waveform.numel() == 0:
                             raise ValueError("Empty audio file")
-                        if torch.isnan(test_waveform).any() or torch.isinf(test_waveform).any():
+                        if (
+                            torch.isnan(test_waveform).any()
+                            or torch.isinf(test_waveform).any()
+                        ):
                             raise ValueError("Audio contains NaN or Inf values")
-                        
+
                         # File is valid, safe to copy
                         shutil.copy2(candidate.audio_path, audio_path)
                         saved_count += 1
-                        logger.debug(f"Copied validated candidate file: {audio_filename}")
-                        
+                        logger.debug(
+                            f"Copied validated candidate file: {audio_filename}"
+                        )
+
                     except Exception as e:
                         # CRITICAL: Corrupt file detected - do NOT copy!
-                        logger.error(f"🚨 CORRUPT AUDIO FILE DETECTED: {candidate.audio_path}")
+                        logger.error(
+                            f"🚨 CORRUPT AUDIO FILE DETECTED: {candidate.audio_path}"
+                        )
                         logger.error(f"   Error: {e}")
-                        logger.error(f"   Skipping candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}")
-                        logger.error(f"   This candidate will be excluded from final audio assembly!")
-                        
+                        logger.error(
+                            f"   Skipping candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}"
+                        )
+                        logger.error(
+                            f"   This candidate will be excluded from final audio assembly!"
+                        )
+
                         # Remove the corrupt file and its validation data
-                        self._remove_corrupt_candidate(chunk_idx, candidate.candidate_idx)
+                        self._remove_corrupt_candidate(
+                            chunk_idx, candidate.candidate_idx
+                        )
                         continue  # Skip this candidate entirely
                 else:
                     # No audio tensor AND no valid audio file - this candidate is unusable
-                    logger.warning(f"⚠️ Unusable candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}: no audio tensor or valid file")
+                    logger.warning(
+                        f"⚠️ Unusable candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}: no audio tensor or valid file"
+                    )
                     continue  # Skip this candidate
 
                 # Update candidate path
@@ -140,16 +167,22 @@ class CandidateIOHandler:
                 json.dump(candidate_metadata, f, indent=2)
 
             if overwrite_existing:
-                logger.debug(f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)")
+                logger.debug(
+                    f"Saved {saved_count} candidates for chunk {chunk_idx + 1} (overwrite mode)"
+                )
             else:
-                logger.debug(f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)")
+                logger.debug(
+                    f"Saved {saved_count} new candidates for chunk {chunk_idx + 1} (skipped {skipped_count} existing)"
+                )
             return True
 
         except Exception as e:
             logger.error(f"Error saving candidates for chunk {chunk_idx+1}: {e}")
             return False
 
-    def get_candidates(self, chunk_idx: Optional[int] = None) -> Dict[int, List[AudioCandidate]]:
+    def get_candidates(
+        self, chunk_idx: Optional[int] = None
+    ) -> Dict[int, List[AudioCandidate]]:
         """
         Load audio candidates.
 
@@ -171,7 +204,9 @@ class CandidateIOHandler:
                 for d in self.candidates_dir.iterdir()
                 if d.is_dir() and d.name.startswith("chunk_")
             ]
-            chunk_indices = [int(d.name.split("_")[1]) - 1 for d in chunk_dirs]  # Convert back to 0-based
+            chunk_indices = [
+                int(d.name.split("_")[1]) - 1 for d in chunk_dirs
+            ]  # Convert back to 0-based
 
         for idx in chunk_indices:
             chunk_dir = self.candidates_dir / f"chunk_{idx+1:03d}"
@@ -191,7 +226,9 @@ class CandidateIOHandler:
             audio_files = sorted(chunk_dir.glob("candidate_*.wav"))
             for audio_file in audio_files:
                 # Extract candidate index
-                candidate_idx = int(audio_file.stem.split("_")[1]) - 1  # Convert back to 0-based
+                candidate_idx = (
+                    int(audio_file.stem.split("_")[1]) - 1
+                )  # Convert back to 0-based
 
                 # Get metadata for this candidate
                 candidate_meta = None
@@ -251,13 +288,13 @@ class CandidateIOHandler:
     ) -> List[str]:
         """
         Saves generated audio candidates to disk for inspection/debugging.
-        
+
         Args:
             candidates: List of AudioCandidate objects
             chunk_index: Chunk index (0-based)
             sample_rate: Audio sample rate
             output_dir: Output directory for whisper file deletion
-        
+
         Returns:
             List of file paths where candidates were saved.
         """
@@ -276,13 +313,15 @@ class CandidateIOHandler:
 
                 # Delete corresponding whisper file if it exists (ensures re-validation)
                 if output_dir:
-                    self._delete_whisper_file(output_dir, chunk_index, candidate.candidate_idx + 1)
+                    self._delete_whisper_file(
+                        output_dir, chunk_index, candidate.candidate_idx + 1
+                    )
 
                 # Ensure audio tensor is 2D for torchaudio.save (channels, samples)
                 audio_tensor = candidate.audio_tensor.cpu()
                 if audio_tensor.ndim == 1:
                     audio_tensor = audio_tensor.unsqueeze(0)  # Add channel dimension
-                
+
                 torchaudio.save(str(filepath), audio_tensor, sample_rate)
 
                 # Update candidate metadata with correct path
@@ -303,7 +342,9 @@ class CandidateIOHandler:
 
         return saved_paths
 
-    def _save_candidates_in_correct_structure(self, candidates: List[AudioCandidate], chunk_index: int):
+    def _save_candidates_in_correct_structure(
+        self, candidates: List[AudioCandidate], chunk_index: int
+    ):
         """Helper to save candidates when FileManager is not directly available."""
         chunk_dir = self.candidates_dir / f"chunk_{chunk_index+1:03d}"
         chunk_dir.mkdir(parents=True, exist_ok=True)
@@ -325,9 +366,13 @@ class CandidateIOHandler:
                 logger.debug(f"Saved candidate to correct structure: {filepath}")
 
             except Exception as e:
-                logger.error(f"Failed to save candidate {candidate.candidate_idx+1}: {e}")
+                logger.error(
+                    f"Failed to save candidate {candidate.candidate_idx+1}: {e}"
+                )
 
-    def _save_candidate_metadata(self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path):
+    def _save_candidate_metadata(
+        self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path
+    ):
         """Saves metadata for generated candidates in a JSON file within the chunk directory."""
         try:
             candidate_metadata = {
@@ -352,16 +397,24 @@ class CandidateIOHandler:
         except Exception as e:
             logger.error(f"Failed to save candidate metadata: {e}")
 
-    def _delete_whisper_file(self, output_dir: Path, chunk_index: int, candidate_idx: int):
+    def _delete_whisper_file(
+        self, output_dir: Path, chunk_index: int, candidate_idx: int
+    ):
         """Delete corresponding whisper validation file for a candidate (ensures re-validation)."""
         whisper_dir = output_dir / "whisper"
-        whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
+        whisper_file = (
+            whisper_dir
+            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.json"
+        )
 
         if whisper_file.exists():
             whisper_file.unlink()
             logger.debug(f"🗑️ Deleted old whisper file: {whisper_file.name}")
-            
-        alt_whisper_file = whisper_dir / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
+
+        alt_whisper_file = (
+            whisper_dir
+            / f"chunk_{chunk_index+1:03d}_candidate_{candidate_idx:02d}_whisper.txt"
+        )
         if alt_whisper_file.exists():
             alt_whisper_file.unlink()
             logger.debug(f"🗑️ Deleted old whisper TXT file: {alt_whisper_file.name}")
@@ -376,5 +429,7 @@ class CandidateIOHandler:
                 logger.info(f"🗑️ Removed corrupt audio file: {audio_file}")
                 return True
         except Exception as e:
-            logger.error(f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}")
-        return False 
+            logger.error(
+                f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}"
+            )
+        return False

@@ -207,9 +207,7 @@ def load_audio_tensor(
         raise
 
 
-def calculate_duration(
-    audio: torch.Tensor, sample_rate: Optional[int] = None
-) -> float:
+def calculate_duration(audio: torch.Tensor, sample_rate: Optional[int] = None) -> float:
     """
     Calculate audio duration in seconds.
 

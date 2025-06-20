@@ -49,9 +49,7 @@ class TaskExecutor:
 
         # Load config data only if not already set
         if not hasattr(self, "config") or self.config is None:
-            cm = ConfigManager(
-                task_config.config_path.parent.parent.parent.parent
-            )
+            cm = ConfigManager(task_config.config_path.parent.parent.parent.parent)
             self.config = cm.load_cascading_config(task_config.config_path)
             file_manager.config = self.config
 
@@ -229,7 +227,9 @@ class TaskExecutor:
                     final_audio_path = None
                     final_files = list(self.file_manager.final_dir.glob("*_final.wav"))
                     if final_files:
-                        final_audio_path = max(final_files, key=lambda f: f.stat().st_mtime)
+                        final_audio_path = max(
+                            final_files, key=lambda f: f.stat().st_mtime
+                        )
 
                     return TaskResult(
                         task_config=self.task_config,
@@ -323,4 +323,4 @@ class TaskExecutor:
         elif torch.backends.mps.is_available():
             return "mps"
         else:
-            return "cpu" 
+            return "cpu"

@@ -12,7 +12,6 @@ from generation.model_cache import ChatterboxModelCache, ConditionalCache
 
 # Import the standardized AudioCandidate from file_manager
 from utils.file_manager import AudioCandidate
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +100,26 @@ class TTSGenerator:
 
             # Suppress PyTorch and Transformers warnings during model generation
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message=".*torch.backends.cuda.sdp_kernel.*", category=FutureWarning)
-                warnings.filterwarnings("ignore", message=".*LlamaModel is using LlamaSdpaAttention.*")
-                warnings.filterwarnings("ignore", message=".*does not support `output_attentions=True`.*")
-                warnings.filterwarnings("ignore", message=".*past_key_values.*tuple of tuples.*", category=FutureWarning)
-                warnings.filterwarnings("ignore", message=".*attn_implementation.*", category=FutureWarning)
-                
+                warnings.filterwarnings(
+                    "ignore",
+                    message=".*torch.backends.cuda.sdp_kernel.*",
+                    category=FutureWarning,
+                )
+                warnings.filterwarnings(
+                    "ignore", message=".*LlamaModel is using LlamaSdpaAttention.*"
+                )
+                warnings.filterwarnings(
+                    "ignore", message=".*does not support `output_attentions=True`.*"
+                )
+                warnings.filterwarnings(
+                    "ignore",
+                    message=".*past_key_values.*tuple of tuples.*",
+                    category=FutureWarning,
+                )
+                warnings.filterwarnings(
+                    "ignore", message=".*attn_implementation.*", category=FutureWarning
+                )
+
                 # Generate audio using the ChatterboxTTS model
                 audio = self.model.generate(
                     text,
@@ -142,10 +155,10 @@ class TTSGenerator:
     ) -> List[AudioCandidate]:
         """
         Generates multiple audio candidates for the same text input with parameter variation.
-        
+
         PARAMETER SEMANTICS (as specified by user requirements):
         - exaggeration: Config value = MAX, ramps DOWN to (config - max_deviation)
-        - cfg_weight: Config value = MIN, ramps UP to (config + max_deviation)  
+        - cfg_weight: Config value = MIN, ramps UP to (config + max_deviation)
         - temperature: Config value = MIN, ramps UP to (config + max_deviation)
 
         CANDIDATE LOGIC:
@@ -161,12 +174,22 @@ class TTSGenerator:
         if tts_params is None:
             generation_config = self.config.get("generation", {})
             tts_params = generation_config.get("tts_params", {})
-        
+
         # Use config values as defaults - these are now the starting points for ramping
-        base_exaggeration = exaggeration if exaggeration is not None else tts_params.get("exaggeration", 0.6)  # MAX value
-        base_cfg_weight = cfg_weight if cfg_weight is not None else tts_params.get("cfg_weight", 0.7)          # MIN value
-        base_temperature = temperature if temperature is not None else tts_params.get("temperature", 1.0)      # MIN value
-        
+        base_exaggeration = (
+            exaggeration
+            if exaggeration is not None
+            else tts_params.get("exaggeration", 0.6)
+        )  # MAX value
+        base_cfg_weight = (
+            cfg_weight if cfg_weight is not None else tts_params.get("cfg_weight", 0.7)
+        )  # MIN value
+        base_temperature = (
+            temperature
+            if temperature is not None
+            else tts_params.get("temperature", 1.0)
+        )  # MIN value
+
         # Get deviation ranges from config
         exag_max_deviation = tts_params.get("exaggeration_max_deviation", 0.15)
         cfg_max_deviation = tts_params.get("cfg_weight_max_deviation", 0.15)
@@ -182,8 +205,14 @@ class TTSGenerator:
         )
 
         # Special case: 1 candidate + conservative enabled = only conservative
-        if num_candidates == 1 and conservative_config and conservative_config.get("enabled", False):
-            logger.debug("Single candidate mode with conservative enabled - generating only conservative candidate")
+        if (
+            num_candidates == 1
+            and conservative_config
+            and conservative_config.get("enabled", False)
+        ):
+            logger.debug(
+                "Single candidate mode with conservative enabled - generating only conservative candidate"
+            )
             try:
                 candidate_seed = self.seed + hash(text) % 10000
                 torch.manual_seed(candidate_seed)
@@ -231,12 +260,18 @@ class TTSGenerator:
             except Exception as e:
                 logger.error(f"Failed to generate conservative candidate: {e}")
 
-            logger.debug(f"Successfully generated {len(candidates)}/1 conservative candidate")
+            logger.debug(
+                f"Successfully generated {len(candidates)}/1 conservative candidate"
+            )
             return candidates
 
         # Multi-candidate mode or single expressive mode
-        is_conservative_enabled = conservative_config and conservative_config.get("enabled", False)
-        num_expressive = num_candidates - 1 if is_conservative_enabled else num_candidates
+        is_conservative_enabled = conservative_config and conservative_config.get(
+            "enabled", False
+        )
+        num_expressive = (
+            num_candidates - 1 if is_conservative_enabled else num_candidates
+        )
 
         for i in range(num_candidates):
             try:
@@ -249,9 +284,13 @@ class TTSGenerator:
 
                 if is_conservative:
                     # Use conservative parameters for guaranteed correctness
-                    logger.debug(f"Applying conservative parameters for candidate {i+1}")
+                    logger.debug(
+                        f"Applying conservative parameters for candidate {i+1}"
+                    )
                     if conservative_config is None:
-                        raise RuntimeError("Conservative config is None but conservative mode is enabled")
+                        raise RuntimeError(
+                            "Conservative config is None but conservative mode is enabled"
+                        )
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
@@ -271,17 +310,25 @@ class TTSGenerator:
                     else:
                         # Subsequent expressive candidates: apply RAMP strategy
                         # Calculate ramp position: candidate 2 = 0.25, candidate 3 = 0.5, ..., last = 1.0
-                        ramp_position = i / (num_expressive - 1)  # i=1 → 1/4=0.25, i=2 → 2/4=0.5, etc.
-                        
+                        ramp_position = i / (
+                            num_expressive - 1
+                        )  # i=1 → 1/4=0.25, i=2 → 2/4=0.5, etc.
+
                         # Apply user-specified ramp directions:
                         # exaggeration: RAMP-DOWN from MAX (config) to MIN (config - deviation)
-                        var_exaggeration = base_exaggeration - (exag_max_deviation * ramp_position)
-                        
+                        var_exaggeration = base_exaggeration - (
+                            exag_max_deviation * ramp_position
+                        )
+
                         # cfg_weight: RAMP-UP from MIN (config) to MAX (config + deviation)
-                        var_cfg_weight = base_cfg_weight + (cfg_max_deviation * ramp_position)
-                        
+                        var_cfg_weight = base_cfg_weight + (
+                            cfg_max_deviation * ramp_position
+                        )
+
                         # temperature: RAMP-UP from MIN (config) to MAX (config + deviation)
-                        var_temperature = base_temperature + (temp_max_deviation * ramp_position)
+                        var_temperature = base_temperature + (
+                            temp_max_deviation * ramp_position
+                        )
 
                     candidate_type = "EXPRESSIVE"
 
@@ -294,9 +341,7 @@ class TTSGenerator:
                     **kwargs,
                 }
 
-                logger.debug(
-                    f"Candidate {i+1} ({candidate_type}):"
-                )
+                logger.debug(f"Candidate {i+1} ({candidate_type}):")
 
                 audio = self.generate_single(
                     text,
@@ -317,7 +362,8 @@ class TTSGenerator:
                 candidates.append(candidate)
                 # NOTE: Using ChatterboxTTS native sample rate (24kHz) for duration calculation
                 logger.debug(
-                    f"Generated candidate {i+1}/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s, idx={candidate.candidate_idx}" + f" exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}\n"
+                    f"Generated candidate {i+1}/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s, idx={candidate.candidate_idx}"
+                    + f" exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}\n"
                 )
 
             except Exception as e:
@@ -347,10 +393,10 @@ class TTSGenerator:
         """
         Generates specific audio candidates for the same text input with parameter variation.
         This method is designed to regenerate specific candidates for recovery or targeted testing.
-        
+
         PARAMETER SEMANTICS (as specified by user requirements):
         - exaggeration: Config value = MAX, ramps DOWN to (config - max_deviation)
-        - cfg_weight: Config value = MIN, ramps UP to (config + max_deviation)  
+        - cfg_weight: Config value = MIN, ramps UP to (config + max_deviation)
         - temperature: Config value = MIN, ramps UP to (config + max_deviation)
 
         CANDIDATE LOGIC (for the specified candidates):
@@ -375,20 +421,34 @@ class TTSGenerator:
         if tts_params is None:
             generation_config = self.config.get("generation", {})
             tts_params = generation_config.get("tts_params", {})
-        
+
         # Use config values as defaults
-        base_exaggeration = exaggeration if exaggeration is not None else tts_params.get("exaggeration", 0.6)
-        base_cfg_weight = cfg_weight if cfg_weight is not None else tts_params.get("cfg_weight", 0.7)
-        base_temperature = temperature if temperature is not None else tts_params.get("temperature", 1.0)
-        
+        base_exaggeration = (
+            exaggeration
+            if exaggeration is not None
+            else tts_params.get("exaggeration", 0.6)
+        )
+        base_cfg_weight = (
+            cfg_weight if cfg_weight is not None else tts_params.get("cfg_weight", 0.7)
+        )
+        base_temperature = (
+            temperature
+            if temperature is not None
+            else tts_params.get("temperature", 1.0)
+        )
+
         # Get deviation ranges from config
         exag_max_deviation = tts_params.get("exaggeration_max_deviation", 0.15)
         cfg_max_deviation = tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = tts_params.get("temperature_max_deviation", 0.2)
 
         # Calculate expressive candidate parameters (same logic as generate_candidates)
-        is_conservative_enabled = conservative_config and conservative_config.get("enabled", False)
-        num_expressive = total_candidates - 1 if is_conservative_enabled else total_candidates
+        is_conservative_enabled = conservative_config and conservative_config.get(
+            "enabled", False
+        )
+        num_expressive = (
+            total_candidates - 1 if is_conservative_enabled else total_candidates
+        )
 
         for candidate_idx in candidate_indices:
             try:
@@ -397,13 +457,19 @@ class TTSGenerator:
                 torch.manual_seed(candidate_seed)
 
                 # Check if this should be a conservative candidate (always last in total set)
-                is_conservative = is_conservative_enabled and (candidate_idx + 1) == total_candidates
+                is_conservative = (
+                    is_conservative_enabled and (candidate_idx + 1) == total_candidates
+                )
 
                 if is_conservative:
                     # Use conservative parameters
-                    logger.debug(f"Applying conservative parameters for candidate {candidate_idx+1}")
+                    logger.debug(
+                        f"Applying conservative parameters for candidate {candidate_idx+1}"
+                    )
                     if conservative_config is None:
-                        raise RuntimeError("Conservative config is None but conservative mode is enabled")
+                        raise RuntimeError(
+                            "Conservative config is None but conservative mode is enabled"
+                        )
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
@@ -423,11 +489,17 @@ class TTSGenerator:
                     else:
                         # Subsequent expressive candidates: apply RAMP strategy
                         ramp_position = candidate_idx / (num_expressive - 1)
-                        
+
                         # Apply ramp directions:
-                        var_exaggeration = base_exaggeration - (exag_max_deviation * ramp_position)
-                        var_cfg_weight = base_cfg_weight + (cfg_max_deviation * ramp_position)
-                        var_temperature = base_temperature + (temp_max_deviation * ramp_position)
+                        var_exaggeration = base_exaggeration - (
+                            exag_max_deviation * ramp_position
+                        )
+                        var_cfg_weight = base_cfg_weight + (
+                            cfg_max_deviation * ramp_position
+                        )
+                        var_temperature = base_temperature + (
+                            temp_max_deviation * ramp_position
+                        )
 
                     candidate_type = "EXPRESSIVE"
 
@@ -462,7 +534,7 @@ class TTSGenerator:
                 )
 
                 candidates.append(candidate)
-                
+
                 logger.info(
                     f"✅ Generated candidate {candidate_idx+1}: "
                     f"duration={audio.shape[-1]/24000:.2f}s\n"
