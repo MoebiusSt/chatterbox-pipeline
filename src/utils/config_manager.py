@@ -402,7 +402,10 @@ class ConfigManager:
         configs = []
 
         # Search in config directory for job-yaml files
-        for config_file in self.config_dir.glob("*_config.yaml"):
+        for config_file in self.config_dir.glob("*.yaml"):
+            if config_file.name == "default_config.yaml":
+                continue  # Skip default config
+                
             try:
                 config_data = self.load_job_config(config_file)
                 if config_data.get("job", {}).get("name") == job_name:

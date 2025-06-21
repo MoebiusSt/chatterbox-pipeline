@@ -135,33 +135,46 @@ def resolve_config_files(args: argparse.Namespace, project_root: Path) -> List[P
         project_root: Project root directory
 
     Returns:
-        List of resolved configuration file paths
+        List of resolved configuration file paths (deduplicated)
     """
     config_files = []
+    seen_paths = set()  # Track resolved paths to avoid duplicates
 
     if args.config_files:
+        original_count = len(args.config_files)
+        
         for config_file in args.config_files:
+            resolved_path = None
+            
             # Handle relative paths
             if not config_file.is_absolute():
                 # Try relative to current directory first
                 if config_file.exists():
-                    config_files.append(config_file.resolve())
+                    resolved_path = config_file.resolve()
                 # Then try relative to config directory
                 elif (project_root / "config" / config_file).exists():
-                    config_files.append(
-                        (project_root / "config" / config_file).resolve()
-                    )
+                    resolved_path = (project_root / "config" / config_file).resolve()
                 else:
                     raise FileNotFoundError(
                         f"Configuration file not found: {config_file}"
                     )
             else:
                 if config_file.exists():
-                    config_files.append(config_file)
+                    resolved_path = config_file
                 else:
                     raise FileNotFoundError(
                         f"Configuration file not found: {config_file}"
                     )
+            
+            # Add only if not already seen (silent deduplication)
+            if resolved_path not in seen_paths:
+                config_files.append(resolved_path)
+                seen_paths.add(resolved_path)
+        
+        # Silent log of deduplication if duplicates were found
+        if len(config_files) < original_count:
+            duplicates_removed = original_count - len(config_files)
+            logger.debug(f"🔄 Removed {duplicates_removed} duplicate config file(s)")
 
     return config_files
 
@@ -172,6 +185,18 @@ def main() -> int:
     try:
         # Parse arguments
         args = parse_arguments()
+        
+        # Validate CLI arguments for problematic combinations
+        if args.job and args.config_files:
+            logger.error("❌ Ungültige Argumentkombination!")
+            logger.error("Sie können nicht gleichzeitig --job und config-Dateien angeben.")
+            logger.error("Verwenden Sie ENTWEDER:")
+            logger.error(f"  python {sys.argv[0]} --job \"{args.job}\" --mode {args.mode or 'new'}")
+            logger.error(f"ODER:")
+            logger.error(f"  python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)}")
+            logger.error("Wenn Sie mehrere Jobs gleichzeitig ausführen möchten, verwenden Sie:")
+            logger.error(f"  python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)} --mode {args.mode or 'new'}")
+            return 1
 
         # Update verbose mode based on arguments
         verbose_mode = args.verbose  # Set to args.verbose for production
@@ -208,7 +233,6 @@ def main() -> int:
 
         # Handle cancelled execution
         if execution_plan.execution_mode == "cancelled":
-            logger.info("Execution cancelled by user")
             return 0
 
         # Validate execution plan
@@ -230,14 +254,8 @@ def main() -> int:
             batch_executor = BatchExecutor(config_manager)
 
             # Execute with parallel option
-            batch_result = batch_executor.execute_batch(execution_plan.task_configs)
-
-            # Generate detailed report
-            if len(execution_plan.task_configs) > 1:
-                batch_executor.print_detailed_results(batch_result)
-
-                # Generate batch report file
-                batch_executor.generate_batch_report(batch_result)
+            task_results = batch_executor.execute_batch(execution_plan.task_configs)
+            batch_result = batch_executor.get_batch_summary(task_results)
 
             # Return appropriate exit code
             return 0 if batch_result.failed_tasks == 0 else 1

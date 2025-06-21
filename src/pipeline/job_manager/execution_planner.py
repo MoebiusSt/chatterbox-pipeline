@@ -174,7 +174,32 @@ class ExecutionPlanner:
                     new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                     task_configs = [new_task]
                 else:
-                    raise ValueError(f"No job configuration found for '{job_name}'")
+                    logger.error(f"❌ No job configuration found for '{job_name}'!")
+                    logger.error("🔍 Available jobs:")
+                    
+                    # List available jobs in config directory
+                    available_jobs = []
+                    for config_file in self.config_manager.config_dir.glob("*.yaml"):
+                        if config_file.name == "default_config.yaml":
+                            continue
+                        try:
+                            config_data = self.config_manager.load_job_config(config_file)
+                            available_job_name = config_data.get("job", {}).get("name")
+                            if available_job_name:
+                                available_jobs.append(f"- {available_job_name} (from {config_file.name})")
+                        except Exception:
+                            pass
+                    
+                    if available_jobs:
+                        for job in available_jobs:
+                            logger.error(job)
+                    else:
+                        logger.error("  No valid job configurations found in the config/ directory.")
+                    
+                    logger.error(f"⚠️ Use: python {sys.argv[0] if 'sys' in globals() else 'main.py'} --job \"<job_name>\"")
+                    
+                    # Return cancelled execution plan instead of raising exception
+                    return ExecutionPlan([], "cancelled")
 
         elif config_files:
             # Config file(s) provided as arguments
