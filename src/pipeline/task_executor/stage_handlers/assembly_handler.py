@@ -56,17 +56,19 @@ class AssemblyHandler:
                 audio_segments, has_paragraph_breaks
             )
 
-            # Apply post-processing if any component is enabled
-            postprocessing_config = self.config.get("postprocessing", {})
-            audio_cleaning_enabled = postprocessing_config.get(
-                "audio_cleaning", {}
-            ).get("enabled", False)
-            auto_editor_enabled = postprocessing_config.get("auto_editor", {}).get(
-                "enabled", False
-            )
+            # Post-processing stub:
+            # Future post-processing steps can be added here.
+            # The final_audio tensor is ready for processing at this point.
 
-            if audio_cleaning_enabled or auto_editor_enabled:
+            """
                 final_audio = self._apply_post_processing(final_audio)
+                # Example:
+                def _apply_post_processing(self, audio: torch.Tensor) -> torch.Tensor:
+                    processed_audio = audio.clone()
+                    ...
+                return processed_audio
+            """
+            logger.info("Skipping post-processing as it is not implemented.")
 
             # Create metadata
             sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
@@ -121,101 +123,3 @@ class AssemblyHandler:
                 assembled_segments.append(silence)
 
         return torch.cat(assembled_segments)
-
-    def _apply_post_processing(self, audio: torch.Tensor) -> torch.Tensor:
-        """Apply post-processing to audio."""
-        try:
-            postprocessing_config = self.config.get("postprocessing", {})
-            processed_audio = audio.clone()
-
-            # Apply audio cleaning if enabled
-            audio_cleaning_enabled = postprocessing_config.get(
-                "audio_cleaning", {}
-            ).get("enabled", False)
-            if audio_cleaning_enabled:
-                from postprocessing.audio_cleaner import AudioCleaner, CleaningSettings
-
-                cleaning_settings = CleaningSettings(
-                    spectral_gating=True,
-                    normalize_audio=True,
-                    target_rms=0.2,
-                    remove_dc_offset=True,
-                )
-
-                audio_cleaner = AudioCleaner(
-                    sample_rate=self.config.get("audio", {}).get("sample_rate", 24000),
-                    settings=cleaning_settings,
-                )
-
-                processed_audio = audio_cleaner.clean_audio(processed_audio)
-                logger.debug("Audio cleaning applied")
-
-            # Apply Auto-Editor if enabled and available
-            auto_editor_config = postprocessing_config.get("auto_editor", {})
-            auto_editor_enabled = auto_editor_config.get("enabled", False)
-
-            if auto_editor_enabled:
-                try:
-                    from postprocessing.auto_editor_wrapper import AutoEditorWrapper
-
-                    auto_editor = AutoEditorWrapper(
-                        margin_before=auto_editor_config.get("margin_before", 0.1),
-                        margin_after=auto_editor_config.get("margin_after", 0.1),
-                        preserve_natural_sounds=auto_editor_config.get(
-                            "preserve_natural_sounds", True
-                        ),
-                    )
-
-                    reference_audio_path = str(self.file_manager.get_reference_audio())
-
-                    # Calculate custom threshold using noise_threshold_factor
-                    custom_threshold = None
-                    noise_threshold_factor = postprocessing_config.get(
-                        "noise_threshold_factor"
-                    )
-                    if noise_threshold_factor is not None:
-                        from postprocessing.noise_analyzer import NoiseAnalyzer
-
-                        noise_analyzer = NoiseAnalyzer(
-                            sample_rate=self.config.get("audio", {}).get(
-                                "sample_rate", 24000
-                            )
-                        )
-
-                        if reference_audio_path and Path(reference_audio_path).exists():
-                            profile = noise_analyzer.analyze_reference_audio(
-                                reference_audio_path
-                            )
-                        else:
-                            profile = noise_analyzer.analyze_noise_floor(
-                                processed_audio
-                            )
-
-                        custom_threshold = (
-                            profile.recommended_threshold * noise_threshold_factor
-                        )
-                        logger.debug(
-                            f"Custom threshold: {profile.recommended_threshold:.6f} * {noise_threshold_factor} = {custom_threshold:.6f}"
-                        )
-
-                    processed_audio = auto_editor.clean_audio(
-                        processed_audio,
-                        sample_rate=self.config.get("audio", {}).get(
-                            "sample_rate", 24000
-                        ),
-                        reference_audio_path=reference_audio_path,
-                        custom_threshold=custom_threshold,
-                    )
-                    logger.debug("Auto-Editor processing applied")
-
-                except ImportError:
-                    logger.warning("Auto-Editor not available, skipping")
-                except Exception as e:
-                    logger.warning(f"Auto-Editor processing failed: {e}")
-
-            logger.info("Post-processing applied successfully")
-            return processed_audio
-
-        except Exception as e:
-            logger.warning(f"Post-processing failed, using original audio: {e}")
-            return audio

@@ -48,16 +48,6 @@ validation:
   similarity_threshold: 0.8
   min_quality_score: 0.75
 
-postprocessing:
-  audio_cleaning:
-    enabled: false  # Disable AudioCleaner completely to avoid chunky audio
-  auto_editor:
-    enabled: false  # Disable Auto-Editor completely
-    margin_before: 0.4    # longer puffer before speech segments
-    margin_after: 0.3     # longer puffer after speech segments
-    preserve_natural_sounds: true
-  noise_threshold_factor: 0.4  # multiplication factor for recommended threshold (0.8 = 80% of the detected voice threshhold)
-
 audio:
   silence_duration:
     normal: 0.40

@@ -48,13 +48,6 @@ validation:
   similarity_threshold: 0.85
   min_quality_score: 0.8
 
-postprocessing:
-  auto_editor:
-    margin_before: 0.1
-    margin_after: 0.1
-    preserve_natural_sounds: true
-  noise_threshold_factor: 1.5
-
 audio:
   silence_duration:
     normal: 0.20

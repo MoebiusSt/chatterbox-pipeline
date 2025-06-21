@@ -43,8 +43,8 @@ python -m spacy download en_core_web_sm
 pip install librosa perth safetensors huggingface_hub transformers einops
 pip install openai-whisper python-Levenshtein fuzzywuzzy
 
-# Optional: auto-editor for advanced audio processing
-pip install auto-editor
+pip install -r requirements.txt
+pip install -r dev-requirements.txt
 ```
 
 ### 4. Production TTS Pipeline

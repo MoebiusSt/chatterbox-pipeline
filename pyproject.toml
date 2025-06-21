@@ -87,4 +87,41 @@ exclude = [
 
 [build-system]
 requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
-build-backend = "setuptools.build_meta" 
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tts-pipeline-enhanced"
+version = "0.1.0"
+description = "Text-to-Speech pipeline based on resemble-ai/chatterbox with a job and task pipeline manager to prepare Readings of longer texts like entiere Chapters or Books. But it is a CLI - no fancy user interface here."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" } # Assuming MIT based on Chatterbox
+authors = [
+    {name = "MoebiusSt", email = "stephan.moebius@gmail.com"}
+]
+dependencies = [
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "spacy>=3.7.0,<3.8.0",
+    "openai-whisper>=20231117",
+    "chatterbox-tts>=0.1.2",
+    "fuzzywuzzy>=0.18.0",
+    "python-Levenshtein>=0.21.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.2.0"
+] 
