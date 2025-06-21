@@ -59,7 +59,9 @@ python src/main.py
 python src/main.py                              # Execute default job from /config/default_config.yaml
 python src/main.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
 python src/main.py --job "my_job"               # Execute job with specific name present in a config or existing outputdirectory
+```
 
+```bash
 # Execution strategies (global)
 python src/main.py --mode last or latest        # Execute latest task (again) for all given jobs.(*)
 python src/main.py --mode all                   # Execute all found tasks (again) for all given jobs.(*)
@@ -67,27 +69,40 @@ python src/main.py --mode new                   # Create new tasks for all given
 python src/main.py --mode last-new or new-last  # Execute latest task but re-assemble a new final audio for all given jobs.(*) 
 python src/main.py --mode all-new               # Execute all tasks + new final audios for all given jobs.
 python src/main.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
+```
 
+```bash
 # (*) In this case in the default directory /data/output/default/, since no other job is specified
+```
 
-
+```bash
 # Force regeneration
 python src/main.py --add-final                  # Another way of globally forcing the regeneration of final audio from existing candidates, sane as --mode new|last-new|all-new
+```
 
+```bash
 # Parallel processing
 python src/main.py --parallel                  # Parallel task execution
 python src/main.py --max-workers 4             # Adjust number of parallel workers
 python src/main.py -p                          # Short form of --parallel
+```
 
+```bash
 # Additional options
 python src/main.py --verbose or --v            # Detailed logging
 python src/main.py --device cuda               # Force GPU execution
 python src/main.py -j "my_job"                 # Short form of --job
+```
 
+```bash
 # Combined examples
 python src/main.py -j "my_job" -p -v           # Job + parallel + verbose
-python src/main.py --job "job1" --add-final --parallel  # Complete non-interactive execution
+python src/main.py --job "job1" --mode last-new --v # Complete non-interactive execution of last task from "job1", verbose log.
 ```
+#### Note: 
+If you want to create a complete new render with all new audio, don't rerun a task, but use a new task instead.
+If you want to partially re-render an already completed task, delete some (bad) audio-chunks, and re-run the task with the "--mode new" option. This will re-render the missing files, fill in the gaps, and re-assemble the final audio.
+
 
 #### Execution Strategies
 - **last/latest**: Uses the latest task (Checks task – final audio is present? If not resumes task, if yes skips)
@@ -98,6 +113,7 @@ python src/main.py --job "job1" --add-final --parallel  # Complete non-interacti
 
 #### Interactive Selection
 When no strategy is specified, the user is prompted interactively:
+
 ```
 Found existing tasks for job 'my_job':
 1. Task 2024-03-20_120000
@@ -111,16 +127,6 @@ a      - Run all tasks (Check tasks)
 ln     - Use latest task + force new final audio
 an     - Run all tasks + force new final audio
 1-3    - Select specific task
-c      - Cancel
-```
-
-When selecting a specific task:
-```
-Selected task: Task 2024-03-20_110000
-
-What to do with this task?
-[Enter] - Run task (Check task if needs resuming)
-n      - Run task (repair if necessary) + force new final audio
 c      - Cancel
 ```
 

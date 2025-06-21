@@ -370,6 +370,10 @@ class CandidateIOHandler:
                     f"Failed to save candidate {candidate.candidate_idx+1}: {e}"
                 )
 
+        # Save candidate metadata (was missing - this is the bug fix!)
+        if candidates:
+            self._save_candidate_metadata(candidates, chunk_index, chunk_dir)
+
     def _save_candidate_metadata(
         self, candidates: List[AudioCandidate], chunk_index: int, chunk_dir: Path
     ):

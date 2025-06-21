@@ -251,23 +251,18 @@ def main() -> int:
 
         else:
             # Single task execution
-            logger.debug("Starting single task execution mode")
+            logger.debug("▶️  Starting single task execution mode")
 
             task_config = execution_plan.task_configs[0]
 
-            # Load config once via ConfigManager
-            task_config_path = task_config.config_path
-            project_root = task_config_path.parent.parent.parent.parent
-            cm = ConfigManager(project_root)
-            loaded_config = cm.load_cascading_config(task_config_path)
+            # Load config once using existing ConfigManager (avoid redundant loading)
+            loaded_config = config_manager.load_cascading_config(task_config.config_path)
 
             # Create file manager with preloaded config
             file_manager = FileManager(task_config, preloaded_config=loaded_config)
 
-            # Create and execute task - TaskExecutor will not reload config
-            task_executor = TaskExecutor(file_manager, task_config)
-            # Set the loaded config directly to avoid re-loading in TaskExecutor
-            task_executor.config = loaded_config
+            # Create and execute task with preloaded config (avoiding redundant loading)
+            task_executor = TaskExecutor(file_manager, task_config, config=loaded_config)
 
             result = task_executor.execute_task()
 

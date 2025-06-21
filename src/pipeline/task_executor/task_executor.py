@@ -43,14 +43,21 @@ class TaskResult:
 class TaskExecutor:
     """Unified task executor with separated stage handlers."""
 
-    def __init__(self, file_manager: FileManager, task_config: TaskConfig):
+    def __init__(self, file_manager: FileManager, task_config: TaskConfig, config: Optional[Dict[str, Any]] = None):
         self.file_manager = file_manager
         self.task_config = task_config
 
-        # Load config data only if not already set
-        if not hasattr(self, "config") or self.config is None:
+        # Use provided config or load from file
+        if config is not None:
+            self.config = config
+            logger.debug("⚙️  Using preloaded config (avoiding redundant loading)")
+        else:
             cm = ConfigManager(task_config.config_path.parent.parent.parent.parent)
             self.config = cm.load_cascading_config(task_config.config_path)
+            logger.debug("⚙️  Loaded config from file")
+            
+        # Ensure file_manager has the config
+        if not hasattr(file_manager, 'config') or file_manager.config is None:
             file_manager.config = self.config
 
         # Initialize progress tracking
