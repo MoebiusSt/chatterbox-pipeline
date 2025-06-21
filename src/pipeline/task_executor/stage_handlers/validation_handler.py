@@ -4,7 +4,9 @@ import logging
 import time
 from typing import Any, Dict, List
 
-from utils.file_manager import AudioCandidate, FileManager, TextChunk
+from utils.file_manager.file_manager import FileManager
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from chunking.base_chunker import TextChunk
 from validation.quality_scorer import QualityScorer
 from validation.whisper_validator import ValidationResult, WhisperValidator
 

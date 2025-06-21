@@ -38,6 +38,7 @@ class FileManager:
         self,
         task_config: Union[TaskConfig, Dict[str, Any]],
         preloaded_config: Optional[Dict[str, Any]] = None,
+        config_manager: Optional[ConfigManager] = None,
     ) -> None:
         """
         Initialize FileManager with task configuration.
@@ -45,6 +46,7 @@ class FileManager:
         Args:
             task_config: TaskConfig object or config dictionary
             preloaded_config: Optional pre-loaded config to avoid redundant loading
+            config_manager: Optional ConfigManager instance to reuse existing cache
         """
         # Use duck typing instead of strict isinstance checks
         if (
@@ -61,8 +63,11 @@ class FileManager:
             if preloaded_config is not None:
                 self.config = preloaded_config
             else:
-                # Load the config data from file
-                cm = ConfigManager(Path.cwd())
+                # Use provided ConfigManager or create new one (with shared cache)
+                if config_manager is not None:
+                    cm = config_manager
+                else:
+                    cm = ConfigManager(Path.cwd())
                 self.config = cm.load_cascading_config(task_config.config_path)
 
         elif isinstance(task_config, dict):
@@ -70,7 +75,10 @@ class FileManager:
             self.config = task_config
 
             # Create task config from dictionary
-            cm = ConfigManager(Path.cwd())
+            if config_manager is not None:
+                cm = config_manager
+            else:
+                cm = ConfigManager(Path.cwd())
             tc = cm.create_task_config(task_config)
             self.task_config = tc
             self.task_directory = tc.base_output_dir

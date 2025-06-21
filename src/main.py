@@ -20,7 +20,7 @@ from pipeline.job_manager.types import ExecutionPlan
 from pipeline.job_manager_wrapper import JobManager
 from pipeline.task_executor import TaskExecutor
 from utils.config_manager import ConfigManager, TaskConfig
-from utils.file_manager import FileManager
+from utils.file_manager.file_manager import FileManager
 from utils.logging_config import LoggingConfigurator
 
 # Ensure logs directory exists
@@ -229,15 +229,8 @@ def main() -> int:
 
             batch_executor = BatchExecutor(config_manager)
 
-            # Handle task dependencies
-            ordered_tasks = batch_executor.handle_task_dependencies(
-                execution_plan.task_configs
-            )
-
             # Execute with parallel option
-            batch_result = batch_executor.execute_multiple_tasks(
-                ordered_tasks, parallel=args.parallel, max_workers=args.max_workers
-            )
+            batch_result = batch_executor.execute_batch(execution_plan.task_configs)
 
             # Generate detailed report
             if len(execution_plan.task_configs) > 1:
@@ -255,11 +248,16 @@ def main() -> int:
 
             task_config = execution_plan.task_configs[0]
 
-            # Load config once using existing ConfigManager (avoid redundant loading)
-            loaded_config = config_manager.load_cascading_config(task_config.config_path)
+            # Use preloaded config if available, otherwise load from ConfigManager
+            if task_config.preloaded_config:
+                logger.debug("⚙️ Using preloaded config (avoiding redundant loading)")
+                loaded_config = task_config.preloaded_config
+            else:
+                logger.debug(f"⚙️ Loading config: {task_config.config_path}")
+                loaded_config = config_manager.load_cascading_config(task_config.config_path)
 
-            # Create file manager with preloaded config
-            file_manager = FileManager(task_config, preloaded_config=loaded_config)
+            # Create file manager with preloaded config and shared ConfigManager
+            file_manager = FileManager(task_config, preloaded_config=loaded_config, config_manager=config_manager)
 
             # Create and execute task with preloaded config (avoiding redundant loading)
             task_executor = TaskExecutor(file_manager, task_config, config=loaded_config)

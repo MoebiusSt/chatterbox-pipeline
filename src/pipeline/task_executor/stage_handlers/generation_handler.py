@@ -5,7 +5,9 @@ from typing import Any, Dict, List
 
 from generation.candidate_manager import CandidateManager
 from generation.tts_generator import TTSGenerator
-from utils.file_manager import AudioCandidate, FileManager, TextChunk
+from utils.file_manager.file_manager import FileManager
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from chunking.base_chunker import TextChunk
 
 from ..retry_logic import RetryLogic
 

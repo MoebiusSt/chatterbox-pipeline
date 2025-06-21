@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, List
 
 from chunking.base_chunker import TextChunk
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 from .tts_generator import TTSGenerator
 

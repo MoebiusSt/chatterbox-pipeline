@@ -14,7 +14,7 @@ import torch
 import torchaudio
 import whisper
 
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 from .quality_calculator import QualityCalculator
 from .transcription_io import TranscriptionIO

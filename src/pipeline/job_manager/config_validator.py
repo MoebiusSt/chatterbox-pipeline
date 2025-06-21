@@ -35,9 +35,13 @@ class ConfigValidator:
                 return False
 
         for task_config in plan.task_configs:
-            config_data = self.config_manager.load_cascading_config(
-                task_config.config_path
-            )
+            # Use preloaded config if available, otherwise load from file
+            if task_config.preloaded_config:
+                config_data = task_config.preloaded_config
+            else:
+                config_data = self.config_manager.load_cascading_config(
+                    task_config.config_path
+                )
             if not self.config_manager.validate_config(config_data):
                 logger.error(f"Invalid task config: {task_config.config_path}")
                 return False
@@ -82,9 +86,13 @@ class ConfigValidator:
         # Check 3: Device compatibility
         device_requirements = set()
         for task_config in task_configs:
-            config_data = self.config_manager.load_cascading_config(
-                task_config.config_path
-            )
+            # Use preloaded config if available, otherwise load from file
+            if task_config.preloaded_config:
+                config_data = task_config.preloaded_config
+            else:
+                config_data = self.config_manager.load_cascading_config(
+                    task_config.config_path
+                )
             generation_config = config_data.get("generation", {})
             if generation_config.get("device"):
                 device_requirements.add(generation_config["device"])

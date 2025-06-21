@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from utils.file_manager import AudioCandidate
+    from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 
 class QualityCalculator:

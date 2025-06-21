@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
-from utils.file_manager import FileManager
+from utils.file_manager.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
 

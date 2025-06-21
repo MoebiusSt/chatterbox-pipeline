@@ -27,6 +27,7 @@ class TaskConfig:
     config_path: Path
     job_name: str
     add_final: bool = False  # Force regeneration of final audio
+    preloaded_config: Optional[Dict[str, Any]] = None  # Avoid redundant config loading
 
     def __post_init__(self) -> None:
         # Ensure Path objects
@@ -135,18 +136,39 @@ class ConfigManager:
         if self.is_task_config(config_path):
             # 3-level cascade: default → job → task
             
-            # First, try to find and merge parent job-config
-            parent_job_config_path = self.find_parent_job_config(config_path)
-            if parent_job_config_path:
-                job_config = self.load_job_config(parent_job_config_path)
-                config = self.merge_configs(job_config, config)
-                logger.debug(f"Merged parent job config: {parent_job_config_path}")
+            # Load task-config once and reuse it
+            task_config_data = self.load_job_config(config_path)
+            
+            # First, try to find and merge parent job-config using job_name from already loaded task-config
+            job_name = task_config_data.get("job", {}).get("name")
+            if job_name:
+                # Search for job-config files in config directory
+                parent_job_config_path = None
+                for config_file in self.config_dir.glob("*.yaml"):
+                    if config_file.name == "default_config.yaml":
+                        continue  # Skip default config
+                        
+                    try:
+                        config_data = self.load_job_config(config_file)
+                        if config_data.get("job", {}).get("name") == job_name:
+                            parent_job_config_path = config_file
+                            break
+                    except Exception as e:
+                        logger.warning(f"Error reading config {config_file}: {e}")
+                
+                if parent_job_config_path:
+                    job_config = self.load_job_config(parent_job_config_path)
+                    config = self.merge_configs(job_config, config)
+                    logger.debug(f"Merged parent job config: {parent_job_config_path}")
+                else:
+                    logger.debug(f"No parent job config found for task: {config_path}")
+                    logger.debug(f"No parent job config found, using default config as base")
             else:
+                logger.warning(f"No job name found in task config: {config_path}")
                 logger.debug(f"No parent job config found, using default config as base")
             
-            # Then merge task-config on top
-            task_config = self.load_job_config(config_path)
-            config = self.merge_configs(task_config, config)
+            # Then merge task-config on top (reuse already loaded task_config_data)
+            config = self.merge_configs(task_config_data, config)
             logger.debug(f"Merged task config: {config_path}")
             
         else:
@@ -319,7 +341,8 @@ class ConfigManager:
         Returns:
             TaskConfig object
         """
-        config_data = self.load_job_config(config_path)
+        # Load config data once and embed it immediately to avoid redundant loading
+        config_data = self.load_cascading_config(config_path)
 
         # Extract info from file path
         filename = config_path.stem  # Remove .yaml extension
@@ -357,14 +380,17 @@ class ConfigManager:
         job_name = config_data["job"]["name"]
         task_directory = config_path.parent / filename
 
-        return TaskConfig(
+        task_config = TaskConfig(
             task_name=f"{text_base}_{run_label}_{timestamp}",
             run_label=run_label,
             timestamp=timestamp,
             base_output_dir=task_directory,
             config_path=config_path,
             job_name=job_name,
+            preloaded_config=config_data,  # Embed config immediately to avoid redundant loading
         )
+        
+        return task_config
 
     def find_configs_by_job_name(self, job_name: str) -> List[Path]:
         """

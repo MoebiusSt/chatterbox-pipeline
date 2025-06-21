@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 import torch
 import torchaudio as ta
 
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

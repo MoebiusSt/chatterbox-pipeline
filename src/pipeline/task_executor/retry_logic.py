@@ -7,7 +7,8 @@ from typing import List
 import torch
 
 from generation.tts_generator import TTSGenerator
-from utils.file_manager import AudioCandidate, TextChunk
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from chunking.base_chunker import TextChunk
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,8 @@ from chunking.spacy_chunker import SpaCyChunker
 from generation.candidate_manager import CandidateManager
 from generation.tts_generator import TTSGenerator
 from utils.config_manager import ConfigManager, TaskConfig
-from utils.file_manager import CompletionStage, FileManager, TaskState
+from utils.file_manager.file_manager import FileManager
+from utils.file_manager.state_analyzer import CompletionStage, TaskState
 from utils.progress_tracker import ProgressTracker
 from validation.quality_scorer import QualityScorer
 from validation.whisper_validator import WhisperValidator
@@ -50,11 +51,9 @@ class TaskExecutor:
         # Use provided config or load from file
         if config is not None:
             self.config = config
-            logger.debug("⚙️  Using preloaded config (avoiding redundant loading)")
         else:
             cm = ConfigManager(task_config.config_path.parent.parent.parent.parent)
             self.config = cm.load_cascading_config(task_config.config_path)
-            logger.debug("⚙️  Loaded config from file")
             
         # Ensure file_manager has the config
         if not hasattr(file_manager, 'config') or file_manager.config is None:

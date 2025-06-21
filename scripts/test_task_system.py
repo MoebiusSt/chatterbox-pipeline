@@ -22,7 +22,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(SRC_ROOT))
 
 from pipeline.task_executor import TaskExecutor
-from utils.file_manager import FileManager
+from utils.file_manager.file_manager import FileManager
 
 # Configure logging
 logging.basicConfig(

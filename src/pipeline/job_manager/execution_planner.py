@@ -23,6 +23,21 @@ class ExecutionPlanner:
         self.config_manager = config_manager
         self.user_interaction = UserInteraction(config_manager)
 
+    def _load_existing_tasks_with_config(self, existing_tasks: List[TaskConfig]) -> None:
+        """
+        Load configs for existing tasks to embed them and avoid redundant loading.
+        
+        Args:
+            existing_tasks: List of TaskConfig objects to load configs for
+        """
+        for task in existing_tasks:
+            if task.preloaded_config is None:  # Only load if not already loaded
+                try:
+                    config_data = self.config_manager.load_cascading_config(task.config_path)
+                    task.preloaded_config = config_data
+                except Exception as e:
+                    logger.warning(f"Failed to preload config for task {task.task_name}: {e}")
+
     def resolve_execution_plan(
         self, args: Any, config_files: Optional[List[Path]] = None
     ) -> ExecutionPlan:
@@ -58,10 +73,12 @@ class ExecutionPlanner:
                             job_configs[0].config_path
                         )
                         new_task = self.job_manager.create_new_task(config_data)
+                        new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                         task_configs = [new_task]
                 elif strategy == ExecutionStrategy.ALL:
                     # Use all tasks
                     task_configs = list(existing_tasks)
+                    self._load_existing_tasks_with_config(task_configs)  # Preload configs
                     execution_mode = "batch"
                 elif strategy == ExecutionStrategy.ALL_NEW:
                     # Use all tasks + force new final audio
@@ -75,6 +92,7 @@ class ExecutionPlanner:
                 ):
                     # Use latest task
                     task_configs = [existing_tasks[0]]
+                    self._load_existing_tasks_with_config(task_configs)  # Preload configs
                 elif (
                     strategy == ExecutionStrategy.LATEST_NEW
                     or strategy == ExecutionStrategy.LAST_NEW
@@ -140,6 +158,7 @@ class ExecutionPlanner:
                                 job_configs[0].config_path
                             )
                             new_task = self.job_manager.create_new_task(config_data)
+                            new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                             task_configs = [new_task]
                     elif choice == UserChoice.ALL:
                         task_configs = list(existing_tasks)
@@ -152,6 +171,7 @@ class ExecutionPlanner:
                         job_configs[0].config_path
                     )
                     new_task = self.job_manager.create_new_task(config_data)
+                    new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                     task_configs = [new_task]
                 else:
                     raise ValueError(f"No job configuration found for '{job_name}'")
@@ -160,7 +180,7 @@ class ExecutionPlanner:
             # Config file(s) provided as arguments
             for config_file in config_files:
                 if self.job_manager.is_task_config(config_file):
-                    # Direct task config - execute immediately
+                    # Direct task config - execute immediately (config already preloaded in load_task_config)
                     task_config = self.config_manager.load_task_config(config_file)
                     task_configs.append(task_config)
                 else:
@@ -175,6 +195,7 @@ class ExecutionPlanner:
 
                         if strategy == ExecutionStrategy.NEW:
                             new_task = self.job_manager.create_new_task(config_data)
+                            new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                             task_configs.append(new_task)
                         elif strategy == ExecutionStrategy.ALL:
                             task_configs.extend(existing_tasks)
@@ -256,12 +277,14 @@ class ExecutionPlanner:
                                     task_configs.extend(existing_tasks)
                             elif choice == UserChoice.NEW:
                                 new_task = self.job_manager.create_new_task(config_data)
+                                new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                                 task_configs.append(new_task)
                             elif choice == UserChoice.ALL:
                                 task_configs.extend(existing_tasks)
                     else:
                         # No existing tasks, create new one
                         new_task = self.job_manager.create_new_task(config_data)
+                        new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                         task_configs.append(new_task)
 
             if len(config_files) > 1 or len(task_configs) > 1:
@@ -279,6 +302,7 @@ class ExecutionPlanner:
 
                 if strategy == ExecutionStrategy.NEW:
                     new_task = self.job_manager.create_new_task(default_config)
+                    new_task.preloaded_config = default_config  # Embed config to avoid redundant loading
                     task_configs = [new_task]
                 elif strategy == ExecutionStrategy.ALL:
                     task_configs = list(existing_tasks)
@@ -354,6 +378,7 @@ class ExecutionPlanner:
                             execution_mode = "batch"
                     elif choice == UserChoice.NEW:
                         new_task = self.job_manager.create_new_task(default_config)
+                        new_task.preloaded_config = default_config  # Embed config to avoid redundant loading
                         task_configs = [new_task]
                     elif choice == UserChoice.ALL:
                         task_configs = list(existing_tasks)
@@ -361,6 +386,7 @@ class ExecutionPlanner:
             else:
                 # No existing tasks, create new one
                 new_task = self.job_manager.create_new_task(default_config)
+                new_task.preloaded_config = default_config  # Embed config to avoid redundant loading
                 task_configs = [new_task]
 
         # Set add_final flag for all tasks if requested

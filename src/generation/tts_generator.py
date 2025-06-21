@@ -11,7 +11,7 @@ import torch
 from generation.model_cache import ChatterboxModelCache, ConditionalCache
 
 # Import the standardized AudioCandidate from file_manager
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 logger = logging.getLogger(__name__)
 

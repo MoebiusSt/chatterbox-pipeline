@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Union
 
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 # Use absolute import pattern like existing modules
 

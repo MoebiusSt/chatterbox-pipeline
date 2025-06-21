@@ -7,7 +7,8 @@ from typing import Any, Dict, List
 import torch
 
 from utils.config_manager import TaskConfig
-from utils.file_manager import FileManager, TextChunk
+from utils.file_manager.file_manager import FileManager
+from chunking.base_chunker import TextChunk
 
 logger = logging.getLogger(__name__)
 

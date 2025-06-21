@@ -1,6 +1,6 @@
 """Task executor module with separated stage handlers."""
 
-from utils.file_manager import CompletionStage
+from utils.file_manager.state_analyzer import CompletionStage
 
 from .task_executor import TaskExecutor, TaskResult
 

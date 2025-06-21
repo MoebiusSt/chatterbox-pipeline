@@ -17,7 +17,7 @@ sys.path.insert(0, str(src_path))
 # Now import pipeline modules
 from pipeline.batch_executor import BatchExecutor
 from utils.config_manager import ConfigManager
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 
 def main():

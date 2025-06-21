@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from pipeline.task_executor import CompletionStage, TaskExecutor, TaskResult
 from utils.config_manager import ConfigManager, TaskConfig
-from utils.file_manager import FileManager
+from utils.file_manager.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +41,15 @@ class BatchResult:
 class BatchExecutor:
     """Executes multiple TTS tasks in parallel with progress tracking."""
 
-    def __init__(self, max_workers: Optional[int] = None):
+    def __init__(self, config_manager: ConfigManager, max_workers: Optional[int] = None):
         """
         Initialize BatchExecutor.
 
         Args:
+            config_manager: Shared ConfigManager instance (avoids redundant loading)
             max_workers: Maximum number of parallel workers. If None, uses system default.
         """
+        self.config_manager = config_manager
         self.max_workers = max_workers
         logger.info(f"BatchExecutor initialized with max_workers={max_workers}")
 
@@ -154,22 +156,19 @@ class BatchExecutor:
         Returns:
             TaskResult object
         """
-        # Load config once to avoid duplicate loading
-        project_root = Path.cwd()  # Assume we're running from project root
-        config_manager = ConfigManager(project_root)
+        # Use preloaded config if available, otherwise load from ConfigManager
+        if task_config.preloaded_config:
+            logger.debug("⚙️ Using preloaded config (avoiding redundant loading)")
+            loaded_config = task_config.preloaded_config
+        else:
+            logger.debug(f"⚙️ Loading config: {task_config.config_path}")
+            loaded_config = self.config_manager.load_cascading_config(task_config.config_path)
 
-        # Debug output
-        logger.debug(f"task_config.config_path: {task_config.config_path}")
-        logger.debug(f"task_config.config_path type: {type(task_config.config_path)}")
+        # Create file manager with preloaded config and shared ConfigManager
+        file_manager = FileManager(task_config, preloaded_config=loaded_config, config_manager=self.config_manager)
 
-        loaded_config = config_manager.load_cascading_config(task_config.config_path)
-
-        # Create file manager with preloaded config
-        file_manager = FileManager(task_config, preloaded_config=loaded_config)
-
-        # Create task executor with required parameters
-        task_executor = TaskExecutor(file_manager, task_config)
-        task_executor.config = loaded_config
+        # Create task executor with preloaded config (avoiding redundant loading)
+        task_executor = TaskExecutor(file_manager, task_config, config=loaded_config)
 
         # Execute task
         return task_executor.execute_task()

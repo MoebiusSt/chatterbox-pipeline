@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from validation.fuzzy_matcher import MatchResult
 from validation.whisper_validator import ValidationResult
 

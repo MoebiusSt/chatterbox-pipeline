@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Tuple
 
-from utils.file_manager import AudioCandidate
+from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 logger = logging.getLogger(__name__)
 
