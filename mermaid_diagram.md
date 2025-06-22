@@ -73,8 +73,7 @@ graph TD
     LOAD_METRICS --> SELECT_BEST[Select Best Candidates]
     SELECT_BEST --> LOAD_AUDIO[get_audio_segments]
     LOAD_AUDIO --> ASSEMBLE[Audio Assembly<br/>Concatenation + Silence]
-    ASSEMBLE --> POST_PROCESS[Post-Processing<br/>AutoEditor + AudioCleaner]
-    POST_PROCESS --> SAVE_FINAL[save_final_audio]
+    ASSEMBLE --> SAVE_FINAL[save_final_audio]
     SAVE_FINAL --> TASK_COMPLETE
     
     %% Batch Processing

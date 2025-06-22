@@ -17,16 +17,6 @@ except ImportError:
     FUZZYWUZZY_AVAILABLE = False
     logging.warning("fuzzywuzzy not available - using fallback similarity methods")
 
-try:
-    import Levenshtein
-
-    LEVENSHTEIN_AVAILABLE = True
-except ImportError:
-    LEVENSHTEIN_AVAILABLE = False
-    logging.warning(
-        "python-Levenshtein not available - using fallback similarity methods"
-    )
-
 
 @dataclass
 class MatchResult:
@@ -109,7 +99,7 @@ class FuzzyMatcher:
         Args:
             text1: First text (typically original)
             text2: Second text (typically transcription)
-            method: Similarity method ("auto", "ratio", "partial", "token", "levenshtein", "sequence")
+            method: Similarity method ("auto", "ratio", "partial", "token")
 
         Returns:
             MatchResult with similarity score and match status
@@ -200,10 +190,6 @@ class FuzzyMatcher:
             return self._partial_similarity(text1, text2)
         elif method == "token":
             return self._token_similarity(text1, text2)
-        elif method == "levenshtein":
-            return self._levenshtein_similarity(text1, text2)
-        elif method == "sequence":
-            return self._sequence_similarity(text1, text2)
         else:
             raise ValueError(f"Unknown similarity method: {method}")
 
@@ -214,7 +200,9 @@ class FuzzyMatcher:
             return score, {"method": "fuzzywuzzy_ratio"}
         else:
             # Fallback to sequence matcher
-            return self._sequence_similarity(text1, text2)
+            matcher = SequenceMatcher(None, text1, text2)
+            score = matcher.ratio()
+            return score, {"method": "sequence_matcher_fallback"}
 
     def _partial_similarity(self, text1: str, text2: str) -> Tuple[float, dict]:
         """Calculate partial string similarity (good for different lengths)."""
@@ -270,42 +258,7 @@ class FuzzyMatcher:
                 "union_size": len(union),
             }
 
-    def _levenshtein_similarity(self, text1: str, text2: str) -> Tuple[float, dict]:
-        """Calculate Levenshtein distance-based similarity."""
-        if LEVENSHTEIN_AVAILABLE:
-            distance = Levenshtein.distance(text1, text2)
-            max_len = max(len(text1), len(text2))
 
-            if max_len == 0:
-                score = 1.0
-            else:
-                score = 1.0 - (distance / max_len)
-
-            return score, {
-                "method": "levenshtein",
-                "distance": distance,
-                "max_length": max_len,
-            }
-        else:
-            # Fallback to sequence matcher
-            return self._sequence_similarity(text1, text2)
-
-    def _sequence_similarity(self, text1: str, text2: str) -> Tuple[float, dict]:
-        """Calculate sequence matcher-based similarity."""
-        matcher = SequenceMatcher(None, text1, text2)
-        score = matcher.ratio()
-
-        # Get matching blocks for additional details
-        matching_blocks = matcher.get_matching_blocks()
-        total_matching_chars = sum(
-            block.size for block in matching_blocks[:-1]
-        )  # Exclude final dummy block
-
-        return score, {
-            "method": "sequence_matcher",
-            "matching_blocks": len(matching_blocks) - 1,  # Exclude dummy block
-            "matching_chars": total_matching_chars,
-        }
 
     def calculate_similarity(self, text1: str, text2: str) -> float:
         """

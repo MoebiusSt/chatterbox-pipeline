@@ -212,9 +212,7 @@ torch>=2.0.0                    # PyTorch for TTS model
 torchaudio>=2.0.0              # Audio processing
 spacy>=3.6.0                   # NLP and sentence segmentation
 openai-whisper>=20231117       # Speech-to-text validation
-auto-editor>=24.0.0            # Audio post-processing
 fuzzywuzzy>=0.18.0             # Fuzzy text matching
-python-Levenshtein>=0.21.0    # String similarity calculations
 pytest>=7.0.0                  # Testing framework
 pytest-cov>=4.0.0             # Coverage reporting
 ```

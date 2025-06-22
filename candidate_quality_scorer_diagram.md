@@ -12,7 +12,7 @@ graph TD
     W_QUALITY --> W_VALID{"Is Valid?<br/>similarity ≥ similarity_threshold<br/>AND quality ≥ min_quality_score"}
     
     W_VALID --> FUZZY_MATCHER["FuzzyMatcher<br/>(if used)"]
-    FUZZY_MATCHER --> F_SIMILARITY["Advanced Similarity<br/>ratio|partial|token|levenshtein|sequence"]
+    FUZZY_MATCHER --> F_SIMILARITY["Advanced Similarity<br/>ratio|partial|token"]
     
     F_SIMILARITY --> QUALITY_SCORER["QualityScorer"]
     

@@ -6,7 +6,6 @@ An enhanced Text-to-Speech pipeline based on resemble-ai/chatterbox that impleme
 
 - **Python 3.9+** (recommended: Python 3.10+)
 - **Git** for cloning the repository
-- **FFmpeg** (for audio processing with auto-editor)
 - **CUDA** (optional, for GPU-accelerated Whisper inference)
 
 ## Quick Start
@@ -41,7 +40,7 @@ python -m spacy download en_core_web_sm
 
 # Additional dependencies for full functionality
 pip install librosa perth safetensors huggingface_hub transformers einops
-pip install openai-whisper python-Levenshtein fuzzywuzzy
+pip install openai-whisper fuzzywuzzy
 
 pip install -r requirements.txt
 pip install -r dev-requirements.txt
