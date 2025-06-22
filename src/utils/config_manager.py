@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TextIO
 
 import yaml
 
@@ -56,6 +56,57 @@ class ConfigManager:
 
         # Cache for loaded configs
         self._config_cache: Dict[str, Dict[str, Any]] = {}
+        
+        # Cache for default config key order
+        self._default_key_order: Optional[List[str]] = None
+
+    def _get_default_key_order(self) -> List[str]:
+        """Get the key order from default_config.yaml to maintain consistent ordering."""
+        if self._default_key_order is None:
+            # Parse the default config file to extract key order
+            with open(self.default_config_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            
+            # Extract top-level keys in their order of appearance
+            self._default_key_order = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped and not stripped.startswith('#') and ':' in stripped:
+                    key = stripped.split(':')[0].strip()
+                    if key and key not in self._default_key_order:
+                        self._default_key_order.append(key)
+            
+            logger.debug(f"Extracted default key order: {self._default_key_order}")
+        
+        return self._default_key_order
+
+    def _dump_yaml_with_order(self, config_data: Dict[str, Any], file_handle: TextIO) -> None:
+        """Dump YAML with preserved key order from default_config.yaml."""
+        key_order = self._get_default_key_order()
+        
+        # Create ordered output by processing keys in default order first
+        ordered_lines = []
+        processed_keys = set()
+        
+        for key in key_order:
+            if key in config_data:
+                # Convert single section to YAML string
+                single_section = {key: config_data[key]}
+                yaml_str = yaml.dump(single_section, default_flow_style=False, allow_unicode=True)
+                ordered_lines.append(yaml_str.rstrip())
+                processed_keys.add(key)
+        
+        # Add any remaining keys that weren't in the default order (edge case)
+        remaining_keys = set(config_data.keys()) - processed_keys
+        if remaining_keys:
+            remaining_data = {key: config_data[key] for key in sorted(remaining_keys)}
+            yaml_str = yaml.dump(remaining_data, default_flow_style=False, allow_unicode=True)
+            ordered_lines.append(yaml_str.rstrip())
+        
+        # Write to file
+        file_handle.write('\n'.join(ordered_lines))
+        if ordered_lines:  # Add final newline if there's content
+            file_handle.write('\n')
 
     def load_default_config(self) -> Dict[str, Any]:
         """Load the default pipeline configuration."""
@@ -283,7 +334,7 @@ class ConfigManager:
         self, task_config: TaskConfig, config_data: Dict[str, Any]
     ) -> Path:
         """
-        Save task configuration as task-yaml file.
+        Save task configuration as task-yaml file with preserved key order.
 
         Returns:
             Path to saved task-yaml file
@@ -303,9 +354,9 @@ class ConfigManager:
 
         config_path = job_dir / config_filename
 
-        # Save configuration
+        # Save configuration with preserved key order
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True)
+            self._dump_yaml_with_order(config_data, f)
 
         # Update task_config with saved path
         task_config.config_path = config_path
