@@ -243,6 +243,23 @@ def main() -> int:
         # Print execution summary
         job_manager.print_execution_summary(execution_plan)
 
+        # Handle edit mode before normal execution
+        if execution_plan.execution_mode == "edit":
+            # Edit mode - user already selected EDIT in ExecutionPlanner
+            task_config = execution_plan.task_configs[0]
+            
+            # Handle candidate editor directly (enhanced prompt was already shown)
+            should_rerun = job_manager.handle_candidate_editor(task_config)
+            
+            if should_rerun:
+                # User chose to re-run after editing - proceed with normal execution
+                task_config.add_final = True  # Force regeneration after candidate changes
+                execution_plan.execution_mode = "single"  # Continue to normal execution
+            else:
+                # User chose to return - exit gracefully
+                logger.info("Candidate editing completed.")
+                return 0
+
         # Execute tasks
         if (
             execution_plan.execution_mode == "batch"

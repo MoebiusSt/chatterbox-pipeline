@@ -21,7 +21,10 @@ class UserChoice(Enum):
     ALL_NEW = "all-new"  # Use all tasks + new final audio
     SPECIFIC = "specific"  # Select specific task
     SPECIFIC_NEW = "specific-new"  # Select specific task + new final audio
+    EDIT = "edit"  # Edit completed task candidates
     CANCEL = "cancel"  # Cancel execution
+    LATEST_FILL_GAPS = "latest-fill-gaps"  # Use latest task + fill gaps + new final audio
+    LATEST_FILL_GAPS_NO_OVERWRITE = "latest-fill-gaps-no-overwrite"  # Use latest task + fill gaps, don't overwrite final audio
 
 
 class ExecutionStrategy(Enum):

@@ -6,9 +6,10 @@ User interaction functionality for job management.
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from utils.config_manager import ConfigManager, TaskConfig
+from utils.file_manager.state_analyzer import TaskState
 
 from .types import UserChoice
 
@@ -80,32 +81,7 @@ class UserInteraction:
         choice = input("\n> ").strip().lower()
 
         if choice == "":
-            # Latest task selected - ask for additional options like specific task selection
-            latest_task = tasks[0]  # First in sorted list (newest)
-
-            # Parse timestamp for display
-            try:
-                dt = datetime.strptime(latest_task.timestamp, "%Y%m%d_%H%M%S")
-                display_time = dt.strftime("%d.%m.%Y %H:%M")
-            except ValueError:
-                display_time = latest_task.timestamp
-
-            print(f"\nSelected latest task: {latest_task.job_name} - {display_time}")
-            print("\nWhat to do with this task?")
-            print("[Enter] - Run task (Check task if needs resuming)")
-            print("n      - Run task (repair if necessary) + force new final audio")
-            print("c      - Cancel")
-
-            sub_choice = input("\n> ").strip().lower()
-            if sub_choice == "":
-                return UserChoice.LATEST
-            elif sub_choice == "n":
-                return UserChoice.LATEST_NEW
-            elif sub_choice == "c":
-                return UserChoice.CANCEL
-            else:
-                print("Invalid choice, defaulting to check task")
-                return UserChoice.LATEST
+            return UserChoice.LATEST
         elif choice == "n":
             return UserChoice.NEW
         elif choice == "a":
@@ -119,31 +95,75 @@ class UserInteraction:
         elif choice.isdigit() and 1 <= int(choice) <= len(tasks):
             # Store the selected task index (convert to 0-based)
             self.selected_task_index = int(choice) - 1
-            selected_task = tasks[self.selected_task_index]
-
-            # Parse timestamp for display
-            try:
-                dt = datetime.strptime(selected_task.timestamp, "%Y%m%d_%H%M%S")
-                display_time = dt.strftime("%d.%m.%Y %H:%M")
-            except ValueError:
-                display_time = selected_task.timestamp
-
-            print(f"\nSelected task: {selected_task.job_name} - {display_time}")
-            print("\nWhat to do with this task?")
-            print("[Enter] - Run task (Check task if needs resuming)")
-            print("n      - Run task (repair if necessary) + force new final audio")
-            print("c      - Cancel")
-
-            sub_choice = input("\n> ").strip().lower()
-            if sub_choice == "":
-                return UserChoice.SPECIFIC
-            elif sub_choice == "n":
-                return UserChoice.SPECIFIC_NEW
-            elif sub_choice == "c":
-                return UserChoice.CANCEL
-            else:
-                print("Invalid choice, defaulting to check task")
-                return UserChoice.SPECIFIC
-
+            return UserChoice.SPECIFIC
+        
         print("Invalid choice, defaulting to latest task")
         return UserChoice.LATEST
+    
+    def show_task_options_with_state(self, task: TaskConfig, task_state: TaskState) -> UserChoice:
+        """
+        Show task options with state information - the enhanced second prompt.
+        
+        Args:
+            task: Selected TaskConfig
+            task_state: TaskState analysis
+            
+        Returns:
+            UserChoice for the action to take
+        """
+        # Parse timestamp for display
+        try:
+            dt = datetime.strptime(task.timestamp, "%Y%m%d_%H%M%S")
+            display_time = dt.strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            display_time = task.timestamp
+            
+        print(f"\nSelected latest task: {task.job_name} - {display_time}")
+        print(f"\nTask state: {task_state.task_status_message}")
+        print()
+        
+        print("What to do with this task?")
+        print("[Enter] - Run task, fill gaps, create new final audio")
+        print("r       - Run task, fill gaps, don't overwrite existing final audio")  
+        print("n       - Run task, re-render all candidates, create new final audio")
+        
+        if task_state.candidate_editor_available:
+            print("e       - Edit completed task (choose different candidates)")
+        else:
+            print("N/A     - Edit completed task (not available - task incomplete or no candidate data)")
+            
+        print("c       - Cancel")
+        
+        while True:
+            choice = input("\n> ").strip().lower()
+            
+            if choice == "":
+                return UserChoice.LATEST_FILL_GAPS
+            elif choice == "r":
+                return UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE
+            elif choice == "n":
+                return UserChoice.LATEST_NEW
+            elif choice == "e":
+                if task_state.candidate_editor_available:
+                    return UserChoice.EDIT
+                else:
+                    print("Edit option not available - task incomplete or no candidate data")
+            elif choice == "c":
+                return UserChoice.CANCEL
+            else:
+                print("Invalid choice. Please try again.")
+                
+    def generate_task_info_dict(self, task: TaskConfig) -> Dict:
+        """Generate task info dictionary for display purposes."""
+        try:
+            dt = datetime.strptime(task.timestamp, "%Y%m%d_%H%M%S")
+            display_time = dt.strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            display_time = task.timestamp
+            
+        return {
+            "job_name": task.job_name,
+            "run_label": task.run_label,
+            "display_time": display_time,
+            "timestamp": task.timestamp
+        }

@@ -84,7 +84,8 @@ class FinalAudioIOHandler:
         """
         audio_segments = []
 
-        for chunk_idx in sorted(selected_candidates.keys()):
+        # Sort keys numerically, not alphabetically (fix for chunk order issue)
+        for chunk_idx in sorted(selected_candidates.keys(), key=lambda x: int(x)):
             candidate_idx = selected_candidates[chunk_idx]
 
             # Ensure indices are integers (JSON loads as strings)

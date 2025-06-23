@@ -28,6 +28,7 @@ class TaskConfig:
     job_name: str
     add_final: bool = False  # Force regeneration of final audio
     preloaded_config: Optional[Dict[str, Any]] = None  # Avoid redundant config loading
+    edit_mode: bool = False  # Indicates candidate editor mode
 
     def __post_init__(self) -> None:
         # Ensure Path objects

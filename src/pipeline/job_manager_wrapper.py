@@ -95,3 +95,55 @@ class JobManager:
     def _validate_mixed_configurations(self, task_configs: List[TaskConfig]) -> bool:
         """Validate that mixed task configurations are compatible."""
         return self.config_validator._validate_mixed_configurations(task_configs)
+    
+    def handle_candidate_editor(self, task_config: TaskConfig) -> bool:
+        """
+        Handle candidate editor interaction for a task.
+        
+        Args:
+            task_config: TaskConfig to edit
+            
+        Returns:
+            True if task should be re-run, False to return to main
+        """
+        try:
+            # Import here to avoid circular import
+            from .user_candidate_manager import UserCandidateManager
+            from utils.file_manager.file_manager import FileManager
+            
+            # Initialize FileManager for this task
+            file_manager = FileManager(task_config)
+            
+            # Create UserCandidateManager
+            candidate_manager = UserCandidateManager(file_manager, task_config)
+            
+            # Generate task info
+            task_info = self.user_interaction.generate_task_info_dict(task_config)
+            
+            while True:
+                # Show candidate overview
+                candidate_manager.show_candidate_overview(task_info)
+                
+                choice = input("\n> ").strip()
+                
+                if choice.lower() == 'c':
+                    return False  # Return to main
+                elif choice.lower() == 'r':
+                    return True   # Re-run task
+                elif choice.isdigit():
+                    chunk_idx = int(choice) - 1  # Convert to 0-based
+                    chunks = file_manager.get_chunks()
+                    
+                    if 0 <= chunk_idx < len(chunks):
+                        # Show candidate selector for this chunk
+                        result = candidate_manager.show_candidate_selector(chunk_idx, task_info)
+                        # Continue loop to show overview again
+                    else:
+                        print(f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'")
+                else:
+                    print("Invalid choice. Please enter a chunk number, 'r', or 'c'")
+                    
+        except Exception as e:
+            logger.error(f"Error in candidate editor: {e}")
+            print(f"Error: {e}")
+            return False

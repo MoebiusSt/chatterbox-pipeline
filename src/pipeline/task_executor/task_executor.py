@@ -58,6 +58,10 @@ class TaskExecutor:
         # Ensure file_manager has the config
         if not hasattr(file_manager, 'config') or file_manager.config is None:
             file_manager.config = self.config
+            
+        # Also ensure the state analyzer has the correct config
+        if hasattr(file_manager, '_state_analyzer') and file_manager._state_analyzer:
+            file_manager._state_analyzer.config = self.config
 
         # Initialize progress tracking
         self.progress_tracker = None
@@ -217,9 +221,10 @@ class TaskExecutor:
                     logger.info(
                         "Missing data detected, will regenerate before final assembly"
                     )
-                    # Continue with normal pipeline execution
+                    # Continue with normal pipeline execution to fill gaps
+                    # Do NOT return here - let it flow through to _execute_stages_from_state
                 else:
-                    # Jump directly to assembly
+                    # Jump directly to assembly if no missing data
                     if not self.assembly_handler.execute_assembly():
                         return TaskResult(
                             task_config=self.task_config,
@@ -281,10 +286,22 @@ class TaskExecutor:
 
     def _execute_stages_from_state(self, task_state: TaskState) -> bool:
         """Execute the pipeline stages based on the current task state."""
-        if task_state.completion_stage == CompletionStage.COMPLETE:
+        # Check if this is a gap-filling scenario even if task is complete
+        has_missing_candidates = any("candidates_chunk" in comp for comp in task_state.missing_components)
+        has_missing_whisper = any("whisper_chunk" in comp for comp in task_state.missing_components)
+        is_gap_filling = (
+            task_state.completion_stage == CompletionStage.COMPLETE and
+            (has_missing_candidates or has_missing_whisper) and
+            self.task_config.add_final
+        )
+        
+        if task_state.completion_stage == CompletionStage.COMPLETE and not is_gap_filling:
             logger.info("Task already complete")
             return True
-
+        
+        if is_gap_filling:
+            logger.info("🔄 Gap-filling mode detected - regenerating missing components")
+        
         # Execute stages in order based on what's missing
         if task_state.completion_stage in [
             CompletionStage.NOT_STARTED,
@@ -293,22 +310,38 @@ class TaskExecutor:
             if not self.preprocessing_handler.execute_preprocessing():
                 return False
 
-        if task_state.completion_stage in [
+        if (task_state.completion_stage in [
             CompletionStage.NOT_STARTED,
             CompletionStage.PREPROCESSING,
             CompletionStage.GENERATION,
-        ]:
+        ]) or is_gap_filling:  # Also run generation for gap-filling
             if not self.generation_handler.execute_generation():
                 return False
 
-        if task_state.completion_stage in [
+        if (task_state.completion_stage in [
             CompletionStage.NOT_STARTED,
             CompletionStage.PREPROCESSING,
             CompletionStage.GENERATION,
             CompletionStage.VALIDATION,
-        ]:
-            if not self.validation_handler.execute_validation():
-                return False
+        ]) or is_gap_filling:  # Also run validation for gap-filling
+            # Check if this is a gap-filling scenario with existing metrics
+            has_existing_metrics = bool(self.file_manager.get_metrics())
+            has_missing_candidates = any("candidates_chunk" in comp for comp in task_state.missing_components)
+            is_gap_filling = (
+                has_existing_metrics and 
+                has_missing_candidates and
+                self.task_config.add_final  # Gap-filling happens when forcing final with missing candidates
+            )
+            
+            if is_gap_filling:
+                # Use selective validation to preserve existing selected_candidates
+                logger.info("🔧 Gap-filling detected: Using selective validation to preserve user candidate selections")
+                if not self.validation_handler.execute_selective_validation():
+                    return False
+            else:
+                # Use full validation for initial runs or when no existing metrics
+                if not self.validation_handler.execute_validation():
+                    return False
 
         if task_state.completion_stage in [
             CompletionStage.NOT_STARTED,
@@ -316,7 +349,8 @@ class TaskExecutor:
             CompletionStage.GENERATION,
             CompletionStage.VALIDATION,
             CompletionStage.ASSEMBLY,
-        ]:
+        ] or (task_state.completion_stage == CompletionStage.COMPLETE and self.task_config.add_final):
+            # Execute assembly if needed or if forcing final audio regeneration
             if not self.assembly_handler.execute_assembly():
                 return False
 

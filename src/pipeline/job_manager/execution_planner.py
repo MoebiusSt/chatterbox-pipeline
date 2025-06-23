@@ -105,7 +105,38 @@ class ExecutionPlanner:
                     # No strategy specified - interactive selection
                     if global_strategy is None:
                         requires_user_input = True
+                    
+                    # First prompt - task selection
                     choice = self.user_interaction.prompt_user_selection(existing_tasks)
+                    
+                    # For LATEST or SPECIFIC choices, show enhanced second prompt
+                    if choice in [UserChoice.LATEST, UserChoice.SPECIFIC]:
+                        task_config = None
+                        if choice == UserChoice.LATEST:
+                            task_config = existing_tasks[0]  # Latest task
+                        elif choice == UserChoice.SPECIFIC and hasattr(self.user_interaction, "selected_task_index"):
+                            task_config = existing_tasks[self.user_interaction.selected_task_index]
+                        elif choice == UserChoice.SPECIFIC:
+                            task_config = existing_tasks[0]  # Fallback to latest
+                        
+                        if task_config:
+                            # Load config and analyze task state
+                            try:
+                                config_data = self.config_manager.load_cascading_config(task_config.config_path)
+                                from utils.file_manager.file_manager import FileManager
+                                temp_file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                task_state = temp_file_manager.analyze_task_state()
+                                
+                                # Show enhanced second prompt
+                                enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state)
+                                
+                                # Replace original choice with enhanced choice
+                                choice = enhanced_choice
+                                
+                            except Exception as e:
+                                # Fallback to original choice if task state analysis fails
+                                logger.warning(f"Task state analysis failed, using original choice: {e}")
+                                pass
 
                     if choice == UserChoice.CANCEL:
                         return ExecutionPlan([], "cancelled")
@@ -163,6 +194,25 @@ class ExecutionPlanner:
                     elif choice == UserChoice.ALL:
                         task_configs = list(existing_tasks)
                         execution_mode = "batch"
+                    elif choice == UserChoice.EDIT:
+                        # EDIT choice - mark for special handling in main
+                        if existing_tasks:
+                            task_config = existing_tasks[0]  # Latest task
+                            task_config.edit_mode = True  # Add flag to indicate edit mode
+                            task_configs = [task_config]
+                            execution_mode = "edit"
+                    elif choice == UserChoice.LATEST_FILL_GAPS:
+                        # Gap-filling with new final audio
+                        if existing_tasks:
+                            task_config = existing_tasks[0]  # Latest task
+                            task_config.add_final = True
+                            task_configs = [task_config]
+                    elif choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                        # Gap-filling without overwriting final audio
+                        if existing_tasks:
+                            task_config = existing_tasks[0]  # Latest task
+                            task_config.add_final = False  # Don't overwrite final audio
+                            task_configs = [task_config]
             else:
                 # No existing tasks, create new one
                 job_configs = self.job_manager.find_jobs_by_name(job_name)
@@ -306,6 +356,25 @@ class ExecutionPlanner:
                                 task_configs.append(new_task)
                             elif choice == UserChoice.ALL:
                                 task_configs.extend(existing_tasks)
+                            elif choice == UserChoice.EDIT:
+                                # EDIT choice - mark for special handling in main
+                                if existing_tasks:
+                                    task_config = existing_tasks[0]  # Latest task  
+                                    task_config.edit_mode = True  # Add flag to indicate edit mode
+                                    task_configs.append(task_config)
+                                    execution_mode = "edit"
+                            elif choice == UserChoice.LATEST_FILL_GAPS:
+                                # Gap-filling with new final audio
+                                if existing_tasks:
+                                    task_config = existing_tasks[0]  # Latest task
+                                    task_config.add_final = True
+                                    task_configs.append(task_config)
+                            elif choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                # Gap-filling without overwriting final audio
+                                if existing_tasks:
+                                    task_config = existing_tasks[0]  # Latest task
+                                    task_config.add_final = False  # Don't overwrite final audio
+                                    task_configs.append(task_config)
                     else:
                         # No existing tasks, create new one
                         new_task = self.job_manager.create_new_task(config_data)
