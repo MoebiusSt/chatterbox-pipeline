@@ -223,10 +223,10 @@ class ValidationHandler:
                 chunk, actual_retries, next_candidate_idx
             )
 
-            # Delete whisper files for retry candidates
+            # Delete whisper files for retry candidates before re-validation
             for retry_candidate in retry_candidates:
-                self.generation_handler.delete_whisper_file(
-                    chunk.idx, retry_candidate.candidate_idx + 1
+                self.file_manager.delete_whisper(
+                    chunk.idx, retry_candidate.candidate_idx
                 )
 
             if retry_candidates:

@@ -32,8 +32,14 @@ class SpaCyChunker(BaseChunker):
             self.nlp = spacy.load(model_name)
         except OSError:
             logger.info(f"Spacy model '{model_name}' not found. Downloading...")
-            spacy.cli.download(model_name)
-            self.nlp = spacy.load(model_name)
+            try:
+                import subprocess
+                import sys
+                subprocess.check_call([sys.executable, "-m", "spacy", "download", model_name])
+                self.nlp = spacy.load(model_name)
+            except (subprocess.CalledProcessError, ImportError) as e:
+                logger.error(f"Failed to download spacy model '{model_name}': {e}")
+                raise RuntimeError(f"SpaCy model '{model_name}' not available and download failed")
         logger.info(f"SpaCy Chunker initialized with model '{model_name}'.")
 
     def chunk_text(self, text: str) -> List[TextChunk]:
@@ -86,14 +92,14 @@ class SpaCyChunker(BaseChunker):
                         )
 
                         # Add the first split chunk immediately as a complete chunk
-                        first_part = split_chunks[0].strip()
+                        first_part = split_chunks[0].lstrip()  # Only strip leading whitespace
                         chunks.append(
                             TextChunk(
                                 text=first_part,
                                 start_pos=sent.start_char,  # Approximate
                                 end_pos=sent.start_char
                                 + len(first_part),  # Approximate
-                                has_paragraph_break="\n\n" in first_part,
+                                has_paragraph_break=self._ends_with_paragraph_break(first_part),
                                 estimated_tokens=self._estimate_token_length(
                                     first_part
                                 ),
@@ -102,15 +108,15 @@ class SpaCyChunker(BaseChunker):
                         )
 
                         # Add the second split chunk immediately as a complete chunk too
-                        second_part = split_chunks[1].strip()
-                        if second_part:
+                        second_part = split_chunks[1].lstrip()  # Only strip leading whitespace
+                        if second_part.strip():  # Check if chunk has content
                             chunks.append(
                                 TextChunk(
                                     text=second_part,
                                     start_pos=sent.start_char
                                     + len(first_part),  # Approximate
                                     end_pos=sent.end_char,  # Approximate
-                                    has_paragraph_break="\n\n" in second_part,
+                                    has_paragraph_break=self._ends_with_paragraph_break(second_part),
                                     estimated_tokens=self._estimate_token_length(
                                         second_part
                                     ),
@@ -143,22 +149,26 @@ class SpaCyChunker(BaseChunker):
                 # This should not be reached if there are sentences, but as a safeguard.
                 break
 
-            chunk_text = "".join([s.text_with_ws for s in chunk_sents]).strip()
+            chunk_text = "".join([s.text_with_ws for s in chunk_sents])
 
-            if chunk_text:
+            if chunk_text.strip():  # Check if chunk has content after stripping
                 # Use character indices from the original doc for accuracy
                 start_char = chunk_sents[0].start_char
                 end_char = chunk_sents[-1].end_char
 
-                # The text for the chunk is re-sliced from the original doc to be safe
-                final_chunk_text = doc.text[start_char:end_char].strip()
+                # The text for the chunk is re-sliced from the original doc
+                # We preserve whitespace to keep paragraph breaks for detection
+                final_chunk_text = doc.text[start_char:end_char]
+                
+                # Only strip leading whitespace, preserve trailing for paragraph break detection
+                final_chunk_text = final_chunk_text.lstrip()
 
                 chunks.append(
                     TextChunk(
                         text=final_chunk_text,
                         start_pos=start_char,
                         end_pos=end_char,
-                        has_paragraph_break="\n\n" in final_chunk_text,
+                        has_paragraph_break=self._ends_with_paragraph_break(final_chunk_text),
                         estimated_tokens=self._estimate_token_length(final_chunk_text),
                         is_fallback_split=False,  # Regular chunks are not fallback splits
                     )
@@ -172,6 +182,30 @@ class SpaCyChunker(BaseChunker):
         A simple proxy for token count.
         """
         return len(text.split())
+
+    def _ends_with_paragraph_break(self, text: str) -> bool:
+        """
+        Check if a text chunk ends with a paragraph break.
+        
+        This determines whether a longer pause should be inserted AFTER this chunk
+        during audio assembly.
+        
+        Args:
+            text: The text to check
+            
+        Returns:
+            True if the chunk ends with a paragraph break (indicating a paragraph pause should follow)
+        """
+        if not text:
+            return False
+            
+        # Remove trailing whitespace except newlines to check the actual end pattern
+        # We want to preserve trailing newlines for paragraph break detection
+        text_for_check = text.rstrip(' \t\r')
+        
+        # Check if text ends with double newline (paragraph break)
+        # This indicates that after this chunk, a paragraph pause should be inserted
+        return text_for_check.endswith('\n\n')
 
     def _find_optimal_split_point(self, sentences: List[Span]) -> int:
         """
@@ -191,7 +225,7 @@ class SpaCyChunker(BaseChunker):
         Attempts to split a very long sentence ONCE at a good delimiter near the middle
         to avoid breaking Whisper's context window while minimally disrupting text flow.
         """
-        text = sentence.text_with_ws.strip()
+        text = sentence.text_with_ws.lstrip()  # Only strip leading whitespace
         text_length = len(text)
         ideal_split_point = text_length // 2  # Aim for middle
 
@@ -220,15 +254,15 @@ class SpaCyChunker(BaseChunker):
                 split_pos = i + 1
 
                 # Check if this split creates two reasonable chunks
-                first_part = text[:split_pos].strip()
-                second_part = text[split_pos:].strip()
+                first_part = text[:split_pos].lstrip()  # Only strip leading whitespace
+                second_part = text[split_pos:].lstrip()  # Only strip leading whitespace
 
                 # Both parts must be under max_limit and non-empty
                 if (
                     len(first_part) <= max_limit
                     and len(second_part) <= max_limit
-                    and len(first_part) > 0
-                    and len(second_part) > 0
+                    and len(first_part.strip()) > 0  # Check content without affecting whitespace
+                    and len(second_part.strip()) > 0
                 ):
 
                     # Calculate distance from ideal split point
@@ -242,8 +276,8 @@ class SpaCyChunker(BaseChunker):
 
         # If we found a good split point, use it
         if best_split_pos is not None:
-            first_part = text[:best_split_pos].strip()
-            second_part = text[best_split_pos:].strip()
+            first_part = text[:best_split_pos].lstrip()  # Only strip leading whitespace
+            second_part = text[best_split_pos:].lstrip()  # Only strip leading whitespace
             logger.info(
                 f"✅ Split using '{best_delimiter}' near middle: {len(first_part)} + {len(second_part)} chars"
             )

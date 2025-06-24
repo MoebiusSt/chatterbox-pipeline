@@ -1,0 +1,44 @@
+job:
+  name: "pilcrowe"
+  run-label: "eric_prochnow"  # empty by default
+
+input:
+  reference_audio: "stephan_moebius_4.wav"        # Dateiname im reference_audio Ordner
+  text_file: "pilcrowe.txt"   # Text-Datei im texts Ordner
+
+preprocessing:
+  # Text normalization options
+  enabled: true
+  normalize_line_endings: false    # Convert \r\n and \r to \n
+  # Future preprocessing options can be added here
+  # normalize_quotes: false
+  # remove_extra_whitespace: false
+  # fix_encoding_issues: false
+
+chunking:
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  min_chunk_length: 80
+  spacy_model: "en_core_web_sm"
+
+generation:
+  num_candidates: 4
+  max_retries: 2
+  tts_params:
+    # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
+    # - exaggeration: MAX value (ramps DOWN from here)
+    # - cfg_weight: MIN value (ramps UP from here)  
+    # - temperature: MIN value (ramps UP from here)
+    exaggeration: 0.45                  # MAX: give maximum here
+    exaggeration_max_deviation: 0.2    # Range: (ramp DOWN) [exaggeration, exaggeration-exag_max_deviation] 
+    cfg_weight: 0.25                    # MIN: give minimum
+    cfg_weight_max_deviation: 0.2      # Range: (ramp UP) [cfg_weight, cfg_weight+max_dev] 
+    temperature: 0.85                    # MIN: give minimum
+    temperature_max_deviation: 0.3      # Range: (ramp UP) [temp, temp+max_dev] 
+
+  # Conservative candidate parameters for guaranteed correctness
+  conservative_candidate:
+    enabled: true
+    exaggeration: 0.40
+    cfg_weight: 0.35
+    temperature: 0.8

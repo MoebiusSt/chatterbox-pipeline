@@ -211,6 +211,10 @@ class FileManager:
         """Load Whisper validation results."""
         return self._whisper_handler.get_whisper(chunk_idx, candidate_idx)
 
+    def delete_whisper(self, chunk_idx: int, candidate_idx: int) -> bool:
+        """Delete Whisper validation result."""
+        return self._whisper_handler.delete_whisper(chunk_idx, candidate_idx)
+
     def migrate_whisper_to_enhanced_metrics(self) -> bool:
         """Migrate existing individual whisper files to enhanced_metrics.json format."""
         return self._whisper_handler.migrate_whisper_to_enhanced_metrics()

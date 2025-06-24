@@ -207,12 +207,6 @@ class GenerationHandler:
             logger.error(f"Error in missing candidate generation: {e}")
             return []
 
-    def delete_whisper_file(self, chunk_index: int, candidate_idx: int):
-        """Delete a specific whisper validation file."""
-        self.candidate_manager._delete_whisper_file(
-            self.file_manager.task_directory, chunk_index, candidate_idx
-        )
-
     def generate_retry_candidates(
         self, chunk: TextChunk, max_retries: int, start_candidate_idx: int
     ) -> List[AudioCandidate]:

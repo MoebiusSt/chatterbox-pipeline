@@ -109,6 +109,29 @@ class WhisperIOHandler:
 
         return results
 
+    def delete_whisper(self, chunk_idx: int, candidate_idx: int) -> bool:
+        """Delete Whisper validation result for a specific candidate."""
+        try:
+            # Delete individual file
+            filename = f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            path = self.whisper_dir / filename
+            if path.exists():
+                path.unlink()
+                logger.debug(f"Deleted individual whisper file: {path}")
+
+            # Remove from enhanced metrics
+            self._remove_stale_validation_data(chunk_idx, candidate_idx)
+            logger.debug(
+                f"Removed whisper data from enhanced metrics for chunk {chunk_idx}, candidate {candidate_idx}"
+            )
+
+            return True
+        except Exception as e:
+            logger.error(
+                f"Error deleting Whisper result for chunk {chunk_idx}, candidate {candidate_idx}: {e}"
+            )
+            return False
+
     def migrate_whisper_to_enhanced_metrics(self) -> bool:
         """
         Migrate existing individual whisper files to enhanced_metrics.json format.

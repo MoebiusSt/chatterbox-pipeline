@@ -50,8 +50,8 @@ validation:
 
 audio:
   silence_duration:
-    normal: 0.40
-    paragraph: 0.80
+    normal: 0.40 # chunk split between sentences
+    paragraph: 0.80 # chunk split between paragraphs
   # ChatterboxTTS native sample rate - NOT a user setting!
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
   # Only change this if ChatterboxTTS itself changes its output sample rate
