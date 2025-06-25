@@ -352,7 +352,7 @@ class QualityScorer:
         best_idx = best_candidate.candidate_idx + 1  # Display as 1-based
 
         self.logger.info(
-            f"Chunk_{chunk_idx:02d}: score {worst_score:.3f} to {best_score:.3f}. "
+            f"Chunk_{chunk_idx + 1:02d}: score {worst_score:.3f} to {best_score:.3f}. "
             f"Best candidate: {best_idx} of {len(candidates)} (score: {best_score:.3f}) "
             f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}"
         )

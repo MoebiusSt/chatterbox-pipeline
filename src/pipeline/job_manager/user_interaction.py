@@ -142,7 +142,7 @@ class UserInteraction:
             elif choice == "r":
                 return UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE
             elif choice == "n":
-                return UserChoice.LATEST_NEW
+                return UserChoice.LATEST_RERENDER_ALL
             elif choice == "e":
                 if task_state.candidate_editor_available:
                     return UserChoice.EDIT

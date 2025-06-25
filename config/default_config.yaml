@@ -40,7 +40,7 @@ generation:
   conservative_candidate:
     enabled: true
     exaggeration: 0.40
-    cfg_weight: 0.2
+    cfg_weight: 0.3
     temperature: 0.8
   
 validation:

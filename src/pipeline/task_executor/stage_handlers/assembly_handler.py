@@ -27,8 +27,6 @@ class AssemblyHandler:
         """Execute assembly stage (audio concatenation and post-processing)."""
         logger.info("🎵 Starting Assembly Stage")
         try:
-            logger.info("Starting assembly stage")
-
             # Load metrics to get selected candidates
             metrics = self.file_manager.get_metrics()
             if not metrics or "selected_candidates" not in metrics:
@@ -68,7 +66,7 @@ class AssemblyHandler:
                     ...
                 return processed_audio
             """
-            logger.info("Skipping post-processing as it is not implemented.")
+            logger.info("Skipping post-processing as it is not implemented. Put your post processing code here.")
 
             # Create metadata
             sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)

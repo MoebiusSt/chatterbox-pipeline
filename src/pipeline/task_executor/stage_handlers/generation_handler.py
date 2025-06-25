@@ -35,7 +35,7 @@ class GenerationHandler:
         logger.info("🎙️ Starting Generation Stage")
         try:
             logger.info("")
-            logger.info("Starting generation stage")
+            logger.info("▶️  Starting generation stage")
 
             chunks = self.file_manager.get_chunks()
             if not chunks:
@@ -46,98 +46,115 @@ class GenerationHandler:
             self.tts_generator.load_reference_audio(str(reference_audio_path))
 
             total_chunks = len(chunks)
-            logger.info(f"⚡ GENERATION PHASE: Processing {total_chunks} chunks")
-            logger.info("=" * 50)
+            generation_config = self.config["generation"]
+            num_candidates = generation_config["num_candidates"]
 
+            # Pre-analyze chunks to determine which need generation
+            chunks_to_generate = []
+            complete_chunks = []
+            
             for chunk in chunks:
-                chunk_num = chunk.idx + 1
-                logger.info("")
-                logger.info(f"🎯 CHUNK {chunk_num}/{total_chunks}")
-                logger.debug(f"Text length: {len(chunk.text)} characters")
-                if len(chunk.text) > 80:
-                    preview = chunk.text[:80] + "..."
-                else:
-                    preview = chunk.text
-                logger.debug(f'Preview: "{preview}"')
-                logger.info("-" * 50)
-
-                existing_candidates = self.file_manager.get_candidates(chunk.idx)
-                chunk_candidates = existing_candidates.get(chunk.idx, [])
-
-                generation_config = self.config["generation"]
-                num_candidates = generation_config["num_candidates"]
-
-                chunk_dir = (
-                    self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
-                )
+                chunk_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
                 existing_file_count = 0
                 if chunk_dir.exists():
                     candidate_files = list(chunk_dir.glob("candidate_*.wav"))
                     existing_file_count = len(candidate_files)
 
                 if existing_file_count >= num_candidates:
-                    logger.debug(
-                        f"✓ Candidates already exist for chunk {chunk_num} ({existing_file_count}/{num_candidates}), skipping"
-                    )
-                    continue
-                elif existing_file_count > 0:
-                    logger.info(
-                        f"⚡ Found {existing_file_count}/{num_candidates} candidates - generating {num_candidates - existing_file_count} missing candidates"
-                    )
-
-                missing_count = num_candidates - existing_file_count
-
-                if missing_count > 0:
-                    existing_indices = set()
-                    if chunk_dir.exists():
-                        candidate_files = list(chunk_dir.glob("candidate_*.wav"))
-                        for candidate_file in candidate_files:
-                            try:
-                                candidate_num = int(candidate_file.stem.split("_")[1])
-                                candidate_idx = candidate_num - 1
-                                existing_indices.add(candidate_idx)
-                            except (IndexError, ValueError):
-                                continue
-
-                    missing_indices = []
-                    for i in range(num_candidates):
-                        if i not in existing_indices:
-                            missing_indices.append(i)
-
-                    new_candidates = self._generate_missing_candidates(
-                        chunk, missing_indices
-                    )
-
-                    if not new_candidates:
-                        logger.error(
-                            f"❌ Failed to generate missing candidates for chunk {chunk_num+1}"
-                        )
-                        return False
-
-                    logger.debug(
-                        f"✅ Successfully generated {len(new_candidates)} missing candidates"
-                    )
+                    complete_chunks.append((chunk.idx + 1, existing_file_count))
                 else:
-                    logger.info(f"⚡ Generating candidates...")
-                    candidates = self._generate_candidates_for_chunk(chunk)
+                    chunks_to_generate.append((chunk, existing_file_count))
 
-                    if not candidates:
-                        logger.error(
-                            f"❌ Failed to generate candidates for chunk {chunk_num+1}"
+            # Log summary
+            logger.info(f"⚡ GENERATION PHASE: Processing {total_chunks} chunks")
+            logger.info("=" * 50)
+
+            # Log complete chunks compactly
+            if complete_chunks:
+                logger.info(f"📋 {len(complete_chunks)} chunks already complete:")
+                for chunk_num, file_count in complete_chunks:
+                    logger.info(f"CHUNK {chunk_num:02d}/{total_chunks} complete ({file_count}/{num_candidates} candidates)")
+                if chunks_to_generate:
+                    logger.info("-" * 25)
+
+            # Process chunks that need generation
+            if chunks_to_generate:
+                logger.info(f"🔄 Processing {len(chunks_to_generate)} chunks requiring generation:")
+                logger.info("")
+                
+                for chunk, existing_file_count in chunks_to_generate:
+                    chunk_num = chunk.idx + 1
+                    logger.info(f"🎯 CHUNK {chunk_num}/{total_chunks}")
+                    logger.debug(f"Text length: {len(chunk.text)} characters")
+                    if len(chunk.text) > 80:
+                        preview = chunk.text[:80] + "..."
+                    else:
+                        preview = chunk.text
+                    logger.debug(f'Preview: "{preview}"')
+                    logger.info("-" * 50)
+
+                    if existing_file_count > 0:
+                        logger.info(
+                            f"⚡ Found {existing_file_count}/{num_candidates} candidates - generating {num_candidates - existing_file_count} missing candidates"
                         )
-                        return False
 
-                    if not self.file_manager.save_candidates(
-                        chunk.idx, candidates, overwrite_existing=True
-                    ):
-                        logger.error(
-                            f"❌ Failed to save candidates for chunk {chunk_num+1}"
+                    missing_count = num_candidates - existing_file_count
+
+                    if missing_count > 0:
+                        chunk_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                        existing_indices = set()
+                        if chunk_dir.exists():
+                            candidate_files = list(chunk_dir.glob("candidate_*.wav"))
+                            for candidate_file in candidate_files:
+                                try:
+                                    candidate_num = int(candidate_file.stem.split("_")[1])
+                                    candidate_idx = candidate_num - 1
+                                    existing_indices.add(candidate_idx)
+                                except (IndexError, ValueError):
+                                    continue
+
+                        missing_indices = []
+                        for i in range(num_candidates):
+                            if i not in existing_indices:
+                                missing_indices.append(i)
+
+                        new_candidates = self._generate_missing_candidates(
+                            chunk, missing_indices
                         )
-                        return False
 
-                    logger.info(
-                        f"✅ Successfully generated {len(candidates)} candidates"
-                    )
+                        if not new_candidates:
+                            logger.error(
+                                f"❌ Failed to generate missing candidates for chunk {chunk_num}"
+                            )
+                            return False
+
+                        logger.debug(
+                            f"✅ Successfully generated {len(new_candidates)} missing candidates"
+                        )
+                    else:
+                        logger.info(f"⚡ Generating candidates...")
+                        candidates = self._generate_candidates_for_chunk(chunk)
+
+                        if not candidates:
+                            logger.error(
+                                f"❌ Failed to generate candidates for chunk {chunk_num}"
+                            )
+                            return False
+
+                        if not self.file_manager.save_candidates(
+                            chunk.idx, candidates, overwrite_existing=True
+                        ):
+                            logger.error(
+                                f"❌ Failed to save candidates for chunk {chunk_num}"
+                            )
+                            return False
+
+                        logger.info(
+                            f"✅ Successfully generated {len(candidates)} candidates"
+                        )
+            else:
+                logger.info("✅ All chunks already have complete candidates")
+
             logger.info("✅ Generation stage completed successfully")
             return True
 

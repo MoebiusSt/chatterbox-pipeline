@@ -127,11 +127,58 @@ class ExecutionPlanner:
                                 temp_file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
                                 task_state = temp_file_manager.analyze_task_state()
                                 
-                                # Show enhanced second prompt
-                                enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state)
-                                
-                                # Replace original choice with enhanced choice
-                                choice = enhanced_choice
+                                # Enhanced second prompt loop that allows cycling between task options and candidate editor
+                                while True:
+                                    # Show enhanced second prompt
+                                    enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state)
+                                    
+                                    if enhanced_choice == UserChoice.EDIT:
+                                        # Enter candidate editor loop
+                                        try:
+                                            from pipeline.user_candidate_manager import UserCandidateManager
+                                            file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                            candidate_manager = UserCandidateManager(file_manager, task_config)
+                                            task_info = self.user_interaction.generate_task_info_dict(task_config)
+                                            
+                                            # Candidate editor loop
+                                            while True:
+                                                candidate_manager.show_candidate_overview(task_info)
+                                                editor_choice = input("\n> ").strip()
+                                                
+                                                if editor_choice.lower() == 'c':
+                                                    # Return to task options (break candidate editor loop)
+                                                    break
+                                                elif editor_choice.lower() == 'r':
+                                                    # Re-run task - set final choice and exit both loops
+                                                    task_config.add_final = True
+                                                    choice = UserChoice.LATEST_FILL_GAPS
+                                                    break
+                                                elif editor_choice.isdigit():
+                                                    chunk_idx = int(editor_choice) - 1  # Convert to 0-based
+                                                    chunks = file_manager.get_chunks()
+                                                    
+                                                    if 0 <= chunk_idx < len(chunks):
+                                                        # Show candidate selector for this chunk
+                                                        result = candidate_manager.show_candidate_selector(chunk_idx, task_info)
+                                                        # Continue loop to show overview again
+                                                    else:
+                                                        print(f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'")
+                                                else:
+                                                    print("Invalid choice. Please enter a chunk number, 'r', or 'c'")
+                                            
+                                            # If user chose 'r' in candidate editor, break main loop too
+                                            if editor_choice.lower() == 'r':
+                                                break
+                                                
+                                        except Exception as e:
+                                            logger.error(f"Error in candidate editor: {e}")
+                                            print(f"Error: {e}")
+                                            # Continue to task options on error
+                                            continue
+                                    else:
+                                        # User chose something other than EDIT - set choice and break main loop
+                                        choice = enhanced_choice
+                                        break
                                 
                             except Exception as e:
                                 # Fallback to original choice if task state analysis fails
@@ -194,13 +241,6 @@ class ExecutionPlanner:
                     elif choice == UserChoice.ALL:
                         task_configs = list(existing_tasks)
                         execution_mode = "batch"
-                    elif choice == UserChoice.EDIT:
-                        # EDIT choice - mark for special handling in main
-                        if existing_tasks:
-                            task_config = existing_tasks[0]  # Latest task
-                            task_config.edit_mode = True  # Add flag to indicate edit mode
-                            task_configs = [task_config]
-                            execution_mode = "edit"
                     elif choice == UserChoice.LATEST_FILL_GAPS:
                         # Gap-filling with new final audio
                         if existing_tasks:
@@ -211,7 +251,15 @@ class ExecutionPlanner:
                         # Gap-filling without overwriting final audio
                         if existing_tasks:
                             task_config = existing_tasks[0]  # Latest task
-                            task_config.add_final = False  # Don't overwrite final audio
+                            task_config.add_final = True  # Enable gap-filling
+                            task_config.skip_final_overwrite = True  # Don't overwrite existing final audio
+                            task_configs = [task_config]
+                    elif choice == UserChoice.LATEST_RERENDER_ALL:
+                        # Re-render all candidates from scratch
+                        if existing_tasks:
+                            task_config = existing_tasks[0]  # Latest task
+                            task_config.add_final = True
+                            task_config.rerender_all = True  # New flag to indicate full re-rendering
                             task_configs = [task_config]
             else:
                 # No existing tasks, create new one
@@ -356,13 +404,6 @@ class ExecutionPlanner:
                                 task_configs.append(new_task)
                             elif choice == UserChoice.ALL:
                                 task_configs.extend(existing_tasks)
-                            elif choice == UserChoice.EDIT:
-                                # EDIT choice - mark for special handling in main
-                                if existing_tasks:
-                                    task_config = existing_tasks[0]  # Latest task  
-                                    task_config.edit_mode = True  # Add flag to indicate edit mode
-                                    task_configs.append(task_config)
-                                    execution_mode = "edit"
                             elif choice == UserChoice.LATEST_FILL_GAPS:
                                 # Gap-filling with new final audio
                                 if existing_tasks:
@@ -373,7 +414,15 @@ class ExecutionPlanner:
                                 # Gap-filling without overwriting final audio
                                 if existing_tasks:
                                     task_config = existing_tasks[0]  # Latest task
-                                    task_config.add_final = False  # Don't overwrite final audio
+                                    task_config.add_final = True  # Enable gap-filling
+                                    task_config.skip_final_overwrite = True  # Don't overwrite existing final audio
+                                    task_configs = [task_config]
+                            elif choice == UserChoice.LATEST_RERENDER_ALL:
+                                # Re-render all candidates from scratch
+                                if existing_tasks:
+                                    task_config = existing_tasks[0]  # Latest task
+                                    task_config.add_final = True
+                                    task_config.rerender_all = True  # New flag to indicate full re-rendering
                                     task_configs.append(task_config)
                     else:
                         # No existing tasks, create new one

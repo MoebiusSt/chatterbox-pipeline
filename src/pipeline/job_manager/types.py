@@ -25,6 +25,7 @@ class UserChoice(Enum):
     CANCEL = "cancel"  # Cancel execution
     LATEST_FILL_GAPS = "latest-fill-gaps"  # Use latest task + fill gaps + new final audio
     LATEST_FILL_GAPS_NO_OVERWRITE = "latest-fill-gaps-no-overwrite"  # Use latest task + fill gaps, don't overwrite final audio
+    LATEST_RERENDER_ALL = "latest-rerender-all"  # Use latest task + delete all candidates + rerender everything
 
 
 class ExecutionStrategy(Enum):

@@ -328,7 +328,7 @@ class ValidationHandler:
         validation_results: Dict[int, Dict[int, dict]],
     ) -> Dict[str, Any]:
         """Create enhanced metrics for all chunks and candidates."""
-        metrics = {
+        metrics: Dict[str, Any] = {
             "timestamp": time.time(),
             "total_chunks": len(chunks),
             "chunks": {},
@@ -432,22 +432,24 @@ class ValidationHandler:
                         exaggeration = cfg_weight = temperature = 0.0
 
                     logger.info(
-                        f"Chunk_{chunk.idx:02d}: score {min_score:.3f} to {max_score:.3f}. "
+                        f"Chunk_{chunk.idx + 1:02d}: score {min_score:.3f} to {max_score:.3f}. "
                         f"Best candidate: {best_candidate_display} of {len(candidates_list)} (score: {best_score_value:.3f}) "
                         f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}"
                     )
 
-                metrics["chunks"][chunk.idx] = chunk_metrics
-                metrics["selected_candidates"][chunk.idx] = best_candidate_idx
+                # Type-safe dictionary access
+                chunks_dict = metrics["chunks"] 
+                selected_candidates_dict = metrics["selected_candidates"]
+                chunks_dict[chunk.idx] = chunk_metrics
+                selected_candidates_dict[chunk.idx] = best_candidate_idx
 
             except Exception as e:
                 logger.warning(
                     f"Failed to select best candidate for chunk {chunk.idx}: {e}"
                 )
                 if candidates_list:
-                    metrics["selected_candidates"][chunk.idx] = candidates_list[
-                        0
-                    ].candidate_idx
+                    selected_candidates_dict = metrics["selected_candidates"]
+                    selected_candidates_dict[chunk.idx] = candidates_list[0].candidate_idx
 
         return metrics
 
@@ -474,6 +476,7 @@ class ValidationHandler:
 
             # Determine which chunks need validation
             if chunks_to_validate is None:
+                # Auto-determine based on missing validation data (legacy behavior)
                 chunks_to_validate = []
                 existing_metrics = self.file_manager.get_metrics()
                 existing_chunks = existing_metrics.get("chunks", {}) if existing_metrics else {}
@@ -503,6 +506,9 @@ class ValidationHandler:
                     
                     if needs_validation:
                         chunks_to_validate.append(chunk.idx)
+            else:
+                # Use explicitly provided chunk indices for gap-filling - NO AUTO-DETECTION
+                logger.info(f"📋 Using provided chunk indices for gap-filling validation: {[idx+1 for idx in chunks_to_validate]}")
 
             if not chunks_to_validate:
                 logger.info("✅ No chunks require validation - all validation data is complete")
@@ -746,7 +752,7 @@ class ValidationHandler:
                             exaggeration = cfg_weight = temperature = 0.0
 
                         logger.info(
-                            f"Chunk_{chunk.idx:02d}: score {min_score:.3f} to {max_score:.3f}. "
+                            f"Chunk_{chunk.idx + 1:02d}: score {min_score:.3f} to {max_score:.3f}. "
                             f"New best candidate: {best_candidate_display} of {len(candidates_list)} (score: {best_score_value:.3f}) "
                             f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}"
                         )

@@ -32,39 +32,32 @@ ExecutionPlan = ExecutionPlan
 
 
 class JobManager:
-    """
-    Wrapper JobManager that combines all job management functionality.
-    Maintains backward compatibility with the original monolithic class.
-    """
+    """Wraps job management functionality with ExecutionPlanner."""
 
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager
-        self.project_root = config_manager.project_root
-
+        
         # Initialize components
         self.core_manager = CoreJobManager(config_manager)
         self.execution_planner = ExecutionPlanner(self.core_manager, config_manager)
         self.user_interaction = UserInteraction(config_manager)
         self.config_validator = ConfigValidator(self.core_manager, config_manager)
 
-    # Delegate to core job manager
-    def is_task_config(self, config_path: Path) -> bool:
-        return self.core_manager.is_task_config(config_path)
-
-    def get_jobs(self, job_name: Optional[str] = None) -> List[TaskConfig]:
-        return self.core_manager.get_jobs(job_name)
-
-    def find_jobs_by_name(self, job_name: str) -> List[TaskConfig]:
-        return self.core_manager.find_jobs_by_name(job_name)
-
-    def find_all_jobs(self) -> List[TaskConfig]:
-        return self.core_manager.find_all_jobs()
-
+    # Delegate to core manager
     def find_existing_tasks(self, job_name: str) -> List[TaskConfig]:
         return self.core_manager.find_existing_tasks(job_name)
 
+    def find_jobs_by_name(self, job_name: str) -> List[Any]:
+        """Find job configs by name."""
+        configs = self.config_manager.find_configs_by_job_name(job_name)
+        return [{"config_path": config} for config in configs]
+
     def create_new_task(self, job_config: Dict[str, Any]) -> TaskConfig:
         return self.core_manager.create_new_task(job_config)
+
+    def is_task_config(self, config_path: Path) -> bool:
+        """Check if a config file is a task config."""
+        return self.config_manager.is_task_config(config_path)
 
     def parse_mode_argument(
         self, mode_arg: Optional[str]
@@ -73,11 +66,7 @@ class JobManager:
 
     # Delegate to user interaction
     def prompt_user_selection(self, tasks: List[TaskConfig]) -> UserChoice:
-        choice = self.user_interaction.prompt_user_selection(tasks)
-        # Copy selected_task_index for backward compatibility
-        if hasattr(self.user_interaction, "selected_task_index"):
-            self.selected_task_index = self.user_interaction.selected_task_index
-        return choice
+        return self.user_interaction.prompt_user_selection(tasks)
 
     # Delegate to execution planner
     def resolve_execution_plan(
@@ -95,55 +84,3 @@ class JobManager:
     def _validate_mixed_configurations(self, task_configs: List[TaskConfig]) -> bool:
         """Validate that mixed task configurations are compatible."""
         return self.config_validator._validate_mixed_configurations(task_configs)
-    
-    def handle_candidate_editor(self, task_config: TaskConfig) -> bool:
-        """
-        Handle candidate editor interaction for a task.
-        
-        Args:
-            task_config: TaskConfig to edit
-            
-        Returns:
-            True if task should be re-run, False to return to main
-        """
-        try:
-            # Import here to avoid circular import
-            from .user_candidate_manager import UserCandidateManager
-            from utils.file_manager.file_manager import FileManager
-            
-            # Initialize FileManager for this task
-            file_manager = FileManager(task_config)
-            
-            # Create UserCandidateManager
-            candidate_manager = UserCandidateManager(file_manager, task_config)
-            
-            # Generate task info
-            task_info = self.user_interaction.generate_task_info_dict(task_config)
-            
-            while True:
-                # Show candidate overview
-                candidate_manager.show_candidate_overview(task_info)
-                
-                choice = input("\n> ").strip()
-                
-                if choice.lower() == 'c':
-                    return False  # Return to main
-                elif choice.lower() == 'r':
-                    return True   # Re-run task
-                elif choice.isdigit():
-                    chunk_idx = int(choice) - 1  # Convert to 0-based
-                    chunks = file_manager.get_chunks()
-                    
-                    if 0 <= chunk_idx < len(chunks):
-                        # Show candidate selector for this chunk
-                        result = candidate_manager.show_candidate_selector(chunk_idx, task_info)
-                        # Continue loop to show overview again
-                    else:
-                        print(f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'")
-                else:
-                    print("Invalid choice. Please enter a chunk number, 'r', or 'c'")
-                    
-        except Exception as e:
-            logger.error(f"Error in candidate editor: {e}")
-            print(f"Error: {e}")
-            return False

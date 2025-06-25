@@ -27,8 +27,9 @@ class TaskConfig:
     config_path: Path
     job_name: str
     add_final: bool = False  # Force regeneration of final audio
+    skip_final_overwrite: bool = False  # Skip overwriting existing final audio (for gap-filling)
     preloaded_config: Optional[Dict[str, Any]] = None  # Avoid redundant config loading
-    edit_mode: bool = False  # Indicates candidate editor mode
+    rerender_all: bool = False  # Delete all candidates and re-render everything from scratch
 
     def __post_init__(self) -> None:
         # Ensure Path objects

@@ -301,9 +301,9 @@ class SpaCyChunker(BaseChunker):
         if output_dir is None:
             # Default to project data/output/chunks directory
             project_root = Path(__file__).resolve().parents[2]
-            output_dir = project_root / "data" / "output" / "chunks"
-
-        output_path = Path(output_dir)
+            output_path = project_root / "data" / "output" / "chunks"
+        else:
+            output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
         saved_paths = []

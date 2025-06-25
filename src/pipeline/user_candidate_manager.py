@@ -56,8 +56,8 @@ class UserCandidateManager:
         """
         self.file_manager = file_manager
         self.task_config = task_config
-        self.original_selections = {}
-        self.current_selections = {}
+        self.original_selections: Dict[str, int] = {}
+        self.current_selections: Dict[str, int] = {}
         self._load_initial_data()
     
     def _load_initial_data(self) -> None:
@@ -204,8 +204,42 @@ class UserCandidateManager:
                             for info in candidate_infos:
                                 info.is_selected = (info.candidate_id == candidate_idx)
                             print(f"Selected candidate {candidate_num} for chunk {chunk_idx + 1}")
-                            # Return to show updated display
-                            return self.show_candidate_selector(chunk_idx, task_info)
+                            # Continue the loop to show updated display instead of recursion
+                            candidate_infos = self.get_candidate_info(chunk_idx)  # Refresh data
+                            print(f"\nSelected latest task: {task_info['job_name']} - {task_info['display_time']}")
+                            print(f"\nSelect audio candidate for chunk: {chunk_idx+1:03d}/{len(chunks):03d}")
+                            print()
+                            # Clean text for display - remove line breaks and normalize whitespace
+                            clean_text = chunk.text.replace('\n', ' ').replace('\r', ' ')
+                            clean_text = ' '.join(clean_text.split())
+                            print(f'Text: "{clean_text}"')
+                            print()
+                            print(f"Number of candidates: {len(candidate_infos)}")
+                            
+                            current_selected = int(self.current_selections.get(str(chunk_idx), 0)) + 1
+                            print(f"Current selected Candidate: {current_selected}")
+                            print()
+                            
+                            # Display candidate table with proper alignment
+                            print("Candidate:  exaggeration:  cfg_weight:  temp:    type:        sim_score:  length_score:  qty_score:  passed:")
+                            for info in candidate_infos:
+                                selected_marker = "<- sel" if info.is_selected else ""
+                                passed_marker = "✅" if info.validation_passed else "❌"
+                                
+                                print(f"{info.candidate_id+1:<11} "
+                                      f"{info.exaggeration:<13.2f} "
+                                      f"{info.cfg_weight:<12.2f} "
+                                      f"{info.temperature:<8.2f} "
+                                      f"{info.candidate_type:<12} "
+                                      f"{info.similarity_score:<11.2f} "
+                                      f"{info.length_score:<14.2f} "
+                                      f"{info.quality_score:<11.2f} "
+                                      f"{passed_marker:<7} {selected_marker}")
+                            
+                            print()
+                            print("Select action:")
+                            print(f"1-{len(candidate_infos):<2} - Select candidate")
+                            print("c       - Return")
                         else:
                             print("Failed to save selection. Please try again.")
                     else:
