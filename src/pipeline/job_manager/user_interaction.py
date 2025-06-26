@@ -70,13 +70,11 @@ class UserInteraction:
             )
 
         print("\nSelect action:")
-        print("[Enter] - Run latest task (Check task if needs resuming)")
-        print("n      - Create new task")
-        print("a      - Run all tasks (Check tasks if needs resuming)")
-        print("ln     - Use latest task + force new final audio")
-        print("an     - Run all tasks + force new final audio")
-        print("1-{}   - Select specific task".format(len(tasks)))
-        print("c      - Cancel")
+        print("[Enter] - Options for latest task")
+        print("n       - Create and run new task")
+        print("a       - Options to run all tasks")
+        print("1-{}   - Options for specific task".format(len(tasks)))
+        print("c       - Cancel")
 
         choice = input("\n> ").strip().lower()
 
@@ -85,11 +83,7 @@ class UserInteraction:
         elif choice == "n":
             return UserChoice.NEW
         elif choice == "a":
-            return UserChoice.ALL
-        elif choice == "ln":
-            return UserChoice.LATEST_NEW
-        elif choice == "an":
-            return UserChoice.ALL_NEW
+            return UserChoice.ALL_OPTIONS
         elif choice == "c":
             return UserChoice.CANCEL
         elif choice.isdigit() and 1 <= int(choice) <= len(tasks):
@@ -100,6 +94,30 @@ class UserInteraction:
         print("Invalid choice, defaulting to latest task")
         return UserChoice.LATEST
     
+    def confirm_rerender_action(self, action_description: str) -> bool:
+        """
+        Show safety prompt for re-render actions that will delete existing audio chunks.
+        
+        Args:
+            action_description: Description of the action being confirmed
+            
+        Returns:
+            True if user confirms, False otherwise
+        """
+        print(f"\n⚠️  WARNING: {action_description}")
+        print("This will DELETE (!) ALL audio chunks and final audio files from pre-existing runs!")
+        print("Are you sure? (y/n/c - return)")
+        
+        while True:
+            choice = input("\n> ").strip().lower()
+            
+            if choice in ["y", "yes"]:
+                return True
+            elif choice in ["n", "no", "c"]:
+                return False
+            else:
+                print("Please enter 'y' for yes, 'n' for no, or 'c' to return")
+
     def show_task_options_with_state(self, task: TaskConfig, task_state: TaskState, is_latest: bool = True) -> UserChoice:
         """
         Show task options with state information - the enhanced second prompt.
@@ -125,36 +143,76 @@ class UserInteraction:
         print()
         
         print("What to do with this task?")
-        print("[Enter] - Run task, fill gaps, create new final audio")
-        print("r       - Run task, fill gaps, don't overwrite existing final audio")  
-        print("n       - Run task, re-render all candidates, create new final audio")
+        print("[Enter] - Run task, fill gaps, CREATE (or overwrite) final audio")
+        print("s       - Run task, fill gaps, KEEP (skip) final audio")
+        print("r       - Run task, RE-RENDER ALL candidates, create new final audio")
         
         if task_state.candidate_editor_available:
             print("e       - Edit completed task (choose different candidates)")
         else:
             print("N/A     - Edit completed task (not available - task incomplete or no candidate data)")
             
-        print("c       - Cancel")
+        print("c       - Return")
         
         while True:
             choice = input("\n> ").strip().lower()
             
             if choice == "":
                 return UserChoice.LATEST_FILL_GAPS
-            elif choice == "r":
+            elif choice == "s":
                 return UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE
-            elif choice == "n":
-                return UserChoice.LATEST_RERENDER_ALL
+            elif choice == "r":
+                if self.confirm_rerender_action("RE-RENDER ALL candidates"):
+                    return UserChoice.LATEST_RERENDER_ALL
+                else:
+                    return UserChoice.LATEST_FILL_GAPS
             elif choice == "e":
                 if task_state.candidate_editor_available:
                     return UserChoice.EDIT
                 else:
                     print("Edit option not available - task incomplete or no candidate data")
             elif choice == "c":
-                return UserChoice.CANCEL
+                return UserChoice.RETURN
             else:
                 print("Invalid choice. Please try again.")
                 
+    def show_all_tasks_options(self, tasks: List[TaskConfig]) -> UserChoice:
+        """
+        Show options for all tasks - the new third menu.
+        
+        Args:
+            tasks: List of all available TaskConfigs
+            
+        Returns:
+            UserChoice for the action to take on all tasks
+        """
+        job_name = tasks[0].job_name if tasks else "Unknown"
+        print(f"\nOptions for ALL tasks in job '{job_name}' ({len(tasks)} tasks):")
+        print()
+        
+        print("What to do with ALL tasks?")
+        print("[Enter] - Run tasks, fill gaps, CREATE (or overwrite) final audio-files")
+        print("s       - Run tasks, fill gaps, KEEP (skip) final audio-files")
+        print("r       - Run tasks, RE-RENDER ALL candidates, create new final audio-files")
+        print("c       - Return")
+        
+        while True:
+            choice = input("\n> ").strip().lower()
+            
+            if choice == "":
+                return UserChoice.ALL_FILL_GAPS
+            elif choice == "s":
+                return UserChoice.ALL_FILL_GAPS_NO_OVERWRITE
+            elif choice == "r":
+                if self.confirm_rerender_action("RE-RENDER ALL tasks"):
+                    return UserChoice.ALL_RERENDER_ALL
+                else:
+                    return UserChoice.ALL_FILL_GAPS
+            elif choice == "c":
+                return UserChoice.RETURN
+            else:
+                print("Invalid choice. Please try again.")
+
     def generate_task_info_dict(self, task: TaskConfig, is_latest: bool = True) -> Dict:
         """Generate task info dictionary for display purposes."""
         try:

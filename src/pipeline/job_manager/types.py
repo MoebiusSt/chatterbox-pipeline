@@ -26,6 +26,13 @@ class UserChoice(Enum):
     LATEST_FILL_GAPS = "latest-fill-gaps"  # Use latest task + fill gaps + new final audio
     LATEST_FILL_GAPS_NO_OVERWRITE = "latest-fill-gaps-no-overwrite"  # Use latest task + fill gaps, don't overwrite final audio
     LATEST_RERENDER_ALL = "latest-rerender-all"  # Use latest task + delete all candidates + rerender everything
+    
+    # New choices for enhanced menu system
+    ALL_OPTIONS = "all-options"  # Show options for all tasks
+    RETURN = "return"  # Return to previous menu
+    ALL_FILL_GAPS = "all-fill-gaps"  # Run all tasks, fill gaps, create/overwrite final audio
+    ALL_FILL_GAPS_NO_OVERWRITE = "all-fill-gaps-no-overwrite"  # Run all tasks, fill gaps, keep existing final audio
+    ALL_RERENDER_ALL = "all-rerender-all"  # Run all tasks, re-render all candidates, create new final audio
 
 
 class ExecutionStrategy(Enum):

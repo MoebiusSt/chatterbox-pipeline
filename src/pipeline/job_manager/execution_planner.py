@@ -102,186 +102,154 @@ class ExecutionPlanner:
                     task_config.add_final = True
                     task_configs = [task_config]
                 else:
-                    # No strategy specified - interactive selection
+                    # No strategy specified - interactive selection with new hierarchical menu system
                     if global_strategy is None:
                         requires_user_input = True
                     
-                    # First prompt - task selection
-                    choice = self.user_interaction.prompt_user_selection(existing_tasks)
-                    
-                    # For LATEST or SPECIFIC choices, show enhanced second prompt
-                    if choice in [UserChoice.LATEST, UserChoice.SPECIFIC]:
-                        task_config = None
-                        if choice == UserChoice.LATEST:
-                            task_config = existing_tasks[0]  # Latest task
-                        elif choice == UserChoice.SPECIFIC and hasattr(self.user_interaction, "selected_task_index"):
-                            task_config = existing_tasks[self.user_interaction.selected_task_index]
-                        elif choice == UserChoice.SPECIFIC:
-                            task_config = existing_tasks[0]  # Fallback to latest
+                    # Menu loop for hierarchical system
+                    while True:
+                        # First prompt - main task selection
+                        choice = self.user_interaction.prompt_user_selection(existing_tasks)
                         
-                        if task_config:
-                            # Load config and analyze task state
-                            try:
-                                config_data = self.config_manager.load_cascading_config(task_config.config_path)
-                                from utils.file_manager.file_manager import FileManager
-                                temp_file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
-                                task_state = temp_file_manager.analyze_task_state()
-                                
-                                # Enhanced second prompt loop that allows cycling between task options and candidate editor
-                                while True:
-                                    # Show enhanced second prompt
-                                    is_latest = (choice == UserChoice.LATEST)
-                                    enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state, is_latest)
+                        if choice == UserChoice.CANCEL:
+                            return ExecutionPlan([], "cancelled")
+                        elif choice == UserChoice.NEW:
+                            job_configs = self.job_manager.find_jobs_by_name(job_name)
+                            if job_configs:
+                                config_data = self.config_manager.load_cascading_config(job_configs[0].config_path)
+                                new_task = self.job_manager.create_new_task(config_data)
+                                new_task.preloaded_config = config_data
+                                task_configs = [new_task]
+                            break
+                        elif choice == UserChoice.ALL_OPTIONS:
+                            # Show all tasks options menu
+                            all_choice = self.user_interaction.show_all_tasks_options(existing_tasks)
+                            
+                            if all_choice == UserChoice.RETURN:
+                                continue  # Back to main menu
+                            elif all_choice == UserChoice.ALL_FILL_GAPS:
+                                task_configs = list(existing_tasks)
+                                for task in task_configs:
+                                    task.add_final = True
+                                execution_mode = "batch"
+                                break
+                            elif all_choice == UserChoice.ALL_FILL_GAPS_NO_OVERWRITE:
+                                task_configs = list(existing_tasks)
+                                for task in task_configs:
+                                    task.add_final = True
+                                    task.skip_final_overwrite = True
+                                execution_mode = "batch"
+                                break
+                            elif all_choice == UserChoice.ALL_RERENDER_ALL:
+                                task_configs = list(existing_tasks)
+                                for task in task_configs:
+                                    task.add_final = True
+                                    task.rerender_all = True
+                                execution_mode = "batch"
+                                break
+                        elif choice in [UserChoice.LATEST, UserChoice.SPECIFIC]:
+                            # Show enhanced second prompt for individual tasks
+                            task_config = None
+                            if choice == UserChoice.LATEST:
+                                task_config = existing_tasks[0]  # Latest task
+                            elif choice == UserChoice.SPECIFIC and hasattr(self.user_interaction, "selected_task_index"):
+                                task_config = existing_tasks[self.user_interaction.selected_task_index]
+                            elif choice == UserChoice.SPECIFIC:
+                                task_config = existing_tasks[0]  # Fallback to latest
+                            
+                            if task_config:
+                                # Load config and analyze task state
+                                try:
+                                    config_data = self.config_manager.load_cascading_config(task_config.config_path)
+                                    from utils.file_manager.file_manager import FileManager
+                                    temp_file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                    task_state = temp_file_manager.analyze_task_state()
                                     
-                                    if enhanced_choice == UserChoice.EDIT:
-                                        # Enter candidate editor loop
-                                        try:
-                                            from pipeline.user_candidate_manager import UserCandidateManager
-                                            file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
-                                            candidate_manager = UserCandidateManager(file_manager, task_config)
-                                            is_latest = (choice == UserChoice.LATEST)
-                                            task_info = self.user_interaction.generate_task_info_dict(task_config, is_latest)
-                                            
-                                            # Candidate editor loop
-                                            while True:
-                                                candidate_manager.show_candidate_overview(task_info)
-                                                editor_choice = input("\n> ").strip()
+                                    # Enhanced second prompt loop
+                                    while True:
+                                        is_latest = (choice == UserChoice.LATEST)
+                                        enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state, is_latest)
+                                        
+                                        if enhanced_choice == UserChoice.RETURN:
+                                            break  # Back to main menu
+                                        elif enhanced_choice == UserChoice.EDIT:
+                                            # Enter candidate editor loop
+                                            try:
+                                                from pipeline.user_candidate_manager import UserCandidateManager
+                                                file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                                candidate_manager = UserCandidateManager(file_manager, task_config)
+                                                task_info = self.user_interaction.generate_task_info_dict(task_config, is_latest)
                                                 
-                                                if editor_choice.lower() == 'c':
-                                                    # Return to task options (break candidate editor loop)
-                                                    break
-                                                elif editor_choice.lower() == 'r':
-                                                    # Re-run task - set final choice and exit both loops
-                                                    task_config.add_final = True
-                                                    choice = UserChoice.LATEST_FILL_GAPS
-                                                    break
-                                                elif editor_choice.isdigit():
-                                                    chunk_idx = int(editor_choice) - 1  # Convert to 0-based
-                                                    chunks = file_manager.get_chunks()
+                                                # Candidate editor loop
+                                                while True:
+                                                    candidate_manager.show_candidate_overview(task_info)
+                                                    editor_choice = input("\n> ").strip()
                                                     
-                                                    if 0 <= chunk_idx < len(chunks):
-                                                        # Show candidate selector for this chunk
-                                                        result = candidate_manager.show_candidate_selector(chunk_idx, task_info)
-                                                        # Continue loop to show overview again
+                                                    if editor_choice.lower() == 'c':
+                                                        break  # Back to task options
+                                                    elif editor_choice.lower() == 'r':
+                                                        # Re-run task - set final choice and exit
+                                                        task_config.add_final = True
+                                                        enhanced_choice = UserChoice.LATEST_FILL_GAPS
+                                                        break
+                                                    elif editor_choice.isdigit():
+                                                        chunk_idx = int(editor_choice) - 1
+                                                        chunks = file_manager.get_chunks()
+                                                        
+                                                        if 0 <= chunk_idx < len(chunks):
+                                                            result = candidate_manager.show_candidate_selector(chunk_idx, task_info)
+                                                        else:
+                                                            print(f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'")
                                                     else:
-                                                        print(f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'")
-                                                else:
-                                                    print("Invalid choice. Please enter a chunk number, 'r', or 'c'")
-                                            
-                                            # If user chose 'r' in candidate editor, break main loop too
-                                            if editor_choice.lower() == 'r':
-                                                break
+                                                        print("Invalid choice. Please enter a chunk number, 'r', or 'c'")
                                                 
-                                        except Exception as e:
-                                            logger.error(f"Error in candidate editor: {e}")
-                                            print(f"Error: {e}")
-                                            # Continue to task options on error
-                                            continue
-                                    else:
-                                        # User chose something other than EDIT - map enhanced choice to preserve task selection
-                                        if choice == UserChoice.SPECIFIC:
-                                            # Map enhanced choices to specific versions to preserve task selection
-                                            if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
-                                                choice = UserChoice.SPECIFIC  # Keep SPECIFIC but mark task for gap filling
-                                                if hasattr(self.user_interaction, "selected_task_index") and existing_tasks:
-                                                    existing_tasks[self.user_interaction.selected_task_index].add_final = True
-                                            elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
-                                                choice = UserChoice.SPECIFIC  # Keep SPECIFIC but mark task for gap filling without overwrite
-                                                if hasattr(self.user_interaction, "selected_task_index") and existing_tasks:
-                                                    existing_tasks[self.user_interaction.selected_task_index].add_final = True
-                                                    existing_tasks[self.user_interaction.selected_task_index].skip_final_overwrite = True
-                                            elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
-                                                choice = UserChoice.SPECIFIC  # Keep SPECIFIC but mark task for re-rendering
-                                                if hasattr(self.user_interaction, "selected_task_index") and existing_tasks:
-                                                    existing_tasks[self.user_interaction.selected_task_index].add_final = True
-                                                    existing_tasks[self.user_interaction.selected_task_index].rerender_all = True
-                                            else:
-                                                choice = enhanced_choice
+                                                # If user chose 'r' in candidate editor, exit main loop too
+                                                if editor_choice.lower() == 'r':
+                                                    break
+                                                    
+                                            except Exception as e:
+                                                logger.error(f"Error in candidate editor: {e}")
+                                                print(f"Error: {e}")
+                                                continue
                                         else:
-                                            choice = enhanced_choice
+                                            # User chose a task action - process it
+                                            if choice == UserChoice.SPECIFIC:
+                                                # Map enhanced choices to preserve task selection
+                                                if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
+                                                    task_config.add_final = True
+                                                elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                                    task_config.add_final = True
+                                                    task_config.skip_final_overwrite = True
+                                                elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
+                                                    task_config.add_final = True
+                                                    task_config.rerender_all = True
+                                            else:  # LATEST
+                                                if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
+                                                    task_config.add_final = True
+                                                elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                                    task_config.add_final = True
+                                                    task_config.skip_final_overwrite = True  
+                                                elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
+                                                    task_config.add_final = True
+                                                    task_config.rerender_all = True
+                                            
+                                            task_configs = [task_config]
+                                            break  # Exit task options loop
+                                    
+                                    # If we set task_configs, exit main menu loop
+                                    if task_configs:
                                         break
-                                
-                            except Exception as e:
-                                # Fallback to original choice if task state analysis fails
-                                logger.warning(f"Task state analysis failed, using original choice: {e}")
-                                pass
-
-                    if choice == UserChoice.CANCEL:
-                        return ExecutionPlan([], "cancelled")
-                    elif choice == UserChoice.LATEST:
-                        if existing_tasks:
-                            task_configs = [
-                                existing_tasks[0]
-                            ]  # First in sorted list (newest)
-                    elif choice == UserChoice.SPECIFIC:
-                        if existing_tasks and hasattr(
-                            self.user_interaction, "selected_task_index"
-                        ):
-                            task_configs = [
-                                existing_tasks[
-                                    self.user_interaction.selected_task_index
-                                ]
-                            ]
-                        elif existing_tasks:
-                            task_configs = [existing_tasks[0]]  # Fallback to latest
-                    elif choice == UserChoice.LATEST_NEW:
-                        if existing_tasks:
-                            task_config = existing_tasks[
-                                0
-                            ]  # First in sorted list (newest)
-                            task_config.add_final = True
-                            task_configs = [task_config]
-                    elif choice == UserChoice.SPECIFIC_NEW:
-                        if existing_tasks and hasattr(
-                            self.user_interaction, "selected_task_index"
-                        ):
-                            task_config = existing_tasks[
-                                self.user_interaction.selected_task_index
-                            ]
-                            task_config.add_final = True
-                            task_configs = [task_config]
-                        elif existing_tasks:
-                            task_config = existing_tasks[0]  # Fallback to latest
-                            task_config.add_final = True
-                            task_configs = [task_config]
-                    elif choice == UserChoice.ALL_NEW:
-                        if existing_tasks:
-                            for task in existing_tasks:
-                                task.add_final = True
-                            task_configs = list(existing_tasks)
-                            execution_mode = "batch"
-                    elif choice == UserChoice.NEW:
-                        job_configs = self.job_manager.find_jobs_by_name(job_name)
-                        if job_configs:
-                            config_data = self.config_manager.load_cascading_config(
-                                job_configs[0].config_path
-                            )
-                            new_task = self.job_manager.create_new_task(config_data)
-                            new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
-                            task_configs = [new_task]
-                    elif choice == UserChoice.ALL:
-                        task_configs = list(existing_tasks)
-                        execution_mode = "batch"
-                    elif choice == UserChoice.LATEST_FILL_GAPS:
-                        # Gap-filling with new final audio
-                        if existing_tasks:
-                            task_config = existing_tasks[0]  # Latest task
-                            task_config.add_final = True
-                            task_configs = [task_config]
-                    elif choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
-                        # Gap-filling without overwriting final audio
-                        if existing_tasks:
-                            task_config = existing_tasks[0]  # Latest task
-                            task_config.add_final = True  # Enable gap-filling
-                            task_config.skip_final_overwrite = True  # Don't overwrite existing final audio
-                            task_configs = [task_config]
-                    elif choice == UserChoice.LATEST_RERENDER_ALL:
-                        # Re-render all candidates from scratch
-                        if existing_tasks:
-                            task_config = existing_tasks[0]  # Latest task
-                            task_config.add_final = True
-                            task_config.rerender_all = True  # New flag to indicate full re-rendering
-                            task_configs = [task_config]
+                                        
+                                except Exception as e:
+                                    # Fallback to original choice if task state analysis fails
+                                    logger.warning(f"Task state analysis failed, using fallback: {e}")
+                                    task_configs = [task_config]
+                                    break
+                        else:
+                            # Handle any remaining old choices that might still exist
+                            logger.warning(f"Unexpected choice: {choice}, using latest task as fallback")
+                            task_configs = [existing_tasks[0]] if existing_tasks else []
+                            break
             else:
                 # No existing tasks, create new one
                 job_configs = self.job_manager.find_jobs_by_name(job_name)
@@ -365,7 +333,7 @@ class ExecutionPlanner:
                             task_config.add_final = True
                             task_configs.append(task_config)
                         else:
-                            # No strategy specified - interactive selection
+                            # No strategy specified - interactive selection with new hierarchical menu system
                             if global_strategy is None:
                                 requires_user_input = True
                             choice = self.user_interaction.prompt_user_selection(
@@ -373,78 +341,140 @@ class ExecutionPlanner:
                             )
 
                             if choice == UserChoice.CANCEL:
+                                task_configs.append(None)  # Skip this config file
                                 continue
-                            elif choice == UserChoice.LATEST:
-                                if existing_tasks:
-                                    task_configs.append(
-                                        existing_tasks[0]
-                                    )  # First in sorted list (newest)
-                            elif choice == UserChoice.SPECIFIC:
-                                if existing_tasks and hasattr(
-                                    self.user_interaction, "selected_task_index"
-                                ):
-                                    task_configs.append(
-                                        existing_tasks[
-                                            self.user_interaction.selected_task_index
-                                        ]
-                                    )
-                                elif existing_tasks:
-                                    task_configs.append(
-                                        existing_tasks[0]
-                                    )  # Fallback to latest
-                            elif choice == UserChoice.LATEST_NEW:
-                                if existing_tasks:
-                                    task_config = existing_tasks[
-                                        0
-                                    ]  # First in sorted list (newest)
-                                    task_config.add_final = True
-                                    task_configs.append(task_config)
-                            elif choice == UserChoice.SPECIFIC_NEW:
-                                if existing_tasks and hasattr(
-                                    self.user_interaction, "selected_task_index"
-                                ):
-                                    task_config = existing_tasks[
-                                        self.user_interaction.selected_task_index
-                                    ]
-                                    task_config.add_final = True
-                                    task_configs.append(task_config)
-                                elif existing_tasks:
-                                    task_config = existing_tasks[
-                                        0
-                                    ]  # Fallback to latest
-                                    task_config.add_final = True
-                                    task_configs.append(task_config)
-                            elif choice == UserChoice.ALL_NEW:
-                                if existing_tasks:
-                                    for task in existing_tasks:
-                                        task.add_final = True
-                                    task_configs.extend(existing_tasks)
                             elif choice == UserChoice.NEW:
                                 new_task = self.job_manager.create_new_task(config_data)
                                 new_task.preloaded_config = config_data  # Embed config to avoid redundant loading
                                 task_configs.append(new_task)
-                            elif choice == UserChoice.ALL:
-                                task_configs.extend(existing_tasks)
-                            elif choice == UserChoice.LATEST_FILL_GAPS:
-                                # Gap-filling with new final audio
-                                if existing_tasks:
+                            elif choice == UserChoice.ALL_OPTIONS:
+                                # Show all tasks options menu
+                                all_choice = self.user_interaction.show_all_tasks_options(existing_tasks)
+                                
+                                if all_choice == UserChoice.RETURN:
+                                    # No hierarchical menu in this execution path - fallback to first task
+                                    task_configs.append(existing_tasks[0] if existing_tasks else None)
+                                elif all_choice == UserChoice.ALL_FILL_GAPS:
+                                    all_tasks = list(existing_tasks)
+                                    for task in all_tasks:
+                                        task.add_final = True
+                                    task_configs.extend(all_tasks)
+                                    execution_mode = "batch"
+                                elif all_choice == UserChoice.ALL_FILL_GAPS_NO_OVERWRITE:
+                                    all_tasks = list(existing_tasks)
+                                    for task in all_tasks:
+                                        task.add_final = True
+                                        task.skip_final_overwrite = True
+                                    task_configs.extend(all_tasks)
+                                    execution_mode = "batch"
+                                elif all_choice == UserChoice.ALL_RERENDER_ALL:
+                                    all_tasks = list(existing_tasks)
+                                    for task in all_tasks:
+                                        task.add_final = True
+                                        task.rerender_all = True
+                                    task_configs.extend(all_tasks)
+                                    execution_mode = "batch"
+                            elif choice in [UserChoice.LATEST, UserChoice.SPECIFIC]:
+                                # Show enhanced second prompt for individual tasks
+                                task_config = None
+                                if choice == UserChoice.LATEST:
                                     task_config = existing_tasks[0]  # Latest task
-                                    task_config.add_final = True
-                                    task_configs.append(task_config)
-                            elif choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
-                                # Gap-filling without overwriting final audio
-                                if existing_tasks:
-                                    task_config = existing_tasks[0]  # Latest task
-                                    task_config.add_final = True  # Enable gap-filling
-                                    task_config.skip_final_overwrite = True  # Don't overwrite existing final audio
-                                    task_configs = [task_config]
-                            elif choice == UserChoice.LATEST_RERENDER_ALL:
-                                # Re-render all candidates from scratch
-                                if existing_tasks:
-                                    task_config = existing_tasks[0]  # Latest task
-                                    task_config.add_final = True
-                                    task_config.rerender_all = True  # New flag to indicate full re-rendering
-                                    task_configs.append(task_config)
+                                elif choice == UserChoice.SPECIFIC and hasattr(self.user_interaction, "selected_task_index"):
+                                    task_config = existing_tasks[self.user_interaction.selected_task_index]
+                                elif choice == UserChoice.SPECIFIC:
+                                    task_config = existing_tasks[0]  # Fallback to latest
+                                
+                                if task_config:
+                                    # Load config and analyze task state
+                                    try:
+                                        config_data = self.config_manager.load_cascading_config(task_config.config_path)
+                                        from utils.file_manager.file_manager import FileManager
+                                        temp_file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                        task_state = temp_file_manager.analyze_task_state()
+                                        
+                                        # Enhanced second prompt loop
+                                        while True:
+                                            is_latest = (choice == UserChoice.LATEST)
+                                            enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state, is_latest)
+                                            
+                                            if enhanced_choice == UserChoice.RETURN:
+                                                break  # Back to main menu
+                                            elif enhanced_choice == UserChoice.EDIT:
+                                                # Enter candidate editor loop
+                                                try:
+                                                    from pipeline.user_candidate_manager import UserCandidateManager
+                                                    file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                                    candidate_manager = UserCandidateManager(file_manager, task_config)
+                                                    task_info = self.user_interaction.generate_task_info_dict(task_config, is_latest)
+                                                    
+                                                    # Candidate editor loop
+                                                    while True:
+                                                        candidate_manager.show_candidate_overview(task_info)
+                                                        editor_choice = input("\n> ").strip()
+                                                        
+                                                        if editor_choice.lower() == 'c':
+                                                            break  # Back to task options
+                                                        elif editor_choice.lower() == 'r':
+                                                            # Re-run task - set final choice and exit
+                                                            task_config.add_final = True
+                                                            enhanced_choice = UserChoice.LATEST_FILL_GAPS
+                                                            break
+                                                        elif editor_choice.isdigit():
+                                                            chunk_idx = int(editor_choice) - 1
+                                                            chunks = file_manager.get_chunks()
+                                                            
+                                                            if 0 <= chunk_idx < len(chunks):
+                                                                result = candidate_manager.show_candidate_selector(chunk_idx, task_info)
+                                                            else:
+                                                                print(f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'")
+                                                        else:
+                                                            print("Invalid choice. Please enter a chunk number, 'r', or 'c'")
+                                                    
+                                                    # If user chose 'r' in candidate editor, exit main loop too
+                                                    if editor_choice.lower() == 'r':
+                                                        break
+                                                    
+                                                except Exception as e:
+                                                    logger.error(f"Error in candidate editor: {e}")
+                                                    print(f"Error: {e}")
+                                                    continue
+                                            else:
+                                                # User chose a task action - process it
+                                                if choice == UserChoice.SPECIFIC:
+                                                    # Map enhanced choices to preserve task selection
+                                                    if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
+                                                        task_config.add_final = True
+                                                    elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                                        task_config.add_final = True
+                                                        task_config.skip_final_overwrite = True
+                                                    elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
+                                                        task_config.add_final = True
+                                                        task_config.rerender_all = True
+                                                else:  # LATEST
+                                                    if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
+                                                        task_config.add_final = True
+                                                    elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                                        task_config.add_final = True
+                                                        task_config.skip_final_overwrite = True  
+                                                    elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
+                                                        task_config.add_final = True
+                                                        task_config.rerender_all = True
+                                                
+                                                task_configs.append(task_config)
+                                                break  # Exit task options loop (this is in while True loop, so OK)
+                                        
+                                        # Task configured, continue to next config file
+                                        if task_configs:
+                                            break
+                                        
+                                    except Exception as e:
+                                        # Fallback to original choice if task state analysis fails
+                                        logger.warning(f"Task state analysis failed, using fallback: {e}")
+                                        task_configs.append(task_config)
+                            else:
+                                # Handle any remaining old choices that might still exist
+                                logger.warning(f"Unexpected choice: {choice}, using latest task as fallback")
+                                task_configs.append(existing_tasks[0] if existing_tasks else None)
                     else:
                         # No existing tasks, create new one
                         new_task = self.job_manager.create_new_task(config_data)
@@ -491,62 +521,142 @@ class ExecutionPlanner:
                     task_config.add_final = True
                     task_configs = [task_config]
                 else:
-                    # No strategy specified - interactive selection
+                    # No strategy specified - interactive selection with new hierarchical menu system
                     if global_strategy is None:
                         requires_user_input = True
                     choice = self.user_interaction.prompt_user_selection(existing_tasks)
 
                     if choice == UserChoice.CANCEL:
                         return ExecutionPlan([], "cancelled")
-                    elif choice == UserChoice.LATEST:
-                        if existing_tasks:
-                            task_configs = [
-                                existing_tasks[0]
-                            ]  # First in sorted list (newest)
-                    elif choice == UserChoice.SPECIFIC:
-                        if existing_tasks and hasattr(
-                            self.user_interaction, "selected_task_index"
-                        ):
-                            task_configs = [
-                                existing_tasks[
-                                    self.user_interaction.selected_task_index
-                                ]
-                            ]
-                        elif existing_tasks:
-                            task_configs = [existing_tasks[0]]  # Fallback to latest
-                    elif choice == UserChoice.LATEST_NEW:
-                        if existing_tasks:
-                            task_config = existing_tasks[
-                                0
-                            ]  # First in sorted list (newest)
-                            task_config.add_final = True
-                            task_configs = [task_config]
-                    elif choice == UserChoice.SPECIFIC_NEW:
-                        if existing_tasks and hasattr(
-                            self.user_interaction, "selected_task_index"
-                        ):
-                            task_config = existing_tasks[
-                                self.user_interaction.selected_task_index
-                            ]
-                            task_config.add_final = True
-                            task_configs = [task_config]
-                        elif existing_tasks:
-                            task_config = existing_tasks[0]  # Fallback to latest
-                            task_config.add_final = True
-                            task_configs = [task_config]
-                    elif choice == UserChoice.ALL_NEW:
-                        if existing_tasks:
-                            for task in existing_tasks:
-                                task.add_final = True
-                            task_configs = list(existing_tasks)
-                            execution_mode = "batch"
                     elif choice == UserChoice.NEW:
                         new_task = self.job_manager.create_new_task(default_config)
                         new_task.preloaded_config = default_config  # Embed config to avoid redundant loading
                         task_configs = [new_task]
-                    elif choice == UserChoice.ALL:
-                        task_configs = list(existing_tasks)
-                        execution_mode = "batch"
+                    elif choice == UserChoice.ALL_OPTIONS:
+                        # Show all tasks options menu
+                        all_choice = self.user_interaction.show_all_tasks_options(existing_tasks)
+                        
+                        if all_choice == UserChoice.RETURN:
+                            # No hierarchical menu in this execution path - fallback to first task  
+                            task_configs = [existing_tasks[0]] if existing_tasks else []
+                        elif all_choice == UserChoice.ALL_FILL_GAPS:
+                            task_configs = list(existing_tasks)
+                            for task in task_configs:
+                                task.add_final = True
+                            execution_mode = "batch"
+                        elif all_choice == UserChoice.ALL_FILL_GAPS_NO_OVERWRITE:
+                            task_configs = list(existing_tasks)
+                            for task in task_configs:
+                                task.add_final = True
+                                task.skip_final_overwrite = True
+                            execution_mode = "batch"
+                        elif all_choice == UserChoice.ALL_RERENDER_ALL:
+                            task_configs = list(existing_tasks)
+                            for task in task_configs:
+                                task.add_final = True
+                                task.rerender_all = True
+                            execution_mode = "batch"
+                    elif choice in [UserChoice.LATEST, UserChoice.SPECIFIC]:
+                        # Show enhanced second prompt for individual tasks
+                        task_config = None
+                        if choice == UserChoice.LATEST:
+                            task_config = existing_tasks[0]  # Latest task
+                        elif choice == UserChoice.SPECIFIC and hasattr(self.user_interaction, "selected_task_index"):
+                            task_config = existing_tasks[self.user_interaction.selected_task_index]
+                        elif choice == UserChoice.SPECIFIC:
+                            task_config = existing_tasks[0]  # Fallback to latest
+                        
+                        if task_config:
+                            # Load config and analyze task state
+                            try:
+                                config_data = self.config_manager.load_cascading_config(task_config.config_path)
+                                from utils.file_manager.file_manager import FileManager
+                                temp_file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                task_state = temp_file_manager.analyze_task_state()
+                                
+                                # Enhanced second prompt loop
+                                while True:
+                                    is_latest = (choice == UserChoice.LATEST)
+                                    enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state, is_latest)
+                                    
+                                    if enhanced_choice == UserChoice.RETURN:
+                                        break  # Back to main menu
+                                    elif enhanced_choice == UserChoice.EDIT:
+                                        # Enter candidate editor loop
+                                        try:
+                                            from pipeline.user_candidate_manager import UserCandidateManager
+                                            file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
+                                            candidate_manager = UserCandidateManager(file_manager, task_config)
+                                            task_info = self.user_interaction.generate_task_info_dict(task_config, is_latest)
+                                            
+                                            # Candidate editor loop
+                                            while True:
+                                                candidate_manager.show_candidate_overview(task_info)
+                                                editor_choice = input("\n> ").strip()
+                                                
+                                                if editor_choice.lower() == 'c':
+                                                    break  # Back to task options
+                                                elif editor_choice.lower() == 'r':
+                                                    # Re-run task - set final choice and exit
+                                                    task_config.add_final = True
+                                                    enhanced_choice = UserChoice.LATEST_FILL_GAPS
+                                                    break
+                                                elif editor_choice.isdigit():
+                                                    chunk_idx = int(editor_choice) - 1
+                                                    chunks = file_manager.get_chunks()
+                                                    
+                                                    if 0 <= chunk_idx < len(chunks):
+                                                        result = candidate_manager.show_candidate_selector(chunk_idx, task_info)
+                                                    else:
+                                                        print(f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'")
+                                                else:
+                                                    print("Invalid choice. Please enter a chunk number, 'r', or 'c'")
+                                            
+                                            # If user chose 'r' in candidate editor, exit main loop too
+                                            if editor_choice.lower() == 'r':
+                                                break
+                                            
+                                        except Exception as e:
+                                            logger.error(f"Error in candidate editor: {e}")
+                                            print(f"Error: {e}")
+                                            continue
+                                    else:
+                                        # User chose a task action - process it
+                                        if choice == UserChoice.SPECIFIC:
+                                            # Map enhanced choices to preserve task selection
+                                            if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
+                                                task_config.add_final = True
+                                            elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                                task_config.add_final = True
+                                                task_config.skip_final_overwrite = True
+                                            elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
+                                                task_config.add_final = True
+                                                task_config.rerender_all = True
+                                        else:  # LATEST
+                                            if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
+                                                task_config.add_final = True
+                                            elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                                task_config.add_final = True
+                                                task_config.skip_final_overwrite = True  
+                                            elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
+                                                task_config.add_final = True
+                                                task_config.rerender_all = True
+                                        
+                                        task_configs = [task_config]
+                                        break  # Exit task options loop (in while True, so OK)
+                                
+                                # Task configured, continue with execution
+                                if task_configs:
+                                    pass  # Task is configured, will proceed
+                                
+                            except Exception as e:
+                                # Fallback to original choice if task state analysis fails
+                                logger.warning(f"Task state analysis failed, using fallback: {e}")
+                                task_configs = [task_config]
+                    else:
+                        # Handle any remaining old choices that might still exist
+                        logger.warning(f"Unexpected choice: {choice}, using latest task as fallback")
+                        task_configs = [existing_tasks[0]] if existing_tasks else []
             else:
                 # No existing tasks, create new one
                 new_task = self.job_manager.create_new_task(default_config)
