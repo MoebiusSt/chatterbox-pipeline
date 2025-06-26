@@ -15,8 +15,10 @@ from utils.config_manager import ConfigManager, TaskConfig
 
 from .job_manager.config_validator import ConfigValidator
 from .job_manager.execution_planner import (
-    ExecutionPlan,
     ExecutionPlanner,
+)
+from .job_manager.types import (
+    ExecutionPlan,
     ExecutionStrategy,
 )
 from .job_manager.job_manager import JobManager as CoreJobManager
