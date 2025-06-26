@@ -130,7 +130,8 @@ class ExecutionPlanner:
                                 # Enhanced second prompt loop that allows cycling between task options and candidate editor
                                 while True:
                                     # Show enhanced second prompt
-                                    enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state)
+                                    is_latest = (choice == UserChoice.LATEST)
+                                    enhanced_choice = self.user_interaction.show_task_options_with_state(task_config, task_state, is_latest)
                                     
                                     if enhanced_choice == UserChoice.EDIT:
                                         # Enter candidate editor loop
@@ -138,7 +139,8 @@ class ExecutionPlanner:
                                             from pipeline.user_candidate_manager import UserCandidateManager
                                             file_manager = FileManager(task_config, preloaded_config=config_data, config_manager=self.config_manager)
                                             candidate_manager = UserCandidateManager(file_manager, task_config)
-                                            task_info = self.user_interaction.generate_task_info_dict(task_config)
+                                            is_latest = (choice == UserChoice.LATEST)
+                                            task_info = self.user_interaction.generate_task_info_dict(task_config, is_latest)
                                             
                                             # Candidate editor loop
                                             while True:
@@ -176,8 +178,27 @@ class ExecutionPlanner:
                                             # Continue to task options on error
                                             continue
                                     else:
-                                        # User chose something other than EDIT - set choice and break main loop
-                                        choice = enhanced_choice
+                                        # User chose something other than EDIT - map enhanced choice to preserve task selection
+                                        if choice == UserChoice.SPECIFIC:
+                                            # Map enhanced choices to specific versions to preserve task selection
+                                            if enhanced_choice == UserChoice.LATEST_FILL_GAPS:
+                                                choice = UserChoice.SPECIFIC  # Keep SPECIFIC but mark task for gap filling
+                                                if hasattr(self.user_interaction, "selected_task_index") and existing_tasks:
+                                                    existing_tasks[self.user_interaction.selected_task_index].add_final = True
+                                            elif enhanced_choice == UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE:
+                                                choice = UserChoice.SPECIFIC  # Keep SPECIFIC but mark task for gap filling without overwrite
+                                                if hasattr(self.user_interaction, "selected_task_index") and existing_tasks:
+                                                    existing_tasks[self.user_interaction.selected_task_index].add_final = True
+                                                    existing_tasks[self.user_interaction.selected_task_index].skip_final_overwrite = True
+                                            elif enhanced_choice == UserChoice.LATEST_RERENDER_ALL:
+                                                choice = UserChoice.SPECIFIC  # Keep SPECIFIC but mark task for re-rendering
+                                                if hasattr(self.user_interaction, "selected_task_index") and existing_tasks:
+                                                    existing_tasks[self.user_interaction.selected_task_index].add_final = True
+                                                    existing_tasks[self.user_interaction.selected_task_index].rerender_all = True
+                                            else:
+                                                choice = enhanced_choice
+                                        else:
+                                            choice = enhanced_choice
                                         break
                                 
                             except Exception as e:

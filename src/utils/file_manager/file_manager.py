@@ -155,7 +155,21 @@ class FileManager:
         text_path = self.input_texts_dir / text_file
 
         if not text_path.exists():
-            raise FileNotFoundError(f"Input text file not found: {text_path}")
+            # Try to provide helpful information about available files
+            available_files = []
+            if self.input_texts_dir.exists():
+                available_files = [f.name for f in self.input_texts_dir.glob("*.txt")]
+                # Also include other common text file extensions
+                for ext in ["*.md", "*.rtf"]:
+                    available_files.extend([f.name for f in self.input_texts_dir.glob(ext)])
+            
+            error_msg = f"Input text file not found: {text_path}"
+            if available_files:
+                error_msg += f"\n📂 Available text files: {', '.join(available_files)}"
+            else:
+                error_msg += f"\n📂 Input texts dir: {self.input_texts_dir} (empty or doesn't exist)"
+            
+            raise FileNotFoundError(error_msg)
 
         with open(text_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -163,15 +177,44 @@ class FileManager:
         logger.debug(f"Loaded input text: {text_path} ({len(content)} characters)")
         return content
 
+    def check_input_text_exists(self) -> bool:
+        """Check if input text file exists without raising an exception."""
+        try:
+            text_file = self.config["input"]["text_file"]
+            text_path = self.input_texts_dir / text_file
+            return text_path.exists()
+        except Exception:
+            return False
+
     def get_reference_audio(self) -> Path:
         """Get reference audio file path."""
         reference_audio = self.config["input"]["reference_audio"]
         audio_path = self.reference_audio_dir / reference_audio
 
         if not audio_path.exists():
-            raise FileNotFoundError(f"Reference audio file not found: {audio_path}")
+            # Try to provide helpful information about available files
+            available_files = []
+            if self.reference_audio_dir.exists():
+                available_files = [f.name for f in self.reference_audio_dir.glob("*.wav")]
+            
+            error_msg = f"Reference audio file not found: {audio_path}"
+            if available_files:
+                error_msg += f"\n📂 Available reference audio files: {', '.join(available_files)}"
+            else:
+                error_msg += f"\n📂 Reference audio dir: {self.reference_audio_dir} (empty or doesn't exist)"
+            
+            raise FileNotFoundError(error_msg)
 
         return audio_path
+
+    def check_reference_audio_exists(self) -> bool:
+        """Check if reference audio file exists without raising an exception."""
+        try:
+            reference_audio = self.config["input"]["reference_audio"]
+            audio_path = self.reference_audio_dir / reference_audio
+            return audio_path.exists()
+        except Exception:
+            return False
 
     # Delegated Operations - Chunk Handler
     def save_chunks(self, chunks: List) -> bool:

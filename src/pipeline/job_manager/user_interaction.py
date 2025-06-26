@@ -100,13 +100,14 @@ class UserInteraction:
         print("Invalid choice, defaulting to latest task")
         return UserChoice.LATEST
     
-    def show_task_options_with_state(self, task: TaskConfig, task_state: TaskState) -> UserChoice:
+    def show_task_options_with_state(self, task: TaskConfig, task_state: TaskState, is_latest: bool = True) -> UserChoice:
         """
         Show task options with state information - the enhanced second prompt.
         
         Args:
             task: Selected TaskConfig
             task_state: TaskState analysis
+            is_latest: Whether this is the latest task or a specifically selected one
             
         Returns:
             UserChoice for the action to take
@@ -118,7 +119,8 @@ class UserInteraction:
         except ValueError:
             display_time = task.timestamp
             
-        print(f"\nSelected latest task: {task.job_name} - {display_time}")
+        task_type = "latest task" if is_latest else "task"
+        print(f"\nSelected {task_type}: {task.job_name} - {display_time}")
         print(f"\nTask state: {task_state.task_status_message}")
         print()
         
@@ -153,7 +155,7 @@ class UserInteraction:
             else:
                 print("Invalid choice. Please try again.")
                 
-    def generate_task_info_dict(self, task: TaskConfig) -> Dict:
+    def generate_task_info_dict(self, task: TaskConfig, is_latest: bool = True) -> Dict:
         """Generate task info dictionary for display purposes."""
         try:
             dt = datetime.strptime(task.timestamp, "%Y%m%d_%H%M%S")
@@ -161,9 +163,12 @@ class UserInteraction:
         except ValueError:
             display_time = task.timestamp
             
+        task_type = "latest task" if is_latest else "task"
+        
         return {
             "job_name": task.job_name,
             "run_label": task.run_label,
             "display_time": display_time,
-            "timestamp": task.timestamp
+            "timestamp": task.timestamp,
+            "task_type": task_type
         }

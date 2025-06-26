@@ -26,9 +26,30 @@ class PreprocessingHandler:
         try:
             logger.info("Starting preprocessing stage")
 
-            # Load input text
-            input_text = self.file_manager.get_input_text()
-            logger.debug(f"Loaded input text: {len(input_text)} characters")
+            # Early validation of input text existence
+            if not self.file_manager.check_input_text_exists():
+                logger.error("❌ Input text validation failed")
+                try:
+                    # Try to get detailed error information
+                    self.file_manager.get_input_text()
+                except FileNotFoundError as e:
+                    logger.error(str(e))
+                logger.error("⚠️  The preprocessing stage cannot proceed without input text.")
+                return False
+
+            # Load input text with graceful error handling
+            try:
+                input_text = self.file_manager.get_input_text()
+                logger.debug(f"Loaded input text: {len(input_text)} characters")
+            except FileNotFoundError as e:
+                logger.error(f"❌ Input text file not found: {e}")
+                logger.error("⚠️  The preprocessing stage cannot proceed without input text.")
+                logger.error("📂 Please ensure the input text file exists in the correct location.")
+                return False
+            except Exception as e:
+                logger.error(f"❌ Failed to load input text: {e}")
+                logger.error("⚠️  The preprocessing stage cannot proceed without valid input text.")
+                return False
 
             # Chunk text
             text_chunks = self.chunker.chunk_text(input_text)

@@ -42,8 +42,31 @@ class GenerationHandler:
                 logger.error("No chunks found for generation")
                 return False
 
-            reference_audio_path = self.file_manager.get_reference_audio()
-            self.tts_generator.load_reference_audio(str(reference_audio_path))
+            # Early validation of reference audio existence
+            if not self.file_manager.check_reference_audio_exists():
+                logger.error("❌ Reference audio validation failed")
+                try:
+                    # Try to get detailed error information
+                    self.file_manager.get_reference_audio()
+                except FileNotFoundError as e:
+                    logger.error(str(e))
+                logger.error("⚠️  The generation stage cannot proceed without reference audio.")
+                return False
+
+            # Handle reference audio gracefully
+            try:
+                reference_audio_path = self.file_manager.get_reference_audio()
+                self.tts_generator.load_reference_audio(str(reference_audio_path))
+                logger.info(f"✅ Reference audio loaded: {reference_audio_path.name}")
+            except FileNotFoundError as e:
+                logger.error(f"❌ Reference audio file not found: {e}")
+                logger.error("⚠️  The generation stage cannot proceed without reference audio.")
+                logger.error("📂 Please ensure the reference audio file exists in the correct location.")
+                return False
+            except Exception as e:
+                logger.error(f"❌ Failed to load reference audio: {e}")
+                logger.error("⚠️  The generation stage cannot proceed without valid reference audio.")
+                return False
 
             total_chunks = len(chunks)
             generation_config = self.config["generation"]
@@ -199,7 +222,7 @@ class GenerationHandler:
     ) -> List[AudioCandidate]:
         """Generate specific missing candidates for a chunk."""
         logger.info(
-            f"Generating missing candidates {missing_indices} for chunk {chunk.idx+1}"
+            f"Generating candidates for chunk {chunk.idx+1}"
         )
         try:
             logger.debug(

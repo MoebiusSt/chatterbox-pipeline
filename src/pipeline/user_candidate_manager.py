@@ -100,7 +100,8 @@ class UserCandidateManager:
     
     def show_candidate_overview(self, task_info: Dict) -> None:
         """Display candidate overview prompt."""
-        print(f"\nSelected latest task: {task_info['job_name']} - {task_info['display_time']}")
+        task_type = task_info.get('task_type', 'task')
+        print(f"\nSelected {task_type}: {task_info['job_name']} - {task_info['display_time']}")
         print("\nCandidates selected as best matching for the final audio assembly:")
         print()
         print("Chunk:  Cand.:  Text:")
@@ -154,7 +155,8 @@ class UserCandidateManager:
                 print(f"No candidates found for chunk {chunk_idx + 1}")
                 return -1
             
-            print(f"\nSelected latest task: {task_info['job_name']} - {task_info['display_time']}")
+            task_type = task_info.get('task_type', 'task')
+            print(f"\nSelected {task_type}: {task_info['job_name']} - {task_info['display_time']}")
             print(f"\nSelect audio candidate for chunk: {chunk_idx+1:03d}/{len(chunks):03d}")
             print()
             # Clean text for display - remove line breaks and normalize whitespace
@@ -206,7 +208,8 @@ class UserCandidateManager:
                             print(f"Selected candidate {candidate_num} for chunk {chunk_idx + 1}")
                             # Continue the loop to show updated display instead of recursion
                             candidate_infos = self.get_candidate_info(chunk_idx)  # Refresh data
-                            print(f"\nSelected latest task: {task_info['job_name']} - {task_info['display_time']}")
+                            task_type = task_info.get('task_type', 'task')
+                            print(f"\nSelected {task_type}: {task_info['job_name']} - {task_info['display_time']}")
                             print(f"\nSelect audio candidate for chunk: {chunk_idx+1:03d}/{len(chunks):03d}")
                             print()
                             # Clean text for display - remove line breaks and normalize whitespace

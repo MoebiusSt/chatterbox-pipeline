@@ -6,6 +6,7 @@ Supports default-yaml + job-yaml merging and task-yaml creation.
 
 import copy
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -59,56 +60,136 @@ class ConfigManager:
         # Cache for loaded configs
         self._config_cache: Dict[str, Dict[str, Any]] = {}
         
-        # Cache for default config key order
-        self._default_key_order: Optional[List[str]] = None
+        # Cache for default config key order (hierarchical)
+        self._default_key_order: Optional[Dict[str, Any]] = None
 
-    def _get_default_key_order(self) -> List[str]:
-        """Get the key order from default_config.yaml to maintain consistent ordering."""
+    def _parse_yaml_key_order(self, file_path: Path) -> Dict[str, Any]:
+        """
+        Parse YAML file to extract hierarchical key order structure.
+        
+        Returns:
+            Nested dictionary containing the key order for each level
+        """
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        
+        key_order: Dict[str, Any] = {}
+        current_path: List[str] = []
+        
+        for line in lines:
+            # Skip comments and empty lines
+            stripped = line.strip()
+            if not stripped or stripped.startswith('#'):
+                continue
+            
+            # Calculate indentation level
+            indent_level = (len(line) - len(line.lstrip())) // 2
+            
+            # Check if this line contains a key
+            if ':' in stripped:
+                key = stripped.split(':')[0].strip()
+                
+                # Adjust current_path based on indentation
+                current_path = current_path[:indent_level]
+                
+                # Navigate to current position in key_order structure
+                current_dict = key_order
+                for path_key in current_path:
+                    if path_key not in current_dict:
+                        current_dict[path_key] = {}
+                    current_dict = current_dict[path_key]
+                
+                # Add this key to current level if not exists
+                if '_order' not in current_dict:
+                    current_dict['_order'] = []
+                if key not in current_dict['_order']:
+                    current_dict['_order'].append(key)
+                
+                # Prepare for nested keys
+                if key not in current_dict:
+                    current_dict[key] = {}
+                
+                # Update current path for potential nested keys
+                current_path.append(key)
+        
+        return key_order
+
+    def _get_default_key_order(self) -> Dict[str, Any]:
+        """Get the hierarchical key order from default_config.yaml to maintain consistent ordering."""
         if self._default_key_order is None:
-            # Parse the default config file to extract key order
-            with open(self.default_config_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-            
-            # Extract top-level keys in their order of appearance
-            self._default_key_order = []
-            for line in lines:
-                stripped = line.strip()
-                if stripped and not stripped.startswith('#') and ':' in stripped:
-                    key = stripped.split(':')[0].strip()
-                    if key and key not in self._default_key_order:
-                        self._default_key_order.append(key)
-            
-            logger.debug(f"Extracted default key order: {self._default_key_order}")
+            self._default_key_order = self._parse_yaml_key_order(self.default_config_path)
+            logger.debug(f"Extracted hierarchical default key order")
         
         return self._default_key_order
 
+    def _sort_dict_hierarchically(self, data: Dict[str, Any], key_order_structure: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Recursively sort dictionary according to hierarchical key order structure.
+        
+        Args:
+            data: The data dictionary to sort
+            key_order_structure: The hierarchical key order structure from default config
+            
+        Returns:
+            Sorted OrderedDict
+        """
+        if not isinstance(data, dict):
+            return data
+        
+        sorted_dict = OrderedDict()
+        
+        # Get the key order for this level
+        level_order = key_order_structure.get('_order', [])
+        
+        # First, add keys in the specified order
+        for key in level_order:
+            if key in data:
+                value = data[key]
+                if isinstance(value, dict) and key in key_order_structure:
+                    # Recursively sort nested dictionaries
+                    sorted_dict[key] = self._sort_dict_hierarchically(value, key_order_structure[key])
+                else:
+                    sorted_dict[key] = value
+        
+        # Then add any remaining keys that weren't in the default order (edge case)
+        remaining_keys = set(data.keys()) - set(level_order)
+        for key in sorted(remaining_keys):
+            value = data[key]
+            if isinstance(value, dict):
+                # Try to find nested structure or use empty structure for unknown keys
+                nested_structure = key_order_structure.get(key, {})
+                sorted_dict[key] = self._sort_dict_hierarchically(value, nested_structure)
+            else:
+                sorted_dict[key] = value
+        
+        return sorted_dict
+
+    def _convert_ordered_dict_to_dict(self, data: Any) -> Any:
+        """
+        Recursively convert OrderedDict to regular dict for proper YAML serialization.
+        """
+        if isinstance(data, OrderedDict):
+            return {key: self._convert_ordered_dict_to_dict(value) for key, value in data.items()}
+        elif isinstance(data, dict):
+            return {key: self._convert_ordered_dict_to_dict(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [self._convert_ordered_dict_to_dict(item) for item in data]
+        else:
+            return data
+
     def _dump_yaml_with_order(self, config_data: Dict[str, Any], file_handle: TextIO) -> None:
-        """Dump YAML with preserved key order from default_config.yaml."""
-        key_order = self._get_default_key_order()
+        """Dump YAML with hierarchically preserved key order from default_config.yaml."""
+        key_order_structure = self._get_default_key_order()
         
-        # Create ordered output by processing keys in default order first
-        ordered_lines = []
-        processed_keys = set()
+        # Sort the entire config data hierarchically
+        sorted_config = self._sort_dict_hierarchically(config_data, key_order_structure)
         
-        for key in key_order:
-            if key in config_data:
-                # Convert single section to YAML string
-                single_section = {key: config_data[key]}
-                yaml_str = yaml.dump(single_section, default_flow_style=False, allow_unicode=True)
-                ordered_lines.append(yaml_str.rstrip())
-                processed_keys.add(key)
+        # Convert OrderedDict to regular dict for proper YAML serialization
+        clean_config = self._convert_ordered_dict_to_dict(sorted_config)
         
-        # Add any remaining keys that weren't in the default order (edge case)
-        remaining_keys = set(config_data.keys()) - processed_keys
-        if remaining_keys:
-            remaining_data = {key: config_data[key] for key in sorted(remaining_keys)}
-            yaml_str = yaml.dump(remaining_data, default_flow_style=False, allow_unicode=True)
-            ordered_lines.append(yaml_str.rstrip())
-        
-        # Write to file
-        file_handle.write('\n'.join(ordered_lines))
-        if ordered_lines:  # Add final newline if there's content
-            file_handle.write('\n')
+        # Dump as YAML with preserved order
+        yaml_str = yaml.dump(clean_config, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        file_handle.write(yaml_str)
 
     def load_default_config(self) -> Dict[str, Any]:
         """Load the default pipeline configuration."""
