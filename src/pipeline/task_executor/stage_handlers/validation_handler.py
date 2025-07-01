@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class ValidationHandler:
-    """Handles validation stage."""
 
     def __init__(
         self,
@@ -31,8 +30,6 @@ class ValidationHandler:
         self.generation_handler = generation_handler
 
     def execute_validation(self) -> bool:
-        """Execute the validation stage."""
-        logger.info("🧐 Starting Validation Stage")
         try:
             logger.info("=" * 50)
             logger.info("Starting validation stage")
@@ -79,7 +76,6 @@ class ValidationHandler:
                         ]
                         continue
 
-                    # Set chunk text for validation compatibility
                     candidate.chunk_text = chunk.text
 
                     # Perform Whisper validation
@@ -141,7 +137,7 @@ class ValidationHandler:
                     )
                 else:
                     logger.info(
-                        f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid"
+                        f"⚠️ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid"
                     )
 
                 # Retry logic if no valid candidates

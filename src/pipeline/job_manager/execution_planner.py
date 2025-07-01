@@ -149,29 +149,36 @@ class ExecutionPlanner:
         # Handle new task creation - if tasks is empty and mode is single, create new task
         tasks_to_process = intent.tasks
         if not tasks_to_process and intent.execution_mode == "single":
-            # Create new task from context
-            if context.job_name:
-                try:
-                    # Find job config file by name
-                    job_configs = self.config_manager.find_configs_by_job_name(context.job_name)
-                    if not job_configs:
-                        logger.error(f"No job config found for job name: {context.job_name}")
-                        return ExecutionPlan([], "cancelled")
-                    
-                    # Create tasks for all distinct job configs
-                    new_tasks = self._create_tasks_for_distinct_configs(job_configs)
-                    if not new_tasks:
-                        logger.error("No distinct tasks could be created from job configs")
-                        return ExecutionPlan([], "cancelled")
-                    
-                    tasks_to_process = new_tasks
-                    for task in new_tasks:
-                        logger.info(f"⚙️  Created new task: {task.config_path}")
-                except Exception as e:
-                    logger.error(f"Failed to create new task: {e}")
+            # Create new task from context - handle both job-name and config-files execution paths
+            job_configs = None
+            
+            if context.job_configs:
+                # Config-files execution path - use already loaded configs
+                job_configs = context.job_configs
+                logger.debug(f"Using provided config files: {[str(p) for p in job_configs]}")
+            elif context.job_name:
+                # Job-name execution path - find configs by name
+                job_configs = self.config_manager.find_configs_by_job_name(context.job_name)
+                if not job_configs:
+                    logger.error(f"No job config found for job name: {context.job_name}")
                     return ExecutionPlan([], "cancelled")
+                logger.debug(f"Found config files for job '{context.job_name}': {[str(p) for p in job_configs]}")
             else:
-                logger.error("Cannot create new task: no job name available")
+                logger.error("Cannot create new task: no job name or config files available")
+                return ExecutionPlan([], "cancelled")
+            
+            try:
+                # Create tasks for all distinct job configs
+                new_tasks = self._create_tasks_for_distinct_configs(job_configs)
+                if not new_tasks:
+                    logger.error("No distinct tasks could be created from job configs")
+                    return ExecutionPlan([], "cancelled")
+                
+                tasks_to_process = new_tasks
+                for task in new_tasks:
+                    logger.info(f"⚙️  Created new task: {task.config_path}")
+            except Exception as e:
+                logger.error(f"Failed to create new task: {e}")
                 return ExecutionPlan([], "cancelled")
         
         # Convert tasks and apply legacy field mapping

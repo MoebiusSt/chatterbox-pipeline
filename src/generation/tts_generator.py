@@ -411,7 +411,7 @@ class TTSGenerator:
             return []
 
         logger.info(
-            f"Generating specific candidates {candidate_indices} for text (len={len(text)}) "
+            f"Generating candidates {candidate_indices} for text (len={len(text)}) "
             f"from total set of {total_candidates}\n"
         )
 
@@ -513,7 +513,7 @@ class TTSGenerator:
                 }
 
                 logger.info(
-                    f"▶️ Candidate {candidate_idx+1} ({candidate_type}): "
+                    f"CANDIDATE {candidate_idx+1} ({candidate_type}): "
                     f"exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}"
                 )
 

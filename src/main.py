@@ -73,10 +73,10 @@ Usage Examples:
   %(prog)s --job "testjob*"          # Run all jobs starting with "testjob"
   %(prog)s --job "test?job"          # Run jobs like "test1job", "test2job" etc.
   %(prog)s --job "my_job" --parallel # Run job in parallel mode
-  %(prog)s --mode new                # Create new tasks for all jobs
-  %(prog)s --mode all                # Run all exisiting tasks of all jobs
-  %(prog)s --mode last               # Run latest task of all jobs
-  %(prog)s --mode "job1:new,job2:all"  # Different strategies per job
+  %(prog)s --mode new                # Global:Create new tasks for all given jobs
+  %(prog)s --mode all                # Global: Run all exisiting tasks of all given jobs
+  %(prog)s --mode last               # Global: Run latest task of all given jobs
+  %(prog)s --mode "job1:new,job2:all"  # Specify different strategies per job
   %(prog)s --force-final-generation  # Force regeneration of final audio from existing candidates
   %(prog)s --rerender-all            # Delete all existing candidates and re-render everything from scratch
   %(prog)s --verbose                 # Enable verbose logging
@@ -197,13 +197,13 @@ def main() -> int:
         
         # Validate CLI arguments for problematic combinations
         if args.job and args.config_files:
-            logger.error("❌ Ungültige Argumentkombination!")
-            logger.error("Sie können nicht gleichzeitig --job und config-Dateien angeben.")
-            logger.error("Verwenden Sie ENTWEDER:")
+            logger.error("❌ Invalid combination of arguments!")
+            logger.error("You cannot specify --job and config files at the same time.")
+            logger.error("Use EITHER:")
             logger.error(f"  python {sys.argv[0]} --job \"{args.job}\" --mode {args.mode or 'new'}")
-            logger.error(f"ODER:")
+            logger.error(f"OR:")
             logger.error(f"  python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)}")
-            logger.error("Wenn Sie mehrere Jobs gleichzeitig ausführen möchten, verwenden Sie:")
+            logger.error("If you want to run multiple jobs at the same time, use:")
             logger.error(f"  python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)} --mode {args.mode or 'new'}")
             return 1
 
