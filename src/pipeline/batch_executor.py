@@ -41,17 +41,19 @@ class BatchResult:
 class BatchExecutor:
     """Executes multiple TTS tasks in parallel with progress tracking."""
 
-    def __init__(self, config_manager: ConfigManager, max_workers: Optional[int] = None):
+    def __init__(self, config_manager: ConfigManager, max_workers: Optional[int] = None, parallel_enabled: bool = True):
         """
         Initialize BatchExecutor.
 
         Args:
             config_manager: Shared ConfigManager instance (avoids redundant loading)
             max_workers: Maximum number of parallel workers. If None, uses system default.
+            parallel_enabled: Whether parallel execution is enabled. If False, executes sequentially.
         """
         self.config_manager = config_manager
         self.max_workers = max_workers
-        logger.info(f"BatchExecutor initialized with max_workers={max_workers}")
+        self.parallel_enabled = parallel_enabled
+        logger.info(f"BatchExecutor initialized with max_workers={max_workers}, parallel_enabled={parallel_enabled}")
 
     def execute_batch(self, task_configs: List[TaskConfig]) -> List[TaskResult]:
         """
@@ -70,22 +72,36 @@ class BatchExecutor:
 
         results = []
 
-        if total_tasks == 1:
-            # Single task - execute directly for better logging
+        # Determine execution mode based on task count and parallel flag
+        use_parallel = self.parallel_enabled and total_tasks > 1
+
+        if not use_parallel:
+            # Sequential execution - single task or parallel disabled
+            execution_mode = "SINGLE" if total_tasks == 1 else "SEQUENTIAL"
             logger.info("📋 EXECUTION PLAN SUMMARY")
-            logger.info("  Mode: SINGLE")
+            logger.info(f"  Mode: {execution_mode}")
             logger.info(f"  Tasks: {total_tasks}")
 
-            task_config = task_configs[0]
-            logger.info(f"  1. {task_config.job_name}: {task_config.task_name}")
-            logger.info(f"     └─ {task_config.base_output_dir}")
+            for i, task_config in enumerate(task_configs, 1):
+                logger.info(f"  {i}. {task_config.job_name}: {task_config.task_name}")
+                logger.info(f"     └─ {task_config.base_output_dir}")
             logger.info("=" * 50)
 
-            result = self._execute_single_task(task_config)
-            results.append(result)
+            # Execute tasks sequentially
+            for i, task_config in enumerate(task_configs, 1):
+                if total_tasks > 1:
+                    logger.info(f"▶️  Executing task {i}/{total_tasks}: {task_config.job_name}:{task_config.task_name}")
+                
+                result = self._execute_single_task(task_config)
+                results.append(result)
+
+                # Log completion for multi-task sequential execution
+                if total_tasks > 1:
+                    status = "✅ SUCCESS" if result.success else "❌ FAILED"
+                    logger.info(f"{status}: {task_config.job_name}:{task_config.task_name}")
 
         else:
-            # Multiple tasks - use parallel execution
+            # Parallel execution - multiple tasks with parallel enabled
             logger.info("📋 EXECUTION PLAN SUMMARY")
             logger.info("  Mode: PARALLEL")
             logger.info(f"  Tasks: {total_tasks}")

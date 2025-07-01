@@ -260,7 +260,11 @@ def main() -> int:
             # Batch execution
             logger.debug("Starting batch execution mode")
 
-            batch_executor = BatchExecutor(config_manager)
+            batch_executor = BatchExecutor(
+                config_manager, 
+                max_workers=args.max_workers if args.parallel else None,
+                parallel_enabled=args.parallel
+            )
 
             # Execute with parallel option
             task_results = batch_executor.execute_batch(execution_plan.task_configs)
