@@ -1,3 +1,9 @@
+neuer genration parameter "repetition_penalty: 1.2". Höhere Werte bestrafen wiederholungen. Niedrigere erzeugen wiederholungen. Ausprobieren.
+
+
+----------------------------------
+
+
 in Order to have conditional voice swapping before a generation, we can use
 
 model.prepare_conditionals(wav_fpath=AUDIO_PROMPT_PATH). It turns a wav file into a set of conditional values: - model.conds
@@ -48,6 +54,8 @@ Try:
       "[ipa]": 638,
       "[end_of_label]": 639,
       
+
+      --------------------------------------
       
 Perhaps there IS another way for foreign words? Let's say we would convert [irish/chinese/whatever] words to IPA, then use another tool that would convert the IPA-phonem-strings back to "how-a-brit-would-read-it"-British looking text? For instance:
 

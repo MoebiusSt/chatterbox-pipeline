@@ -3,7 +3,7 @@ job:
   run-label: ""  # empty by default
 
 input:
-  reference_audio: "mike_kamp.wav"        # Dateiname im reference_audio Ordner
+  reference_audio: "mike_kamp_1.wav"        # Dateiname im reference_audio Ordner
   text_file: "input-document.txt"   # Text-Datei im texts Ordner
 
 preprocessing:

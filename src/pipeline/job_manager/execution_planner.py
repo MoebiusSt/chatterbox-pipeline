@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any, List, Optional
 
-from utils.config_manager import ConfigManager
+from utils.config_manager import ConfigManager, TaskConfig
 from .execution_types import ExecutionContext, ExecutionIntent, ExecutionOptions
 from .menu_orchestrator import MenuOrchestrator
 from .cli_mapper import CLIMapper, StrategyResolver
@@ -66,7 +66,7 @@ class ExecutionPlanner:
         # Step 3: Convert intent to ExecutionPlan (with legacy compatibility)
         plan = self._create_execution_plan(intent, context)
         
-        logger.info(f"Execution plan resolved: {len(plan.tasks)} tasks, mode={plan.execution_mode}")
+        logger.info(f"Execution plan resolved: {len(plan.task_configs)} tasks, mode={plan.execution_mode}")
         return plan
     
     def _determine_execution_context(self, args: Any, config_files: Optional[List[Path]]) -> ExecutionContext:
@@ -97,7 +97,7 @@ class ExecutionPlanner:
                 existing_tasks=[],
                 job_configs=config_files,
                 execution_path="config-files", 
-                job_name=None,
+                job_name="",  # Empty string instead of None
                 available_strategies=self._get_available_strategies()
             )
             
@@ -126,7 +126,9 @@ class ExecutionPlanner:
         # Try CLI-first approach
         if not self.strategy_resolver.requires_user_interaction(args, context):
             logger.info("Resolving intent from CLI arguments")
-            return self.cli_mapper.parse_cli_to_execution_intent(args, context)
+            cli_intent = self.cli_mapper.parse_cli_to_execution_intent(args, context)
+            if cli_intent is not None:
+                return cli_intent
         
         # Fallback to interactive MenuOrchestrator
         logger.info("Resolving intent via MenuOrchestrator")
@@ -144,9 +146,37 @@ class ExecutionPlanner:
         if intent.execution_mode == "cancelled":
             return ExecutionPlan([], "cancelled")
         
+        # Handle new task creation - if tasks is empty and mode is single, create new task
+        tasks_to_process = intent.tasks
+        if not tasks_to_process and intent.execution_mode == "single":
+            # Create new task from context
+            if context.job_name:
+                try:
+                    # Find job config file by name
+                    job_configs = self.config_manager.find_configs_by_job_name(context.job_name)
+                    if not job_configs:
+                        logger.error(f"No job config found for job name: {context.job_name}")
+                        return ExecutionPlan([], "cancelled")
+                    
+                    # Create tasks for all distinct job configs
+                    new_tasks = self._create_tasks_for_distinct_configs(job_configs)
+                    if not new_tasks:
+                        logger.error("No distinct tasks could be created from job configs")
+                        return ExecutionPlan([], "cancelled")
+                    
+                    tasks_to_process = new_tasks
+                    for task in new_tasks:
+                        logger.info(f"⚙️  Created new task: {task.config_path}")
+                except Exception as e:
+                    logger.error(f"Failed to create new task: {e}")
+                    return ExecutionPlan([], "cancelled")
+            else:
+                logger.error("Cannot create new task: no job name available")
+                return ExecutionPlan([], "cancelled")
+        
         # Convert tasks and apply legacy field mapping
         task_configs = []
-        for task in intent.tasks:
+        for task in tasks_to_process:
             # Legacy field mapping: force_final_generation → add_final
             if intent.execution_options.force_final_generation:
                 task.add_final = True
@@ -172,6 +202,48 @@ class ExecutionPlanner:
             execution_mode=execution_mode,
             requires_user_input=requires_user_input
         )
+    
+    def _create_tasks_for_distinct_configs(self, job_config_paths: List[Path]) -> List[TaskConfig]:
+        """
+        Create tasks for all distinct job configurations.
+        
+        Tasks are considered distinct if they differ in any of:
+        - job: name
+        - job: run-label  
+        - input: text_file
+        
+        Returns:
+            List of distinct TaskConfig objects
+        """
+        distinct_tasks = []
+        seen_signatures = set()
+        
+        for config_path in job_config_paths:
+            try:
+                # Load config and create task signature for conflict detection
+                job_config = self.config_manager.load_cascading_config(config_path)
+                
+                job_name = job_config.get("job", {}).get("name", "")
+                run_label = job_config.get("job", {}).get("run-label", "")
+                text_file = job_config.get("input", {}).get("text_file", "")
+                
+                # Create signature for uniqueness check
+                task_signature = (job_name, run_label, text_file)
+                
+                if task_signature not in seen_signatures:
+                    # This is a distinct task, create it
+                    new_task = self.job_manager.create_new_task(job_config)
+                    distinct_tasks.append(new_task)
+                    seen_signatures.add(task_signature)
+                    logger.debug(f"Task signature: job='{job_name}', run-label='{run_label}', text_file='{text_file}'")
+                else:
+                    logger.debug(f"Skipping duplicate task signature: job='{job_name}', run-label='{run_label}', text_file='{text_file}'")
+                    
+            except Exception as e:
+                logger.warning(f"Error processing config {config_path}: {e}")
+                continue
+        
+        return distinct_tasks
     
     def _get_available_strategies(self) -> dict:
         """Get available execution strategies for context."""

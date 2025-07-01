@@ -57,8 +57,9 @@ data/output/
 *.flac
 *.ogg
 *.m4a
+*.pkf
 # Keep reference audio samples
-!data/input/reference_audio/*.wav
+!data/input/reference_audio/stephan_moebius_*.wav
 
 # Model files and checkpoints
 models/

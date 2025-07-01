@@ -6,7 +6,7 @@ User interaction functionality for job management.
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from utils.config_manager import ConfigManager, TaskConfig
 from utils.file_manager.state_analyzer import TaskState
@@ -94,7 +94,7 @@ class UserInteraction:
         print("Invalid choice, defaulting to latest task")
         return UserChoice.LATEST
     
-    def confirm_rerender_action(self, action_description: str) -> bool:
+    def confirm_rerender_action(self, action_description: str) -> Optional[bool]:
         """
         Show safety prompt for re-render actions that will delete existing audio chunks.
         
@@ -102,21 +102,21 @@ class UserInteraction:
             action_description: Description of the action being confirmed
             
         Returns:
-            True if user confirms, False otherwise
+            True if user confirms, None if user cancels
         """
         print(f"\n⚠️  WARNING: {action_description}")
         print("This will DELETE (!) ALL audio chunks and final audio files from pre-existing runs!")
-        print("Are you sure? (y/n/c - return)")
+        print("Are you sure? (y = YES, RE-RENDER | c = CANCEL)")
         
         while True:
             choice = input("\n> ").strip().lower()
             
             if choice in ["y", "yes"]:
                 return True
-            elif choice in ["n", "no", "c"]:
-                return False
+            elif choice in ["c", "cancel"]:
+                return None  # Cancel - return to previous menu
             else:
-                print("Please enter 'y' for yes, 'n' for no, or 'c' to return")
+                print("Please enter 'y' for yes or 'c' to cancel")
 
     def show_task_options_with_state(self, task: TaskConfig, task_state: TaskState, is_latest: bool = True) -> UserChoice:
         """
@@ -138,21 +138,25 @@ class UserInteraction:
             display_time = task.timestamp
             
         task_type = "latest task" if is_latest else "task"
-        print(f"\nSelected {task_type}: {task.job_name} - {display_time}")
-        print(f"\nTask state: {task_state.task_status_message}")
-        print()
         
-        print("What to do with this task?")
-        print("[Enter] - Run task, fill gaps, CREATE (or overwrite) final audio")
-        print("s       - Run task, fill gaps, KEEP (skip) final audio")
-        print("r       - Run task, RE-RENDER ALL candidates, create new final audio")
-        
-        if task_state.candidate_editor_available:
-            print("e       - Edit completed task (choose different candidates)")
-        else:
-            print("N/A     - Edit completed task (not available - task incomplete or no candidate data)")
+        def show_menu():
+            print(f"\nSelected {task_type}: {task.job_name} - {display_time}")
+            print(f"\nTask state: {task_state.task_status_message}")
+            print()
             
-        print("c       - Return")
+            print("What to do with this task?")
+            print("[Enter] - Run task, fill gaps, CREATE (or overwrite) final audio")
+            print("s       - Run task, fill gaps, KEEP (skip) final audio")
+            print("r       - Run task, RE-RENDER ALL candidates, create new final audio")
+            
+            if task_state.candidate_editor_available:
+                print("e       - Edit completed task (choose different candidates)")
+            else:
+                print("N/A     - Edit completed task (not available - task incomplete or no candidate data)")
+                
+            print("c       - Return")
+        
+        show_menu()
         
         while True:
             choice = input("\n> ").strip().lower()
@@ -162,10 +166,13 @@ class UserInteraction:
             elif choice == "s":
                 return UserChoice.LATEST_FILL_GAPS_NO_OVERWRITE
             elif choice == "r":
-                if self.confirm_rerender_action("RE-RENDER ALL candidates"):
+                confirmation = self.confirm_rerender_action("RE-RENDER ALL candidates")
+                if confirmation is True:
                     return UserChoice.LATEST_RERENDER_ALL
-                else:
-                    return UserChoice.LATEST_FILL_GAPS
+                elif confirmation is None:
+                    # User cancelled - show menu again and continue loop
+                    show_menu()
+                    continue
             elif choice == "e":
                 if task_state.candidate_editor_available:
                     return UserChoice.EDIT
@@ -187,14 +194,18 @@ class UserInteraction:
             UserChoice for the action to take on all tasks
         """
         job_name = tasks[0].job_name if tasks else "Unknown"
-        print(f"\nOptions for ALL tasks in job '{job_name}' ({len(tasks)} tasks):")
-        print()
         
-        print("What to do with ALL tasks?")
-        print("[Enter] - Run tasks, fill gaps, CREATE (or overwrite) final audio-files")
-        print("s       - Run tasks, fill gaps, KEEP (skip) final audio-files")
-        print("r       - Run tasks, RE-RENDER ALL candidates, create new final audio-files")
-        print("c       - Return")
+        def show_menu():
+            print(f"\nOptions for ALL tasks in job '{job_name}' ({len(tasks)} tasks):")
+            print()
+            
+            print("What to do with ALL tasks?")
+            print("[Enter] - Run tasks, fill gaps, CREATE (or overwrite) final audio-files")
+            print("s       - Run tasks, fill gaps, KEEP (skip) final audio-files")
+            print("r       - Run tasks, RE-RENDER ALL candidates, create new final audio-files")
+            print("c       - Return")
+        
+        show_menu()
         
         while True:
             choice = input("\n> ").strip().lower()
@@ -204,10 +215,13 @@ class UserInteraction:
             elif choice == "s":
                 return UserChoice.ALL_FILL_GAPS_NO_OVERWRITE
             elif choice == "r":
-                if self.confirm_rerender_action("RE-RENDER ALL tasks"):
+                confirmation = self.confirm_rerender_action("RE-RENDER ALL tasks")
+                if confirmation is True:
                     return UserChoice.ALL_RERENDER_ALL
-                else:
-                    return UserChoice.ALL_FILL_GAPS
+                elif confirmation is None:
+                    # User cancelled - show menu again and continue loop
+                    show_menu()
+                    continue
             elif choice == "c":
                 return UserChoice.RETURN
             else:

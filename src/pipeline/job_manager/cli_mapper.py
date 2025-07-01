@@ -56,6 +56,14 @@ class CLIMapper:
         if hasattr(args, "add_final") and args.add_final:
             execution_options.force_final_generation = True
         
+        # Apply skip_final_overwrite flag if present
+        if hasattr(args, "skip_final_overwrite") and args.skip_final_overwrite:
+            execution_options.skip_final_overwrite = True
+        
+        # Apply rerender_all flag if present
+        if hasattr(args, "rerender_all") and args.rerender_all:
+            execution_options.rerender_all = True
+        
         # Determine tasks based on strategy
         if strategy == ExecutionStrategy.NEW:
             tasks = []  # Will be created by execution planner

@@ -96,6 +96,16 @@ Usage Examples:
         action="store_true",
         help="Force regeneration of final audio from existing candidates, even if final audio exists",
     )
+    parser.add_argument(
+        "--skip-final-overwrite",
+        action="store_true",
+        help="Skip overwriting existing final audio files (for gap-filling mode)",
+    )
+    parser.add_argument(
+        "--rerender-all",
+        action="store_true",
+        help="Delete all existing candidates and re-render everything from scratch",
+    )
 
     # Execution options
     parser.add_argument(
