@@ -78,14 +78,7 @@ class BatchExecutor:
         if not use_parallel:
             # Sequential execution - single task or parallel disabled
             execution_mode = "SINGLE" if total_tasks == 1 else "SEQUENTIAL"
-            logger.info("📋 EXECUTION PLAN SUMMARY")
-            logger.info(f"  Mode: {execution_mode}")
-            logger.info(f"  Tasks: {total_tasks}")
-
-            for i, task_config in enumerate(task_configs, 1):
-                logger.info(f"  {i}. {task_config.job_name}: {task_config.task_name}")
-                logger.info(f"     └─ {task_config.base_output_dir}")
-            logger.info("=" * 50)
+            logger.debug(f"Execution mode: {execution_mode}")
 
             # Execute tasks sequentially
             for i, task_config in enumerate(task_configs, 1):
@@ -102,15 +95,7 @@ class BatchExecutor:
 
         else:
             # Parallel execution - multiple tasks with parallel enabled
-            logger.info("📋 EXECUTION PLAN SUMMARY")
-            logger.info("  Mode: PARALLEL")
-            logger.info(f"  Tasks: {total_tasks}")
-            logger.info(f"  Max Workers: {self.max_workers or 'auto'}")
-
-            for i, task_config in enumerate(task_configs, 1):
-                logger.info(f"  {i}. {task_config.job_name}: {task_config.task_name}")
-                logger.info(f"     └─ {task_config.base_output_dir}")
-            logger.info("=" * 50)
+            logger.debug(f"Execution mode: PARALLEL, Max Workers: {self.max_workers or 'auto'}")
 
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 # Submit all tasks

@@ -93,13 +93,29 @@ class ExecutionPlanner:
             
         elif config_files:
             # Config-files execution path  
-            return ExecutionContext(
-                existing_tasks=[],
-                job_configs=config_files,
-                execution_path="config-files", 
-                job_name="",  # Empty string instead of None
-                available_strategies=self._get_available_strategies()
-            )
+            # Extract job_name from first config file to check for existing tasks
+            try:
+                first_config = self.config_manager.load_cascading_config(config_files[0])
+                job_name = first_config.get("job", {}).get("name", "")
+                existing_tasks = self.job_manager.find_existing_tasks(job_name) if job_name else []
+                
+                return ExecutionContext(
+                    existing_tasks=existing_tasks,
+                    job_configs=config_files,
+                    execution_path="config-files", 
+                    job_name=job_name,
+                    available_strategies=self._get_available_strategies()
+                )
+            except Exception as e:
+                logger.warning(f"Failed to extract job_name from config file {config_files[0]}: {e}")
+                # Fallback to original behavior
+                return ExecutionContext(
+                    existing_tasks=[],
+                    job_configs=config_files,
+                    execution_path="config-files", 
+                    job_name="",
+                    available_strategies=self._get_available_strategies()
+                )
             
         else:
             # Default execution path

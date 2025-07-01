@@ -65,8 +65,13 @@ class CLIMapper:
             execution_mode = "batch"
         elif strategy in [ExecutionStrategy.LATEST, ExecutionStrategy.LAST, 
                          ExecutionStrategy.LATEST_NEW, ExecutionStrategy.LAST_NEW]:
-            tasks = [context.get_latest_task()] if context.has_existing_tasks() else []
-            execution_mode = "single"
+            # KORREKTUR: Für mehrere Jobs jeweils den neuesten Task pro Job finden
+            tasks_by_job = {}
+            for task in context.existing_tasks:
+                if task.job_name not in tasks_by_job:
+                    tasks_by_job[task.job_name] = task  # Tasks sind nach Zeit sortiert, erstes ist das neueste
+            tasks = list(tasks_by_job.values())
+            execution_mode = "batch" if len(tasks) > 1 else "single"
         else:
             return None
         
@@ -161,20 +166,49 @@ class CLIMapper:
         if not mode_arg:
             return job_strategies, global_strategy
         
+        def normalize_strategy(strategy: str) -> str:
+            """Normalize strategy aliases to canonical form."""
+            strategy = strategy.strip()
+            # Handle aliases - normalize to primary forms
+            if strategy == "new-last":
+                return "latest-new"
+            elif strategy == "last":
+                return "latest"
+            elif strategy == "last-new":
+                return "latest-new"
+            return strategy
+        
         # Split by comma for multiple job strategies
         for strategy_spec in mode_arg.split(","):
             if ":" in strategy_spec:
                 job_name, strategy_name = strategy_spec.split(":", 1)
                 try:
-                    strategy = ExecutionStrategy(strategy_name.replace("-", "_"))
-                    job_strategies[job_name] = strategy
-                except ValueError:
+                    normalized_strategy = normalize_strategy(strategy_name)
+                    # Try to find the strategy by value (not by name)
+                    strategy = None
+                    for enum_member in ExecutionStrategy:
+                        if enum_member.value == normalized_strategy:
+                            strategy = enum_member
+                            break
+                    if strategy:
+                        job_strategies[job_name] = strategy
+                    else:
+                        logger.warning(f"Unknown strategy: {strategy_name}")
+                except Exception:
                     logger.warning(f"Unknown strategy: {strategy_name}")
             else:
                 # Global strategy without job prefix
                 try:
-                    global_strategy = ExecutionStrategy(strategy_spec.replace("-", "_"))
-                except ValueError:
+                    normalized_strategy = normalize_strategy(strategy_spec)
+                    # Try to find the strategy by value (not by name)
+                    global_strategy = None
+                    for enum_member in ExecutionStrategy:
+                        if enum_member.value == normalized_strategy:
+                            global_strategy = enum_member
+                            break
+                    if not global_strategy:
+                        logger.warning(f"Unknown global strategy: {strategy_spec}")
+                except Exception:
                     logger.warning(f"Unknown global strategy: {strategy_spec}")
         
         return job_strategies, global_strategy

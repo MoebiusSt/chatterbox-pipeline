@@ -135,6 +135,33 @@ def test_resolve_execution_plan():
     assert plan is not None
 
 
+def test_mode_argument_aliases():
+    """Test that mode argument aliases work correctly."""
+    config_manager = ConfigManager(PROJECT_ROOT)
+    job_manager = JobManager(config_manager)
+
+    # Test 'last' alias for 'latest'
+    job_strat, global_strat = job_manager.parse_mode_argument("last")
+    assert global_strat == ExecutionStrategy.LATEST
+    assert job_strat == {}
+
+    # Test 'last-new' alias for 'latest-new'
+    job_strat, global_strat = job_manager.parse_mode_argument("last-new")
+    assert global_strat == ExecutionStrategy.LATEST_NEW
+    assert job_strat == {}
+
+    # Test 'new-last' alias for 'latest-new'
+    job_strat, global_strat = job_manager.parse_mode_argument("new-last")
+    assert global_strat == ExecutionStrategy.LATEST_NEW
+    assert job_strat == {}
+
+    # Test job-specific aliases
+    job_strat, global_strat = job_manager.parse_mode_argument("job1:last,job2:last-new")
+    assert global_strat is None
+    assert job_strat["job1"] == ExecutionStrategy.LATEST
+    assert job_strat["job2"] == ExecutionStrategy.LATEST_NEW
+
+
 def test_prompt_user_selection():
     """Test user selection prompt."""
     config_manager = ConfigManager(PROJECT_ROOT)

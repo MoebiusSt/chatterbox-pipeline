@@ -92,7 +92,8 @@ class TTSGenerator:
 
             # Check if model is loaded
             if self.model is None:
-                logger.warning("Model not loaded - generating mock audio for testing")
+                logger.error("🚨 CRITICAL: TTS Model not loaded - generating MOCK AUDIO (noise)!")
+                logger.error("⚠️  This will result in NO SPEECH in your final output!")
                 # Return mock audio with length proportional to text length (24kHz sample rate)
                 mock_duration = len(text) * 0.05  # ~50ms per character
                 mock_samples = int(mock_duration * 24000)

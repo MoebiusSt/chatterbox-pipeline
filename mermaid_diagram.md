@@ -1,4 +1,4 @@
-# TTS Pipeline - Task-Based Architecture (Improved)
+# TTS Pipeline - Task-Based Architecture
 
 ```mermaid
 graph TD
@@ -118,27 +118,4 @@ graph TD
     class CRUD_STORAGE,SAVE_CHUNKS,SAVE_CANDIDATES,SAVE_WHISPER,SAVE_METRICS,SAVE_FINAL crudOps
     class TASK_COMPLETE,END,BATCH_COMPLETE completePoint
     class BATCH_TASKS,BATCH_EXECUTOR,TASK_QUEUE batchFlow
-```
-
-## Hauptverbesserungen gegenüber dem ursprünglichen Diagramm:
-
-### 1. Klare Trennung Job-Level vs. Task-Level
-- **Job Queue**: Verwaltet verschiedene Jobs (verschiedene `job: name`)
-- **Task Queue**: Verwaltet Tasks innerhalb eines Jobs (verschiedene Timestamps/run-labels)
-
-### 2. Korrekte Schleifen-Struktur
-- Jobs: `JOB_QUEUE → MORE_JOBS → PROCESS_JOB → ... → JOB_COMPLETE → JOB_QUEUE`
-- Tasks: `TASK_QUEUE → MORE_TASKS → TASK_EXECUTOR → ... → TASK_COMPLETE → TASK_QUEUE`
-
-### 3. Bessere Benennung
-- `get_tasks()` statt `get_jobs()` - weil wir Tasks innerhalb eines Jobs suchen
-- `FIND_JOBS` für `--job "name"` Argument-Verarbeitung
-
-### 4. Konsistente Rücksprünge
-- Tasks kehren zur Task Queue zurück (nicht zur Job Queue)
-- Jobs kehren zur Job Queue zurück
-
-### 5. Robuste Queue-Verwaltung
-- Separate Queues für Jobs und Tasks
-- Klare Entscheidungspunkte für "More Jobs?" und "More Tasks?"
-- Proper cleanup und completion handling 
+`

@@ -109,7 +109,8 @@ class MenuOrchestrator:
         print("[Enter] - Options for latest task")
         print("n       - Create and run new task")
         print("a       - Options to run all tasks")
-        print(f"1-{len(tasks)}   - Options for specific task")
+        spacing = " " * (6 - len(str(len(tasks))))
+        print(f"1-{len(tasks)}{spacing}- Options for specific task")
         print("c       - Cancel")
 
         choice = input("\n> ").strip().lower()

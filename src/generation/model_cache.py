@@ -113,7 +113,18 @@ class ChatterboxModelCache:
             return model
 
         except Exception as e:
-            logger.error(f"Failed to load ChatterboxTTS model for device {device}: {e}")
+            logger.error(f"🚨 CRITICAL: Failed to load ChatterboxTTS model for device {device}: {e}")
+            logger.error("=" * 80)
+            logger.error("⚠️  WARNING: TTS MODEL LOADING FAILED!")
+            logger.error("⚠️  The system will run in MOCK MODE and generate only NOISE/SILENCE!")
+            logger.error("⚠️  Your final audio output will contain NO SPEECH!")
+            logger.error("=" * 80)
+            logger.error("💡 To fix this issue:")
+            logger.error("   1. Check ChatterboxTTS installation: pip install chatterbox-tts")
+            logger.error("   2. Check perth dependency: pip install perth")
+            logger.error("   3. Update dependencies: pip install --upgrade chatterbox-tts perth")
+            logger.error("   4. If issue persists, check GPU/CUDA compatibility")
+            logger.error("=" * 80)
             logger.info("Returning None - will use mock mode for testing")
             return None
 

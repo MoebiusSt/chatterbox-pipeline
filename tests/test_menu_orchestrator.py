@@ -142,6 +142,25 @@ class TestCLIMapper:
         assert global_strat == ExecutionStrategy.NEW
         assert job_strat["job1"] == ExecutionStrategy.ALL
         assert job_strat["job2"] == ExecutionStrategy.LATEST_NEW
+        
+        # Test alias functionality
+        job_strat, global_strat = self.cli_mapper._parse_mode_argument("last")
+        assert global_strat == ExecutionStrategy.LATEST
+        assert job_strat == {}
+        
+        job_strat, global_strat = self.cli_mapper._parse_mode_argument("last-new")
+        assert global_strat == ExecutionStrategy.LATEST_NEW
+        assert job_strat == {}
+        
+        job_strat, global_strat = self.cli_mapper._parse_mode_argument("new-last")
+        assert global_strat == ExecutionStrategy.LATEST_NEW
+        assert job_strat == {}
+        
+        # Test job-specific aliases
+        job_strat, global_strat = self.cli_mapper._parse_mode_argument("job1:last,job2:last-new")
+        assert global_strat is None
+        assert job_strat["job1"] == ExecutionStrategy.LATEST
+        assert job_strat["job2"] == ExecutionStrategy.LATEST_NEW
     
     def test_menu_choice_to_cli_args(self):
         """Test conversion from menu choices to CLI arguments."""

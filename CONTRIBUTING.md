@@ -1,12 +1,11 @@
 # Contributing to Enhanced TTS Pipeline
 
-Vielen Dank für dein Interesse, zu diesem Projekt beizutragen! Diese Anleitung hilft dir, effektiv mitzumachen.
+Thank you for your interest in contributing to this project! These instructions will help you to participate effectively.
 
-## Entwicklungsumgebung einrichten
+## Set up development environment
 
-### 1. Repository forken und klonen
+### 1. Fork and clone repository
 ```bash
-# Fork das Repository auf GitHub, dann:
 git clone https://github.com/YOUR_USERNAME/tts_pipeline_enhanced.git
 cd tts_pipeline_enhanced
 ```
@@ -22,59 +21,59 @@ pip install -r requirements.txt
 python scripts/download_models.py
 ```
 
-### 2. Entwicklungsumgebung vorbereiten
+### 2. Prepare the development environment
 ```bash
-# Virtuelle Umgebung erstellen (ERFORDERLICH)
+# Create virtual environment (REQUIRED)
 python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
 # venv\Scripts\activate   # Windows
 
 
-# Entwicklungsabhängigkeiten installieren
+# Install development dependencies
 pip install -r requirements.txt
-pip install -r dev-requirements.txt  # falls vorhanden
+pip install -r dev-requirements.txt  # if available
 python -m spacy download en_core_web_sm
 
-# Zusätzliche Tools für Entwicklung
+# Additional Tool for development
 pip install black isort flake8 mypy pytest pytest-cov
 ```
 
-### 3. Pre-commit Hooks (empfohlen)
+### 3. Pre-commit Hooks (recommended)
 ```bash
 pip install pre-commit
 pre-commit install
 ```
 
-## Code-Standards
+## Code Standards
 
-### Code-Formatierung
-Wir verwenden **Black** für einheitliche Code-Formatierung:
+### Code Formatting
+We use **Black** for consistent code formatting:
 ```bash
-# Code automatisch formatieren
+# Format code automatically
 black src/ scripts/
 
-# Nur prüfen (ohne Änderungen)
+# Check only (without changes)
 black --check src/ scripts/
 ```
 
-### Import-Sortierung
-Verwende **isort** für konsistente Import-Reihenfolge:
+### Import Sorting
+Use **isort** for consistent import ordering:
 ```bash
-# Imports sortieren
+# Sort imports
 isort src/ scripts/
 
-# Nur prüfen
+# Check only
 isort --check-only src/ scripts/
 ```
 
 ### Linting
-Verwende **flake8** für Code-Qualitätsprüfung:
+Use **flake8** for code quality checking:
 ```bash
 flake8 src/ scripts/
 ```
 
 ### Type Hints
-Verwende Type Hints, wo möglich:
+Use Type Hints where possible:
 ```python
 def process_chunk(chunk: TextChunk, params: Dict[str, Any]) -> AudioCandidate:
     ...
@@ -82,38 +81,38 @@ def process_chunk(chunk: TextChunk, params: Dict[str, Any]) -> AudioCandidate:
 
 ## Testing
 
-### Tests ausführen
+### Run Tests
 ```bash
-# Einfache Tests (ohne TTS)
+# Simple tests (without TTS)
 python scripts/run_chunker.py
 python scripts/test_basic_pipeline.py
 
-# Mit pytest (falls verfügbar)
+# With pytest (if available)
 pytest tests/
 ```
 
-### Neue Tests schreiben
-- Füge Tests in das `tests/` Verzeichnis hinzu
-- Verwende pytest-Konventionen
+### Writing New Tests
+- Add tests to the `tests/` directory
+- Use pytest conventions
 
-## Projektstruktur verstehen
+## Understanding Project Structure
 
 ```
 src/
-├── chunking/       # Text-Segmentierung
-├── generation/     # Audio-Generierung  
-├── validation/     # Qualitäts-Validierung
-├── postprocessing/ # Audio-Verarbeitung
-├── preproccessor/  # Text-Vorarbeiten
-├── pipeline/       # Pipeline-Orchestrierung
-└── utils/          # Hilfsfunktionen
+├── chunking/       # Text segmentation
+├── generation/     # Audio generation  
+├── validation/     # Quality validation
+├── postprocessing/ # Audio processing
+├── preproccessor/  # Text preprocessing
+├── pipeline/       # Pipeline orchestration
+└── utils/          # Utility functions
 ```
 
-## Contribution-Workflow
+## Contribution Workflow
 
-### 1. Tests und Qualitätsprüfung
+### 1. Tests and Quality Checks
 ```bash
-# Code formatieren
+# Format code
 black src/ scripts/
 isort src/ scripts/
 
@@ -121,19 +120,19 @@ isort src/ scripts/
 flake8 src/ scripts/
 ```
 
-### 5. Pull Request erstellen
-- Beschreibe die Änderungen ausführlich
-- Verweise auf relevante Issues
-- Füge Screenshots/Logs hinzu, falls relevant
+### 5. Create Pull Request
+- Describe changes in detail
+- Reference relevant issues
+- Add screenshots/logs if relevant
 
 
-## Spezifische Bereiche
+## Specific Areas
 
-### TTS-Integration
-- Verwende einheitliche Parameter-Reihenfolge: `exaggeration, cfg_weight, temperature`
+### TTS Integration
+- Use consistent parameter order: `exaggeration, cfg_weight, temperature`
 
-### Debugging-Tipps
+### Debugging Tips
 ```bash
-# Verbose Logging aktivieren
+# Enable verbose logging
 export PYTHONPATH=src:$PYTHONPATH
 python -m logging.basicConfig level=DEBUG src/main.py

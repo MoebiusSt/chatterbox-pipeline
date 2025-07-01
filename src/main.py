@@ -68,14 +68,14 @@ def parse_arguments() -> argparse.Namespace:
         epilog="""
 Usage Examples:
   %(prog)s                           # Run default job
-  %(prog)s job1.yaml job2.yaml       # Run specific config files
+  %(prog)s job1.yaml                 # Run specific config files
   %(prog)s --job "my_job"            # Run job by name
   %(prog)s --job "testjob*"          # Run all jobs starting with "testjob"
   %(prog)s --job "test?job"          # Run jobs like "test1job", "test2job" etc.
-  %(prog)s --job "my_job" --parallel # Run job in parallel mode
+  %(prog)s job1.yaml job2.yaml --parallel # Run jobs in parallel mode
   %(prog)s --mode new                # Global:Create new tasks for all given jobs
   %(prog)s --mode all                # Global: Run all exisiting tasks of all given jobs
-  %(prog)s --mode last               # Global: Run latest task of all given jobs
+  %(prog)s --mode latest             # Global: Run latest task of all given jobs
   %(prog)s --mode "job1:new,job2:all"  # Specify different strategies per job
   %(prog)s --force-final-generation  # Force regeneration of final audio from existing candidates
   %(prog)s --rerender-all            # Delete all existing candidates and re-render everything from scratch
@@ -92,16 +92,19 @@ Usage Examples:
     # Execution strategy arguments
     parser.add_argument(
         "--mode",
+        "-m",
         type=str,
         help="Execution strategy: global (last/all/new) or job-specific (job1:new,job2:all). Examples: --mode all, --mode 'job1:new,job2:last'",
     )
     parser.add_argument(
         "--force-final-generation",
+        "-f",
         action="store_true",
         help="Force regeneration of final audio from existing candidates, even if final audio exists",
     )
     parser.add_argument(
         "--rerender-all",
+        "-r",
         action="store_true",
         help="Delete all existing candidates and re-render everything from scratch",
     )
