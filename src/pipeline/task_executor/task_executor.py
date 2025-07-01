@@ -211,7 +211,7 @@ class TaskExecutor:
                 )
 
             # Check if we should force final audio regeneration
-            force_final = self.task_config.add_final
+            force_final = self.task_config.force_final_generation
             if force_final and task_state.completion_stage == CompletionStage.COMPLETE:
                 logger.info("🔄 Forcing final audio regeneration")
 
@@ -299,7 +299,7 @@ class TaskExecutor:
         is_gap_filling = (
             has_existing_metrics and 
             (has_missing_candidates or has_missing_whisper) and
-            self.task_config.add_final
+            self.task_config.force_final_generation
         )
         
         if task_state.completion_stage == CompletionStage.COMPLETE and not is_gap_filling:
@@ -358,7 +358,7 @@ class TaskExecutor:
             CompletionStage.GENERATION,
             CompletionStage.VALIDATION,
             CompletionStage.ASSEMBLY,
-        ] or (task_state.completion_stage == CompletionStage.COMPLETE and self.task_config.add_final):
+        ] or (task_state.completion_stage == CompletionStage.COMPLETE and self.task_config.force_final_generation):
             # Execute assembly if needed or if forcing final audio regeneration
             if not self.assembly_handler.execute_assembly():
                 return False

@@ -177,11 +177,9 @@ class ExecutionPlanner:
         # Convert tasks and apply legacy field mapping
         task_configs = []
         for task in tasks_to_process:
-            # Legacy field mapping: force_final_generation → add_final
+            # Map execution options to task config
             if intent.execution_options.force_final_generation:
-                task.add_final = True
-            if intent.execution_options.skip_final_overwrite:
-                task.skip_final_overwrite = True  
+                task.force_final_generation = True  
             if intent.execution_options.rerender_all:
                 task.rerender_all = True
             if intent.execution_options.gap_filling_mode:

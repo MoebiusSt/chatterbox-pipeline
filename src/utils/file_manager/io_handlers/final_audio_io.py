@@ -37,7 +37,7 @@ class FinalAudioIOHandler:
             text_base = Path(self.config["input"]["text_file"]).stem
             run_label = self.config["job"].get("run-label", "")
             filename = (
-                f"{text_base}_{run_label}_final.wav"
+                f"{run_label}_{text_base}_final.wav"
                 if run_label
                 else f"{text_base}_final.wav"
             )

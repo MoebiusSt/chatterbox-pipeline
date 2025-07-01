@@ -57,7 +57,11 @@ class UserInteraction:
                 if config_name.endswith("_config"):
                     config_name = config_name[:-7]
                 file_parts = config_name.split("_")
-                if len(file_parts) >= 1:
+                if len(file_parts) >= 4:
+                    # Format: run_label_text_base_YYYYMMDD_HHMMSS
+                    text_file = "_".join(file_parts[1:-2])
+                elif len(file_parts) >= 1:
+                    # Format: text_base_YYYYMMDD_HHMMSS (no run_label)
                     text_file = file_parts[0]
 
             # Format display according to specification:

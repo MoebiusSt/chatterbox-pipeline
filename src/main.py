@@ -70,17 +70,21 @@ Usage Examples:
   %(prog)s                           # Run default job
   %(prog)s job1.yaml job2.yaml       # Run specific config files
   %(prog)s --job "my_job"            # Run job by name
+  %(prog)s --job "testjob*"          # Run all jobs starting with "testjob"
+  %(prog)s --job "test?job"          # Run jobs like "test1job", "test2job" etc.
   %(prog)s --job "my_job" --parallel # Run job in parallel mode
   %(prog)s --mode new                # Create new tasks for all jobs
-  %(prog)s --mode all                # Run all tasks of all jobs
+  %(prog)s --mode all                # Run all exisiting tasks of all jobs
   %(prog)s --mode last               # Run latest task of all jobs
   %(prog)s --mode "job1:new,job2:all"  # Different strategies per job
-  %(prog)s --add-final               # Force regeneration of final audio from existing candidates
+  %(prog)s --force-final-generation  # Force regeneration of final audio from existing candidates
+  %(prog)s --rerender-all            # Delete all existing candidates and re-render everything from scratch
+  %(prog)s --verbose                 # Enable verbose logging
         """,
     )
 
     # Job selection arguments
-    parser.add_argument("--job", "-j", type=str, help="Job name to execute")
+    parser.add_argument("--job", "-j", type=str, help="Job name or pattern to execute (supports wildcards: testjob*, test?job, testjob[12])")
     parser.add_argument(
         "config_files", nargs="*", type=Path, help="Configuration file(s) to process"
     )
@@ -92,14 +96,9 @@ Usage Examples:
         help="Execution strategy: global (last/all/new) or job-specific (job1:new,job2:all). Examples: --mode all, --mode 'job1:new,job2:last'",
     )
     parser.add_argument(
-        "--add-final",
+        "--force-final-generation",
         action="store_true",
         help="Force regeneration of final audio from existing candidates, even if final audio exists",
-    )
-    parser.add_argument(
-        "--skip-final-overwrite",
-        action="store_true",
-        help="Skip overwriting existing final audio files (for gap-filling mode)",
     )
     parser.add_argument(
         "--rerender-all",

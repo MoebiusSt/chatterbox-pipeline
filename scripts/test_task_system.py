@@ -119,7 +119,7 @@ def test_resolve_execution_plan():
     job_manager = JobManager(config_manager)
 
     # Create mock args object
-    args = type("Args", (), {"mode": "last-new", "job": None, "add_final": False})()
+    args = type("Args", (), {"mode": "last-new", "job": None, "force_final_generation": False})()
 
     # Test global strategy
     plan = job_manager.resolve_execution_plan(args)
@@ -129,7 +129,7 @@ def test_resolve_execution_plan():
     args = type(
         "Args",
         (),
-        {"mode": "job1:last-new,job2:all-new", "job": None, "add_final": False},
+        {"mode": "job1:last-new,job2:all-new", "job": None, "force_final_generation": False},
     )()
     plan = job_manager.resolve_execution_plan(args)
     assert plan is not None

@@ -173,7 +173,7 @@ class MenuOrchestrator:
             elif choice == "s":
                 return MenuResult(
                     choice=AllTasksChoice.ALL_FILL_GAPS_NO_OVERWRITE,
-                    execution_intent=self._create_all_tasks_intent(context.existing_tasks, ExecutionOptions(force_final_generation=True, skip_final_overwrite=True))
+                    execution_intent=self._create_all_tasks_intent(context.existing_tasks, ExecutionOptions(force_final_generation=True))
                 )
             elif choice == "r":
                 confirmation = self._confirm_rerender_action("RE-RENDER ALL tasks")
@@ -246,7 +246,7 @@ class MenuOrchestrator:
                     execution_intent=self._create_single_task_intent(task, options)
                 )
             elif choice == "s":
-                options = ExecutionOptions(force_final_generation=True, skip_final_overwrite=True)
+                options = ExecutionOptions(force_final_generation=True)
                 return MenuResult(
                     choice=TaskOptionsChoice.FILL_GAPS_NO_OVERWRITE,
                     execution_intent=self._create_single_task_intent(task, options)
@@ -341,7 +341,11 @@ class MenuOrchestrator:
             if config_name.endswith("_config"):
                 config_name = config_name[:-7]
             file_parts = config_name.split("_")
-            if len(file_parts) >= 1:
+            if len(file_parts) >= 4:
+                # Format: run_label_text_base_YYYYMMDD_HHMMSS
+                text_file = "_".join(file_parts[1:-2])
+            elif len(file_parts) >= 1:
+                # Format: text_base_YYYYMMDD_HHMMSS (no run_label)
                 text_file = file_parts[0]
 
         # Format: "job-name - run-label - doc-name.txt - date - time"
@@ -407,8 +411,7 @@ class MenuOrchestrator:
         """Create execution intent for single task operation."""
         
         # Apply options to task (legacy field mapping for compatibility)
-        task.add_final = options.force_final_generation
-        task.skip_final_overwrite = options.skip_final_overwrite
+        task.force_final_generation = options.force_final_generation
         task.rerender_all = options.rerender_all
         
         return ExecutionIntent(
@@ -423,8 +426,7 @@ class MenuOrchestrator:
         
         # Apply options to all tasks (legacy field mapping for compatibility)
         for task in tasks:
-            task.add_final = options.force_final_generation
-            task.skip_final_overwrite = options.skip_final_overwrite
+            task.force_final_generation = options.force_final_generation
             task.rerender_all = options.rerender_all
         
         return ExecutionIntent(

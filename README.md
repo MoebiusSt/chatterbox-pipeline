@@ -58,6 +58,8 @@ python src/main.py
 python src/main.py                              # Execute default job from /config/default_config.yaml
 python src/main.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
 python src/main.py --job "my_job"               # Execute job with specific name present in a config or existing outputdirectory
+python src/main.py --job "testjob*"             # Execute all jobs starting with "testjob" (pattern matching)
+python src/main.py --job "test?job"             # Execute jobs matching pattern (e.g., test1job, test2job)
 ```
 
 ```bash
@@ -97,6 +99,7 @@ python src/main.py -j "my_job"                 # Short form of --job
 # Combined examples
 python src/main.py -j "my_job" -p -v           # Job + parallel + verbose
 python src/main.py --job "job1" --mode last-new --v # Complete non-interactive execution of last task from "job1", verbose log.
+python src/main.py --job "testjob*" --mode new --v # Create new tasks for all jobs matching "testjob*" pattern
 ```
 #### Note: 
 If you want to create a complete new render with all new audio, don't rerun a task, but use a new task instead.

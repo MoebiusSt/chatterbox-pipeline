@@ -27,8 +27,7 @@ class TaskConfig:
     base_output_dir: Path
     config_path: Path
     job_name: str
-    add_final: bool = False  # Force regeneration of final audio
-    skip_final_overwrite: bool = False  # Skip overwriting existing final audio (for gap-filling)
+    force_final_generation: bool = False  # Force regeneration of final audio
     preloaded_config: Optional[Dict[str, Any]] = None  # Avoid redundant config loading
     rerender_all: bool = False  # Delete all candidates and re-render everything from scratch
 
@@ -396,7 +395,7 @@ class ConfigManager:
         # Create task directory name
         text_base = Path(text_file).stem
         if run_label:
-            task_dir_name = f"{text_base}_{run_label}_{timestamp}"
+            task_dir_name = f"{run_label}_{text_base}_{timestamp}"
         else:
             task_dir_name = f"{text_base}_{timestamp}"
 
@@ -405,7 +404,7 @@ class ConfigManager:
         task_directory = job_dir / task_dir_name
 
         return TaskConfig(
-            task_name=f"{text_base}_{run_label}_{timestamp}",
+            task_name=f"{run_label}_{text_base}_{timestamp}" if run_label else f"{text_base}_{timestamp}",
             run_label=run_label,
             timestamp=timestamp,
             base_output_dir=task_directory,
@@ -431,7 +430,7 @@ class ConfigManager:
         text_file = config_data["input"]["text_file"]
         text_base = Path(text_file).stem
         if task_config.run_label:
-            config_filename = f"{text_base}_{task_config.run_label}_{task_config.timestamp}_config.yaml"
+            config_filename = f"{task_config.run_label}_{text_base}_{task_config.timestamp}_config.yaml"
         else:
             config_filename = f"{text_base}_{task_config.timestamp}_config.yaml"
 
@@ -486,15 +485,15 @@ class ConfigManager:
         # Parse filename components
         parts = filename.split("_")
         if len(parts) >= 3:
-            # Format: text_base_run_label_YYYYMMDD_HHMMSS
+            # Format: run_label_text_base_YYYYMMDD_HHMMSS
             # Last two parts are date and time
             time_part = parts[-1]  # HHMMSS
             date_part = parts[-2]  # YYYYMMDD
             timestamp = f"{date_part}_{time_part}"  # YYYYMMDD_HHMMSS
 
             if len(parts) >= 4:
-                run_label = parts[-3]
-                text_base = "_".join(parts[:-3])
+                run_label = parts[0]
+                text_base = "_".join(parts[1:-2])
             else:
                 run_label = ""
                 text_base = parts[0]
@@ -515,7 +514,7 @@ class ConfigManager:
         task_directory = config_path.parent / filename
 
         task_config = TaskConfig(
-            task_name=f"{text_base}_{run_label}_{timestamp}",
+            task_name=f"{run_label}_{text_base}_{timestamp}" if run_label else f"{text_base}_{timestamp}",
             run_label=run_label,
             timestamp=timestamp,
             base_output_dir=task_directory,
@@ -528,12 +527,21 @@ class ConfigManager:
 
     def find_configs_by_job_name(self, job_name: str) -> List[Path]:
         """
-        Find all configuration files (job-yamls) related to a specific job name.
+        Find all configuration files (job-yamls) related to a specific job name or pattern.
+        
+        Supports glob patterns like:
+        - "testjob*" - matches all jobs starting with "testjob"
+        - "test*job" - matches jobs starting with "test" and ending with "job"
+        - "testjob?" - matches "testjob" + single character
+        - "testjob[12]" - matches "testjob1" or "testjob2"
 
         Returns:
             List of paths to job configuration files.
         """
+        import fnmatch
+        
         configs = []
+        matched_job_names = set()  # Track matched job names to avoid duplicates
 
         # Search in config directory for job-yaml files
         for config_file in self.config_dir.glob("*.yaml"):
@@ -542,16 +550,38 @@ class ConfigManager:
                 
             try:
                 config_data = self.load_job_config(config_file)
-                if config_data.get("job", {}).get("name") == job_name:
+                config_job_name = config_data.get("job", {}).get("name")
+                if config_job_name and fnmatch.fnmatch(config_job_name, job_name):
                     configs.append(config_file)
+                    matched_job_names.add(config_job_name)
             except Exception as e:
                 logger.warning(f"Error reading config {config_file}: {e}")
 
         # Search in output directory for task-yaml files
-        job_dir = self.output_dir / job_name
-        if job_dir.exists():
-            for config_file in job_dir.glob("*_config.yaml"):
-                configs.append(config_file)
+        # Use glob patterns for directory names if job_name contains wildcards
+        if any(char in job_name for char in ['*', '?', '[']):
+            # Pattern matching for directory names
+            try:
+                for job_dir in self.output_dir.iterdir():
+                    if job_dir.is_dir() and fnmatch.fnmatch(job_dir.name, job_name):
+                        matched_job_names.add(job_dir.name)
+                        for config_file in job_dir.glob("*_config.yaml"):
+                            configs.append(config_file)
+            except Exception as e:
+                logger.warning(f"Error searching output directory: {e}")
+        else:
+            # Exact match for backward compatibility
+            job_dir = self.output_dir / job_name
+            if job_dir.exists():
+                matched_job_names.add(job_name)
+                for config_file in job_dir.glob("*_config.yaml"):
+                    configs.append(config_file)
+
+        # Log matching results
+        if matched_job_names:
+            logger.info(f"Pattern '{job_name}' matched jobs: {', '.join(sorted(matched_job_names))}")
+        else:
+            logger.info(f"No jobs found matching pattern '{job_name}'")
 
         return configs
 

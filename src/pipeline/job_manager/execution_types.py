@@ -17,8 +17,7 @@ from .types import ExecutionStrategy
 class ExecutionOptions:
     """Unified execution options for all task operations."""
     
-    force_final_generation: bool = False  # Renamed from add_final - forces final audio regeneration
-    skip_final_overwrite: bool = False    # Skip overwriting existing final audio (for gap-filling)
+    force_final_generation: bool = False  # Forces final audio regeneration
     rerender_all: bool = False           # Delete all candidates and re-render everything from scratch
     gap_filling_mode: bool = False       # Indicates this is a gap-filling operation
 

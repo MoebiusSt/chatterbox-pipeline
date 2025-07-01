@@ -30,7 +30,7 @@ class TestExecutionTypes:
         """Test ExecutionOptions default values."""
         options = ExecutionOptions()
         assert options.force_final_generation == False
-        assert options.skip_final_overwrite == False
+    
         assert options.rerender_all == False
         assert options.gap_filling_mode == False
     
@@ -156,7 +156,7 @@ class TestCLIMapper:
         
         cli_args = self.cli_mapper.menu_choice_to_cli_args(intent)
         assert cli_args["mode"] == "latest-new"
-        assert cli_args["add_final"] == True
+        assert cli_args["force_final_generation"] == True
         assert cli_args["rerender_all"] == True
         
         # Multiple tasks
@@ -277,7 +277,7 @@ class TestMenuOrchestrator:
         assert single_intent.execution_options.rerender_all
         
         # Verify legacy field mapping
-        assert mock_task.add_final == True
+        assert mock_task.force_final_generation == True
         assert mock_task.rerender_all == True
 
 
@@ -294,7 +294,7 @@ class TestIntegrationScenarios:
         # CLI way
         mock_args = Mock()
         mock_args.mode = "latest-new"
-        mock_args.add_final = True
+        mock_args.force_final_generation = True
         
         context = ExecutionContext(
             existing_tasks=[Mock()],

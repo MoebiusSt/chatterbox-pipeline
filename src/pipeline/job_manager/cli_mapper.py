@@ -52,17 +52,9 @@ class CLIMapper:
         # Map strategy to execution options
         execution_options = self.strategy_to_options.get(strategy, ExecutionOptions())
         
-        # Apply add_final flag if present (legacy compatibility)
-        if hasattr(args, "add_final") and args.add_final:
+        # Apply force_final_generation flag if present
+        if hasattr(args, "force_final_generation") and args.force_final_generation:
             execution_options.force_final_generation = True
-        
-        # Apply skip_final_overwrite flag if present
-        if hasattr(args, "skip_final_overwrite") and args.skip_final_overwrite:
-            execution_options.skip_final_overwrite = True
-        
-        # Apply rerender_all flag if present
-        if hasattr(args, "rerender_all") and args.rerender_all:
-            execution_options.rerender_all = True
         
         # Determine tasks based on strategy
         if strategy == ExecutionStrategy.NEW:
@@ -121,13 +113,11 @@ class CLIMapper:
                 cli_args["mode"] = "all"
         
         # Map execution options to CLI flags
-        cli_args["add_final"] = intent.execution_options.force_final_generation
+        cli_args["force_final_generation"] = intent.execution_options.force_final_generation
         
         # Additional options mapping
         if intent.execution_options.rerender_all:
             cli_args["rerender_all"] = True
-        if intent.execution_options.skip_final_overwrite:
-            cli_args["skip_final_overwrite"] = True
         
         return cli_args
 
@@ -140,7 +130,7 @@ class CLIMapper:
         """
         # Define expected CLI options
         expected_cli_options = {
-            "mode", "job", "add_final", "rerender_all", "skip_final_overwrite"
+            "mode", "job", "force_final_generation", "rerender_all"
         }
         
         # Define menu capabilities
@@ -205,7 +195,7 @@ CLI Arguments:
   --mode all            ↔ Menu: 'a' → [Enter] (all tasks)
   --mode all-new        ↔ Menu: 'a' → [Enter] (all tasks, force final)
   --mode new            ↔ Menu: 'n' (create new task)
-  --add-final           ↔ Menu: Options that CREATE final audio
+  --force-final-generation ↔ Menu: Options that CREATE final audio
   
 Interactive Only:
   Candidate Editor      ↔ Menu: 'e' → chunk selection

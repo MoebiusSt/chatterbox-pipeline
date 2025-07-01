@@ -1,5 +1,5 @@
 job:
-  name: "testjob"
+  name: "testjob2"
   run-label: "test2"
 
 input:
