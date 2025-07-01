@@ -74,10 +74,10 @@ class TaskExecutor:
         self._candidate_manager = None
 
         # Initialize handlers (lazy loading)
-        self._preprocessing_handler = None
-        self._generation_handler = None
-        self._validation_handler = None
-        self._assembly_handler = None
+        self._preprocessing_handler: Optional[PreprocessingHandler] = None
+        self._generation_handler: Optional[GenerationHandler] = None
+        self._validation_handler: Optional[ValidationHandler] = None
+        self._assembly_handler: Optional[AssemblyHandler] = None
 
     @property
     def chunker(self) -> SpaCyChunker:

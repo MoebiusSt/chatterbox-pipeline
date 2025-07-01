@@ -87,7 +87,7 @@ class CLIMapper:
         Returns:
             Dictionary of CLI argument equivalents
         """
-        cli_args = {}
+        cli_args: Dict[str, Any] = {}
         
         # Determine mode based on intent
         if intent.execution_mode == "cancelled":
@@ -113,11 +113,11 @@ class CLIMapper:
                 cli_args["mode"] = "all"
         
         # Map execution options to CLI flags
-        cli_args["force_final_generation"] = intent.execution_options.force_final_generation
+        cli_args["force_final_generation"] = bool(intent.execution_options.force_final_generation)
         
         # Additional options mapping
         if intent.execution_options.rerender_all:
-            cli_args["rerender_all"] = True
+            cli_args["rerender_all"] = bool(True)
         
         return cli_args
 
@@ -155,7 +155,7 @@ class CLIMapper:
         Returns:
             Tuple of (job_strategies_dict, global_strategy)
         """
-        job_strategies = {}
+        job_strategies: Dict[str, ExecutionStrategy] = {}
         global_strategy = None
         
         if not mode_arg:
