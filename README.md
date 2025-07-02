@@ -83,21 +83,18 @@ Shortform: -f
 ```
 
 ```bash
-# Parallel processing
-python src/main.py --parallel                  # Parallel task execution
-Shortform: -p
-python src/main.py --max-workers 4             # Adjust number of parallel workers
+# Device selection
+python src/main.py --device cuda               # Force GPU execution
 ```
 
 ```bash
 # Additional options
 python src/main.py --verbose or -v             # Detailed logging
-python src/main.py --device cuda               # Force GPU execution
 ```
 
 ```bash
 # Combined examples
-python src/main.py --job "my_job" -p           # Job + parallel + verbose log
+python src/main.py --job "my_job" --verbose     # Job with verbose logging
 python src/main.py --job "job1" --mode last-new   # Complete check of last task from "job1" and overwriting final audio.
 python src/main.py --job "testjob*" --mode all-new --v # Create new tasks for all jobs matching "testjob*" pattern
 ```

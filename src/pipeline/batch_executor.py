@@ -6,10 +6,9 @@ Handles batch processing with progress tracking and error management.
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from pipeline.task_executor import CompletionStage, TaskExecutor, TaskResult
 from utils.config_manager import ConfigManager, TaskConfig
@@ -39,21 +38,17 @@ class BatchResult:
 
 
 class BatchExecutor:
-    """Executes multiple TTS tasks in parallel with progress tracking."""
+    """Executes multiple TTS tasks sequentially with progress tracking."""
 
-    def __init__(self, config_manager: ConfigManager, max_workers: Optional[int] = None, parallel_enabled: bool = True):
+    def __init__(self, config_manager: ConfigManager):
         """
         Initialize BatchExecutor.
 
         Args:
             config_manager: Shared ConfigManager instance (avoids redundant loading)
-            max_workers: Maximum number of parallel workers. If None, uses system default.
-            parallel_enabled: Whether parallel execution is enabled. If False, executes sequentially.
         """
         self.config_manager = config_manager
-        self.max_workers = max_workers
-        self.parallel_enabled = parallel_enabled
-        logger.info(f"BatchExecutor initialized with max_workers={max_workers}, parallel_enabled={parallel_enabled}")
+        logger.info("BatchExecutor initialized in sequential mode")
 
     def execute_batch(self, task_configs: List[TaskConfig]) -> List[TaskResult]:
         """
@@ -72,63 +67,22 @@ class BatchExecutor:
 
         results = []
 
-        # Determine execution mode based on task count and parallel flag
-        use_parallel = self.parallel_enabled and total_tasks > 1
+        # Sequential execution only
+        execution_mode = "SINGLE" if total_tasks == 1 else "SEQUENTIAL"
+        logger.debug(f"Execution mode: {execution_mode}")
 
-        if not use_parallel:
-            # Sequential execution - single task or parallel disabled
-            execution_mode = "SINGLE" if total_tasks == 1 else "SEQUENTIAL"
-            logger.debug(f"Execution mode: {execution_mode}")
+        # Execute tasks sequentially
+        for i, task_config in enumerate(task_configs, 1):
+            if total_tasks > 1:
+                logger.info(f"▶️  Executing task {i}/{total_tasks}: {task_config.job_name}:{task_config.task_name}")
+            
+            result = self._execute_single_task(task_config)
+            results.append(result)
 
-            # Execute tasks sequentially
-            for i, task_config in enumerate(task_configs, 1):
-                if total_tasks > 1:
-                    logger.info(f"▶️  Executing task {i}/{total_tasks}: {task_config.job_name}:{task_config.task_name}")
-                
-                result = self._execute_single_task(task_config)
-                results.append(result)
-
-                # Log completion for multi-task sequential execution
-                if total_tasks > 1:
-                    status = "✅ SUCCESS" if result.success else "❌ FAILED"
-                    logger.info(f"{status}: {task_config.job_name}:{task_config.task_name}")
-
-        else:
-            # Parallel execution - multiple tasks with parallel enabled
-            logger.debug(f"Execution mode: PARALLEL, Max Workers: {self.max_workers or 'auto'}")
-
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                # Submit all tasks
-                future_to_config = {
-                    executor.submit(self._execute_single_task, config): config
-                    for config in task_configs
-                }
-
-                # Collect results as they complete
-                for future in as_completed(future_to_config):
-                    config = future_to_config[future]
-                    try:
-                        result = future.result()
-                        results.append(result)
-
-                        # Log completion
-                        status = "✅ SUCCESS" if result.success else "❌ FAILED"
-                        logger.info(f"{status}: {config.job_name}:{config.task_name}")
-
-                    except Exception as e:
-                        logger.error(
-                            f"❌ FAILED: {config.job_name}:{config.task_name} - {e}"
-                        )
-                        # Create a failed result
-                        failed_result = TaskResult(
-                            task_config=config,
-                            success=False,
-                            completion_stage=CompletionStage.NOT_STARTED,
-                            execution_time=0.0,
-                            error_message=str(e),
-                            final_audio_path=None,
-                        )
-                        results.append(failed_result)
+            # Log completion for multi-task sequential execution
+            if total_tasks > 1:
+                status = "✅ SUCCESS" if result.success else "❌ FAILED"
+                logger.info(f"{status}: {task_config.job_name}:{task_config.task_name}")
 
         # Calculate batch statistics
         execution_time = time.time() - start_time

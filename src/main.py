@@ -73,7 +73,7 @@ Usage Examples:
   %(prog)s --job "my_job"            # Run job by name
   %(prog)s --job "testjob*"          # Run all jobs starting with "testjob"
   %(prog)s --job "test?job"          # Run jobs like "test1job", "test2job" etc.
-  %(prog)s job1.yaml job2.yaml --parallel # Run jobs in parallel mode
+
   %(prog)s --mode new                # Global:Create new tasks for all given jobs
   %(prog)s --mode all                # Global: Run all exisiting tasks of all given jobs
   %(prog)s --mode latest             # Global: Run latest task of all given jobs
@@ -108,19 +108,6 @@ Usage Examples:
     )
 
     # Execution options
-    parser.add_argument(
-        "--parallel",
-        "-p",
-        action="store_true",
-        help="Enable parallel execution for multiple tasks",
-    )
-
-    parser.add_argument(
-        "--max-workers",
-        type=int,
-        default=2,
-        help="Maximum number of parallel workers (default: 2)",
-    )
 
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
@@ -321,13 +308,9 @@ def main() -> int:
             # Batch execution
             logger.debug("Starting batch execution mode")
 
-            batch_executor = BatchExecutor(
-                config_manager, 
-                max_workers=args.max_workers if args.parallel else None,
-                parallel_enabled=args.parallel
-            )
+            batch_executor = BatchExecutor(config_manager)
 
-            # Execute with parallel option
+            # Execute tasks
             task_results = batch_executor.execute_batch(execution_plan.task_configs)
             batch_result = batch_executor.get_batch_summary(task_results)
 
