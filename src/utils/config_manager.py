@@ -176,6 +176,67 @@ class ConfigManager:
         else:
             return data
 
+    def _sanitize_path_identifier(self, value: str) -> str:
+        """
+        Sanitize path identifiers by replacing underscores with hyphens.
+        
+        This prevents conflicts with the filename schema that uses underscores 
+        as separators: {run_label}_{text_base}_{timestamp}
+        
+        Args:
+            value: The string to sanitize
+            
+        Returns:
+            String with underscores replaced by hyphens
+        """
+        if not isinstance(value, str):
+            return value
+        return value.replace("_", "-")
+
+    def _apply_path_sanitization(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Apply path sanitization to job identifiers in config.
+        
+        Only sanitizes:
+        - job: name
+        - job: run-label
+        
+        Does NOT sanitize:
+        - input: reference_audio (real filename)
+        - input: text_file (real filename)
+        - Any other fields
+        
+        Args:
+            config: Configuration dictionary
+            
+        Returns:
+            Config with sanitized job identifiers
+        """
+        # Create a deep copy to avoid modifying the original
+        sanitized_config = copy.deepcopy(config)
+        
+        # Only sanitize job-related identifiers
+        if "job" in sanitized_config:
+            job_section = sanitized_config["job"]
+            
+            # Sanitize job name
+            if "name" in job_section and isinstance(job_section["name"], str):
+                original_name = job_section["name"]
+                sanitized_name = self._sanitize_path_identifier(original_name)
+                if original_name != sanitized_name:
+                    job_section["name"] = sanitized_name
+                    logger.debug(f"Sanitized job name: '{original_name}' → '{sanitized_name}'")
+            
+            # Sanitize run-label
+            if "run-label" in job_section and isinstance(job_section["run-label"], str):
+                original_label = job_section["run-label"]
+                sanitized_label = self._sanitize_path_identifier(original_label)
+                if original_label != sanitized_label:
+                    job_section["run-label"] = sanitized_label
+                    logger.debug(f"Sanitized run-label: '{original_label}' → '{sanitized_label}'")
+        
+        return sanitized_config
+
     def _dump_yaml_with_order(self, config_data: Dict[str, Any], file_handle: TextIO) -> None:
         """Dump YAML with hierarchically preserved key order from default_config.yaml."""
         key_order_structure = self._get_default_key_order()
@@ -258,13 +319,14 @@ class ConfigManager:
             config_path: Path to job-config or task-config file
             
         Returns:
-            Merged configuration dictionary
+            Merged configuration dictionary with sanitized job identifiers
         """
         # Start with default config (complete base configuration)
         config = self.load_default_config()
         
         if config_path is None:
-            return config
+            # Apply sanitization even to default config
+            return self._apply_path_sanitization(config)
         
         if self.is_task_config(config_path):
             # 3-level cascade: default → job → task
@@ -309,6 +371,11 @@ class ConfigManager:
             job_config = self.load_job_config(config_path)
             config = self.merge_configs(job_config, config)
             logger.debug(f"Merged job config: {config_path}")
+        
+        # Apply path sanitization to final merged config
+        # This converts underscores to hyphens in job: name and job: run-label
+        # to prevent conflicts with filename schema: {run_label}_{text_base}_{timestamp}
+        config = self._apply_path_sanitization(config)
         
         return config
 

@@ -1,2 +1,3 @@
-This is a short test sentence for TTS pipeline testing. Visit www.worldwideweb.web.
- 
+This is a LibriVox recording. All LibriVox recordings are in the public domain. For more information, or to volunteer, please visit www.LibriVox.org. 
+
+The War of the Worlds, by H.G. Wells.  Chapter One: The Eve of the War.

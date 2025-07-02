@@ -1,9 +1,9 @@
 job:
   name: "test"
-  run-label: "annie_coleman_rothenberg_1"
+  run-label: "peter_yearsley_1"
 
 input:
-  reference_audio: "annie_coleman_rothenberg_1.wav"        # Dateiname im reference_audio Ordner
+  reference_audio: "peter_yearsley_1.wav"        # Dateiname im reference_audio Ordner
   text_file: "test_short.txt"
 
 generation:
