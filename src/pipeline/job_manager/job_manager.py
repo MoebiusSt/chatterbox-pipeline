@@ -156,6 +156,8 @@ class JobManager:
                 return "latest"
             elif strategy == "last-new":
                 return "latest-new"
+            elif strategy == "new-all":
+                return "all-new"
             return strategy
 
         # Check if it contains job-specific format (contains colon)
@@ -182,5 +184,5 @@ class JobManager:
                 return {}, global_strategy
             except ValueError:
                 raise ValueError(
-                    f"Invalid --mode strategy '{mode_arg}'. Use: latest/last, all, new, latest-new/last-new/new-last, all-new, or job-specific format 'job1:strategy,job2:strategy'"
+                    f"Invalid --mode strategy '{mode_arg}'. Use: latest/last, all, new, latest-new/last-new/new-last, all-new/new-all, or job-specific format 'job1:strategy,job2:strategy'"
                 )

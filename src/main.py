@@ -7,6 +7,7 @@ Implements unified job and task management with automatic state detection and re
 import argparse
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -77,9 +78,6 @@ Usage Examples:
   %(prog)s --mode all                # Global: Run all exisiting tasks of all given jobs
   %(prog)s --mode latest             # Global: Run latest task of all given jobs
   %(prog)s --mode "job1:new,job2:all"  # Specify different strategies per job
-  %(prog)s --force-final-generation  # Force regeneration of final audio from existing candidates
-  %(prog)s --rerender-all            # Delete all existing candidates and re-render everything from scratch
-  %(prog)s --verbose                 # Enable verbose logging
         """,
     )
 
@@ -133,6 +131,12 @@ Usage Examples:
         choices=["auto", "cpu", "cuda", "mps"],
         default="auto",
         help="Device to use for processing (default: auto)",
+    )
+
+    parser.add_argument(
+        "--cli-menu-help",
+        action="store_true",
+        help="Show CLI-Menu equivalents and advanced usage information",
     )
 
     return parser.parse_args()
@@ -191,12 +195,63 @@ def resolve_config_files(args: argparse.Namespace, project_root: Path) -> List[P
     return config_files
 
 
+def confirm_cli_rerender_action(task_configs: List[TaskConfig]) -> bool:
+    """
+    CLI safety confirmation for --rerender-all flag.
+    Shows affected task directories and asks for user confirmation.
+    
+    Args:
+        task_configs: List of TaskConfig objects that will be affected
+        
+    Returns:
+        True if user confirms, False if cancelled
+    """
+    
+    print("\n⚠️  WARNING: RE-RENDER ALL CANDIDATES (CLI Mode)")
+    print("This will DELETE (!) ALL audio chunks and final audio files from the following task directories:")
+    print()
+    
+    # List all affected task directories
+    for i, task in enumerate(task_configs, 1):
+        # Format task display similar to MenuOrchestrator
+        try:
+            dt = datetime.strptime(task.timestamp, "%Y%m%d_%H%M%S")
+            display_time = dt.strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            display_time = task.timestamp
+            
+        run_label_display = task.run_label if task.run_label else "no-label"
+        print(f"  {i}. Job: {task.job_name} ({run_label_display}) - {display_time}")
+        print(f"     Directory: {task.base_output_dir}")
+        
+    print()
+    print("Are you sure you want to proceed? This action cannot be undone!")
+    print("(y = YES, PROCEED | c = CANCEL)")
+    
+    while True:
+        choice = input("\n> ").strip().lower()
+        
+        if choice in ["y", "yes"]:
+            return True
+        elif choice in ["c", "cancel", ""]:  # Include empty input as cancel
+            return False
+        else:
+            print("Please enter 'y' for yes or 'c' to cancel")
+
+
 def main() -> int:
     """Main entry point for the refactored TTS pipeline."""
 
     try:
         # Parse arguments
         args = parse_arguments()
+        
+        # Handle CLI-Menu help request
+        if hasattr(args, 'cli_menu_help') and args.cli_menu_help:
+            from pipeline.job_manager.cli_mapper import CLIMapper
+            cli_mapper = CLIMapper()
+            print(cli_mapper.get_cli_help_text())
+            return 0
         
         # Validate CLI arguments for problematic combinations
         if args.job and args.config_files:
@@ -251,6 +306,12 @@ def main() -> int:
 
         # Print execution summary
         job_manager.print_execution_summary(execution_plan)
+
+        # CLI Safety check for --rerender-all flag
+        if args.rerender_all and execution_plan.task_configs:
+            if not confirm_cli_rerender_action(execution_plan.task_configs):
+                logger.info("❌ Operation cancelled by user")
+                return 0
 
         # Execute tasks
         if (

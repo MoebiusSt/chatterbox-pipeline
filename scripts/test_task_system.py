@@ -155,6 +155,11 @@ def test_mode_argument_aliases():
     assert global_strat == ExecutionStrategy.LATEST_NEW
     assert job_strat == {}
 
+    # Test 'new-all' alias for 'all-new'
+    job_strat, global_strat = job_manager.parse_mode_argument("new-all")
+    assert global_strat == ExecutionStrategy.ALL_NEW
+    assert job_strat == {}
+
     # Test job-specific aliases
     job_strat, global_strat = job_manager.parse_mode_argument("job1:last,job2:last-new")
     assert global_strat is None

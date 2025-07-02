@@ -156,6 +156,10 @@ class TestCLIMapper:
         assert global_strat == ExecutionStrategy.LATEST_NEW
         assert job_strat == {}
         
+        job_strat, global_strat = self.cli_mapper._parse_mode_argument("new-all")
+        assert global_strat == ExecutionStrategy.ALL_NEW
+        assert job_strat == {}
+        
         # Test job-specific aliases
         job_strat, global_strat = self.cli_mapper._parse_mode_argument("job1:last,job2:last-new")
         assert global_strat is None

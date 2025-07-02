@@ -57,29 +57,35 @@ python src/main.py
 # Standard mode (interactive)
 python src/main.py                              # Execute default job from /config/default_config.yaml
 python src/main.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
-python src/main.py --job "my_job"  (or -j)      # Execute job with specific name present in a config or existing outputdirectory
+python src/main.py --job "my_job"               # Execute job with specific name present in a config or existing outputdirectory
 python src/main.py --job "testjob*"             # Execute all jobs starting with "testjob" (pattern matching)
 python src/main.py --job "test?job"             # Execute jobs matching pattern (e.g., test1job, test2job)
+Shortform: -j
 ```
 
 ```bash
-# Execution strategies (global)
-python src/main.py --mode last or latest (or -m) # Execute latest task (again) for all given jobs.(*)
-python src/main.py --mode all                    # Execute all found tasks (again) for all given jobs.(*)
-python src/main.py --mode new                    # Create new tasks for all given jobs.(*)
-python src/main.py --mode last-new or new-last   # Execute latest task but re-assemble a new final audio for all given jobs.(*) 
-python src/main.py --mode all-new               # Execute all tasks + new final audios for all given jobs.
+# Execution strategies (global):
+python src/main.py --mode last or latest # Execute latest task (again) for all given jobs.
+python src/main.py --mode all                    # Execute all found tasks (again) for all given jobs.
+python src/main.py --mode new                    # Create new task for all given jobs.
 python src/main.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
+Shortform: -m
+
+# Execution strategies with force-overwriting final audio:
+python src/main.py --mode last-new or new-last   # Execute latest task + create new final audio for all given jobs. 
+python src/main.py --mode all-new or new-all     # Execute all tasks + new final audios for all given jobs.
 ```
 
 ```bash
 # Force regeneration
-python src/main.py --force-final-generation (or -r)  # Another way of globally forcing the regeneration of final audio from existing candidates, sane as --mode new|last-new|all-new
+python src/main.py --force-final-generation      # Another way of globally forcing the regeneration of final audio from existing candidates, same as --mode new|last-new|all-new
+Shortform: -f
 ```
 
 ```bash
 # Parallel processing
-python src/main.py --parallel (or -p)          # Parallel task execution
+python src/main.py --parallel                  # Parallel task execution
+Shortform: -p
 python src/main.py --max-workers 4             # Adjust number of parallel workers
 ```
 
@@ -91,9 +97,9 @@ python src/main.py --device cuda               # Force GPU execution
 
 ```bash
 # Combined examples
-python src/main.py -j "my_job" -p -v           # Job + parallel + verbose
-python src/main.py --job "job1" --mode last-new --v # Complete non-interactive execution of last task from "job1", verbose log.
-python src/main.py --job "testjob*" --mode new --v # Create new tasks for all jobs matching "testjob*" pattern
+python src/main.py --job "my_job" -p           # Job + parallel + verbose log
+python src/main.py --job "job1" --mode last-new   # Complete check of last task from "job1" and overwriting final audio.
+python src/main.py --job "testjob*" --mode all-new --v # Create new tasks for all jobs matching "testjob*" pattern
 ```
 
 #### Note: 
@@ -106,7 +112,7 @@ If you want to partially re-render an already completed task, delete some (bad) 
 - **all**: Uses all tasks (Checks all tasks – final audio are present? If not resumes tasks, if yes skips)
 - **new**: Creates a new task
 - **last-new/new-last**: Checks latest task, resumes it, fills gaps, re-assembles new final audio
-- **all-new**: Checks all tasks, resumes tasks, fills gaps, re-assembles new final audio
+- **all-new/new-all**: Checks all tasks, resumes tasks, fills gaps, re-assembles new final audio
 
 #### Interactive Selection
 When no strategy is specified, the user is prompted interactively:

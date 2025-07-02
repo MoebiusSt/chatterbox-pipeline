@@ -56,6 +56,10 @@ class CLIMapper:
         if hasattr(args, "force_final_generation") and args.force_final_generation:
             execution_options.force_final_generation = True
         
+        # Apply rerender_all flag if present
+        if hasattr(args, "rerender_all") and args.rerender_all:
+            execution_options.rerender_all = True
+        
         # Determine tasks based on strategy
         if strategy == ExecutionStrategy.NEW:
             tasks = []  # Will be created by execution planner
@@ -104,10 +108,7 @@ class CLIMapper:
         elif len(intent.tasks) == 1:
             # Single task
             if intent.execution_options.force_final_generation:
-                if intent.execution_options.rerender_all:
-                    cli_args["mode"] = "latest-new"  # With rerender
-                else:
-                    cli_args["mode"] = "latest-new"
+                cli_args["mode"] = "latest-new"
             else:
                 cli_args["mode"] = "latest"
         else:
@@ -176,6 +177,8 @@ class CLIMapper:
                 return "latest"
             elif strategy == "last-new":
                 return "latest-new"
+            elif strategy == "new-all":
+                return "all-new"
             return strategy
         
         # Split by comma for multiple job strategies
@@ -221,22 +224,41 @@ class CLIMapper:
             Formatted help text string
         """
         help_text = """
-CLI-Menu Equivalents:
+CLI-Menu Equivalents Guide
+==========================
 
-CLI Arguments:
+BASIC EXECUTION STRATEGIES:
   --mode latest         ↔ Menu: [Enter] on latest task → [Enter] (fill gaps)
   --mode latest-new     ↔ Menu: [Enter] on latest task → [Enter] (force final)
-  --mode all            ↔ Menu: 'a' → [Enter] (all tasks)
+  --mode all            ↔ Menu: 'a' → [Enter] (all tasks, fill gaps)
   --mode all-new        ↔ Menu: 'a' → [Enter] (all tasks, force final)
   --mode new            ↔ Menu: 'n' (create new task)
-  --force-final-generation ↔ Menu: Options that CREATE final audio
-  
-Interactive Only:
-  Candidate Editor      ↔ Menu: 'e' → chunk selection
-  Safety Confirmations  ↔ Menu: Automatic on rerender operations
-  Task State Display    ↔ Menu: Automatic task analysis display
 
-All CLI operations have menu equivalents with additional safety and state information.
+ALIASES (easier to remember):
+  --mode new-last       ↔ Same as --mode latest-new
+  --mode new-all        ↔ Same as --mode all-new
+
+FORCE OPTIONS:
+  --force-final-generation ↔ Menu: Options that CREATE final audio
+  --rerender-all           ↔ Menu: 'r' → confirm (DELETE all candidates, re-render)
+
+JOB-SPECIFIC STRATEGIES:
+  --mode "job1:latest-new,job2:all" ↔ Menu: Multiple job selection with different strategies
+
+EXAMPLES:
+  python main.py --mode latest-new --rerender-all
+  ↔ Menu: [Enter] → 'r' → 'y' (latest task + delete all + rerender + new final)
+  
+  python main.py --mode all-new --force-final-generation  
+  ↔ Menu: 'a' → [Enter] (all tasks + force final generation)
+
+INTERACTIVE-ONLY FEATURES:
+  • Candidate Editor     ↔ Menu: 'e' → chunk selection & editing
+  • Selective Task Ops   ↔ Menu: Individual task selection (1,2,3...)
+
+NOTES:
+  • All CLI operations have menu equivalents
+  • Menu provides additional safety checks and state information
         """.strip()
         
         return help_text
