@@ -82,23 +82,16 @@ class BatchExecutor:
 
             # Execute tasks sequentially
             for i, task_config in enumerate(task_configs, 1):
-                # Add visual separator between tasks (except for first task)
-                if total_tasks > 1 and i > 1:
-                    task_separator = f"{'=' * 15} {task_config.task_name} {'=' * 15}"
-                    logger.info(f"\n{task_separator}")
-                
                 if total_tasks > 1:
-                    task_prefix = f"[Task-{task_config.task_name[:12]}]"
-                    logger.info(f"▶️  {task_prefix} Executing task {i}/{total_tasks}: {task_config.job_name}:{task_config.task_name}")
+                    logger.info(f"▶️  Executing task {i}/{total_tasks}: {task_config.job_name}:{task_config.task_name}")
                 
                 result = self._execute_single_task(task_config)
                 results.append(result)
 
                 # Log completion for multi-task sequential execution
                 if total_tasks > 1:
-                    task_prefix = f"[Task-{task_config.task_name[:12]}]"
                     status = "✅ SUCCESS" if result.success else "❌ FAILED"
-                    logger.info(f"{task_prefix} {status}: {task_config.job_name}:{task_config.task_name}")
+                    logger.info(f"{status}: {task_config.job_name}:{task_config.task_name}")
 
         else:
             # Parallel execution - multiple tasks with parallel enabled

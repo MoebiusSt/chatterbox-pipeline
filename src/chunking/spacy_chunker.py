@@ -8,8 +8,7 @@ from spacy.tokens import Doc, Span
 
 from .base_chunker import BaseChunker, TextChunk
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Use the centralized logging configuration from main.py
 logger = logging.getLogger(__name__)
 
 

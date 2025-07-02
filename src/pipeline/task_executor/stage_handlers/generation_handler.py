@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List
 
 from generation.candidate_manager import CandidateManager
-from generation.tts_generator import TTSGenerator, set_generation_context
+from generation.tts_generator import TTSGenerator
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from chunking.base_chunker import TextChunk
@@ -58,6 +58,8 @@ class GenerationHandler:
                 reference_audio_path = self.file_manager.get_reference_audio()
                 self.tts_generator.load_reference_audio(str(reference_audio_path))
                 logger.info(f"✅ Reference audio loaded: {reference_audio_path.name}")
+                # Store reference audio path for SERIALIZED model access
+                self.reference_audio_path = str(reference_audio_path)
             except FileNotFoundError as e:
                 logger.error(f"❌ Reference audio file not found: {e}")
                 logger.error("⚠️  The generation stage cannot proceed without reference audio.")
@@ -107,11 +109,6 @@ class GenerationHandler:
                 
                 for chunk, existing_file_count in chunks_to_generate:
                     chunk_num = chunk.idx + 1
-                    
-                    # Setze Context für diese Chunk-Verarbeitung
-                    task_name = self.file_manager.task_config.task_name if hasattr(self.file_manager, 'task_config') else "unknown"
-                    set_generation_context(task_name, chunk_num, 0, total_chunks)
-                    
                     logger.info(f"🎯 CHUNK {chunk_num}/{total_chunks}")
                     logger.debug(f"Text length: {len(chunk.text)} characters")
                     if len(chunk.text) > 80:
@@ -210,6 +207,7 @@ class GenerationHandler:
                     "conservative_candidate", None
                 ),
                 tts_params=tts_params,
+                reference_audio_path=getattr(self, 'reference_audio_path', None),
             )
 
             for candidate in candidates:
@@ -241,6 +239,7 @@ class GenerationHandler:
                 chunk_index=chunk.idx,
                 candidate_indices=one_based_indices,
                 output_dir=self.file_manager.task_directory,
+                reference_audio_path=getattr(self, 'reference_audio_path', None),
             )
 
             logger.debug(

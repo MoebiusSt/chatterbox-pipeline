@@ -14,8 +14,7 @@ from .batch_processor import BatchProcessor, GenerationResult
 from .selection_strategies import SelectionStrategies
 from .tts_generator import TTSGenerator
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Use the centralized logging configuration from main.py
 logger = logging.getLogger(__name__)
 
 
@@ -63,12 +62,13 @@ class CandidateManager:
 
         # Set up candidates directory
         if output_dir:
-            candidates_dir = output_dir / "candidates"
+            self.candidates_dir = output_dir / "candidates"
         elif candidates_dir is None:
-            candidates_dir = (
+            self.candidates_dir = (
                 Path(__file__).resolve().parents[2] / "data" / "output" / "candidates"
             )
-        self.candidates_dir = Path(candidates_dir)
+        else:
+            self.candidates_dir = Path(candidates_dir)
 
         # Initialize components
         self.batch_processor = BatchProcessor(max_retries=max_retries)
@@ -122,6 +122,7 @@ class CandidateManager:
         chunk_index: int,
         candidate_indices: List[int],
         output_dir: Path,
+        reference_audio_path: Optional[str] = None,
     ) -> List[AudioCandidate]:
         """
         Generate only specific candidate indices for a chunk (selective recovery).
@@ -156,6 +157,7 @@ class CandidateManager:
             conservative_config=conservative_config,
             total_candidates=total_candidates,
             tts_params=tts_params,
+            reference_audio_path=reference_audio_path,
         )
 
         # Save the specific candidates using FileManager structure (chunk_XXX/candidate_YY.wav)
@@ -198,6 +200,7 @@ class CandidateManager:
         chunk: TextChunk,
         tts_generator: TTSGenerator,
         generation_params: Dict[str, Any],
+        reference_audio_path: Optional[str] = None,
     ) -> GenerationResult:
         """
         Generates multiple candidates for a single text chunk with proper retry logic.
@@ -239,6 +242,7 @@ class CandidateManager:
                 temperature=tts_params.get("temperature"),
                 conservative_config=conservative_config_for_call,
                 tts_params=tts_params,  # Pass complete tts_params for repetition_penalty etc.
+                reference_audio_path=reference_audio_path,
             )
 
             # Filter out failed candidates (those with very short audio)

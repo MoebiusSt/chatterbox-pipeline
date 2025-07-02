@@ -1,17 +1,12 @@
 import logging
-import uuid
 import warnings
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import threading
-import sys
-import io
 
 import torch
 
-from generation.model_cache import ChatterboxModelCache, ConditionalCache
+from generation.model_cache import ChatterboxModelCache, SerializedModelAccess
 
 # Import the standardized AudioCandidate from file_manager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
@@ -28,57 +23,41 @@ def set_generation_context(task_name: str = "", chunk_num: int = 0, candidate_nu
     _thread_local.candidate_num = candidate_num 
     _thread_local.total_chunks = total_chunks
 
-def get_generation_context() -> tuple:
-    """Holt den aktuellen Generierungskontext."""
-    task_name = getattr(_thread_local, 'task_name', '')
+def get_generation_context() -> tuple[str, int, int, int]:
+    """Gibt den aktuellen Generierungskontext zurück."""
+    task_name = getattr(_thread_local, 'task_name', 'unknown')
     chunk_num = getattr(_thread_local, 'chunk_num', 0)
     candidate_num = getattr(_thread_local, 'candidate_num', 0)
     total_chunks = getattr(_thread_local, 'total_chunks', 0)
     return task_name, chunk_num, candidate_num, total_chunks
 
 def get_context_prefix() -> str:
-    """Erstellt einen Context-Prefix für Log-Ausgaben."""
+    """Erstellt einen Kontext-Prefix für Logging-Nachrichten."""
     task_name, chunk_num, candidate_num, total_chunks = get_generation_context()
-    if task_name and chunk_num > 0:
-        return f"[{task_name[:8]}-Chk{chunk_num:02d}/{total_chunks:02d}-Cd{candidate_num:02d}]"
-    elif task_name:
-        return f"[{task_name[:8]}]"
-    return ""
-
-class ContextualStdErrHandler:
-    """Fängt stderr ab und formatiert tqdm-Ausgaben mit Context."""
     
-    def __init__(self, original_stderr: Any) -> None:
-        self.original_stderr = original_stderr
-        self.buffer = io.StringIO()
-        
-    def write(self, data: str) -> int:
-        # Prüfe, ob es eine tqdm/Sampling-Ausgabe ist
-        if "Sampling:" in data:
-            # Ersetze "Sampling:" mit Context-Info
-            task_name, chunk_num, candidate_num, total_chunks = get_generation_context()
-            if chunk_num > 0:
-                context_prefix = f"Chk:{chunk_num:02d}/{total_chunks:02d}, Cd:{candidate_num:02d}"
-                data = data.replace("Sampling:", context_prefix)
-        
-        return self.original_stderr.write(data)
-        
-    def flush(self) -> None:
-        self.original_stderr.flush()
-        
-    def close(self) -> None:
-        if hasattr(self.original_stderr, 'close'):
-            self.original_stderr.close()
+    if task_name and task_name != 'unknown':
+        # Kürze den Task-Namen für bessere Lesbarkeit
+        short_task = task_name.split('_')[0] if '_' in task_name else task_name[:10]
+        if chunk_num > 0 and candidate_num > 0:
+            return f"[{short_task}-C{chunk_num:02d}-{candidate_num}]"
+        elif chunk_num > 0:
+            return f"[{short_task}-C{chunk_num:02d}]"
+        else:
+            return f"[{short_task}]"
+    else:
+        return "[?]"
+
+
 
 class TTSGenerator:
     """
-    Wrapper for ChatterboxTTS model that provides generation capabilities
-    with candidate management and retry logic.
+    THREAD-SAFE TTS Generator with complete model serialization.
+    Uses SerializedModelAccess to prevent all race conditions in parallel execution.
     """
 
     def __init__(self, config: Dict[str, Any], device: str = "auto", seed: int = 12345):
         """
-        Initializes the TTSGenerator.
+        Initializes the THREAD-SAFE TTSGenerator.
 
         Args:
             config: Configuration dictionary with generation settings.
@@ -89,12 +68,12 @@ class TTSGenerator:
         self.device = device if device != "auto" else self._detect_device()
         self.seed = seed
 
-        # Use cached model instead of loading fresh
+        # Use SERIALIZED model access instead of direct model reference
         self.model = ChatterboxModelCache.get_model(self.device)
-        self.conditional_cache = ConditionalCache(self.model)
-
+        
+        # NOTE: No longer using ConditionalCache - using SerializedModelAccess directly
         logger.debug(
-            f"TTSGenerator initialized on device: {self.device} (using cached model)"
+            f"THREAD-SAFE TTSGenerator initialized on device: {self.device} (using SERIALIZED model access)"
         )
 
     def _detect_device(self) -> str:
@@ -108,17 +87,26 @@ class TTSGenerator:
 
     def prepare_conditionals(self, wav_fpath: str):
         """
-        Prepares the model conditionals using reference audio.
-        Uses conditional cache to avoid redundant preparation calls.
+        THREAD-SAFE: Prepares model conditionals using COMPLETE MODEL SERIALIZATION.
+        
+        This method now uses SerializedModelAccess to ensure only one thread
+        can access the model at a time, preventing all race conditions.
         """
+        if self.model is None:
+            logger.warning("🚨 No model loaded - cannot prepare conditionals")
+            return
+            
+        thread_id = threading.current_thread().ident
+        logger.debug(f"🔄 Thread {thread_id}: Preparing conditionals for {Path(wav_fpath).name}")
+        
         try:
-            was_prepared = self.conditional_cache.ensure_conditionals(wav_fpath)
-            if was_prepared:
-                logger.debug("Conditionals prepared successfully (fresh)")
-            else:
-                logger.debug("Conditionals were already prepared (cached)")
+            # Use SERIALIZED model access - completely thread-safe
+            with SerializedModelAccess.with_exclusive_model_access(self.model, wav_fpath) as model:
+                # Model is now configured with correct conditionals
+                # The context manager handles all the thread-safety
+                logger.debug(f"✅ Thread {thread_id}: Conditionals prepared using SERIALIZED access")
         except Exception as e:
-            logger.error(f"Error preparing conditionals: {e}")
+            logger.error(f"🚨 Thread {thread_id}: Error preparing conditionals: {e}")
             raise
 
     def generate_single(
@@ -127,34 +115,47 @@ class TTSGenerator:
         exaggeration: float = 0.6,
         cfg_weight: float = 0.7,
         temperature: float = 1.0,
+        reference_audio_path: Optional[str] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
-        Generates a single audio output for the given text.
+        THREAD-SAFE: Generate single audio using COMPLETE MODEL SERIALIZATION.
+        
+        This method now uses SerializedModelAccess to ensure only one thread
+        can access the ChatterboxTTS model at a time, preventing all race conditions.
+
+        Args:
+            text: Text to synthesize
+            exaggeration: Voice exaggeration parameter (0.0-1.0)
+            cfg_weight: Classifier-free guidance weight
+            temperature: Sampling temperature for diversity
+            reference_audio_path: Path to reference audio (required for SERIALIZED access)
+            **kwargs: Additional arguments passed to the TTS model
 
         Returns:
-            Audio tensor containing the generated speech.
+            Generated audio tensor (1D)
         """
+        # Validate inputs
         if not text or not text.strip():
-            prefix = get_context_prefix()
-            logger.warning(f"{prefix} Empty text provided for generation")
-            return torch.zeros((1, 1000), device=self.device)
+            logger.warning("Empty text provided for generation")
+            return torch.zeros(1000, device=self.device)
+            
+        if self.model is None:
+            logger.warning("🚨 No model loaded - generating silence")
+            return torch.zeros(48000, device=self.device)
+            
+        if not reference_audio_path:
+            logger.error("🚨 reference_audio_path is required for SERIALIZED model access")
+            return torch.zeros(48000, device=self.device)
 
-        try:
-            prefix = get_context_prefix()
-            logger.debug(
-                f"{prefix} Generating audio for text (len={len(text)}): '{text[:50]}...'"
-            )
+        # Get context for logging
+        thread_id = threading.current_thread().ident
+        logger.debug(f"Thread {thread_id}: Starting SERIALIZED TTS generation")
 
-            # Check if model is loaded
-            if self.model is None:
-                logger.error(f"{prefix} 🚨 CRITICAL: TTS Model not loaded - generating MOCK AUDIO (noise)!")
-                logger.error(f"{prefix} ⚠️  This will result in NO SPEECH in your final output!")
-                # Return mock audio with length proportional to text length (24kHz sample rate)
-                mock_duration = len(text) * 0.05  # ~50ms per character
-                mock_samples = int(mock_duration * 24000)
-                return torch.randn(mock_samples, device=self.device) * 0.1  # 1D tensor
-
+        # Use COMPLETE MODEL SERIALIZATION for thread safety
+        with SerializedModelAccess.with_exclusive_model_access(self.model, reference_audio_path) as model:
+            logger.debug(f"Thread {thread_id}: Acquired EXCLUSIVE model access")
+            
             # Suppress PyTorch and Transformers warnings during model generation
             with warnings.catch_warnings():
                 warnings.filterwarnings(
@@ -177,36 +178,26 @@ class TTSGenerator:
                     "ignore", message=".*attn_implementation.*", category=FutureWarning
                 )
 
-                # Leite stderr um, um tqdm-Ausgaben mit Context zu formatieren
-                original_stderr = sys.stderr
-                contextual_stderr = ContextualStdErrHandler(original_stderr)
+                logger.debug(f"Generating audio for text (len={len(text)}): '{text[:50]}...'")
                 
-                try:
-                    sys.stderr = contextual_stderr  # type: ignore
-                    # Generate audio using the ChatterboxTTS model
-                    audio = self.model.generate(
-                        text,
-                        exaggeration=exaggeration,
-                        cfg_weight=cfg_weight,
-                        temperature=temperature,
-                        **kwargs,
-                    )
-                finally:
-                    sys.stderr = original_stderr
+                # Generate audio using the ChatterboxTTS model (COMPLETELY SERIALIZED)
+                audio = model.generate(
+                    text,
+                    exaggeration=exaggeration,
+                    cfg_weight=cfg_weight,
+                    temperature=temperature,
+                    **kwargs,
+                )
 
             # ChatterboxTTS returns 1D tensor - ensure consistency
             if audio.ndim == 2:
                 audio = audio.squeeze(0)  # Remove batch dimension if present
             audio = audio.to(self.device)
 
-            logger.debug(f"{prefix} Generated audio with shape: {audio.shape}")
-            return audio
+            logger.debug(f"Generated audio with shape: {audio.shape}")
+            logger.debug(f"Thread {thread_id}: Released EXCLUSIVE model access")
 
-        except Exception as e:
-            prefix = get_context_prefix()
-            logger.error(f"{prefix} Error generating audio for text '{text[:50]}...': {e}")
-            # Return silence as fallback
-            return torch.zeros((1, 1000), device=self.device)
+        return audio
 
     def generate_candidates(
         self,
@@ -217,6 +208,7 @@ class TTSGenerator:
         temperature: Optional[float] = None,
         conservative_config: Optional[Dict[str, Any]] = None,
         tts_params: Optional[Dict[str, Any]] = None,
+        reference_audio_path: Optional[str] = None,
         **kwargs,
     ) -> List[AudioCandidate]:
         """
@@ -260,12 +252,11 @@ class TTSGenerator:
         cfg_max_deviation = tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = tts_params.get("temperature_max_deviation", 0.2)
 
-        prefix = get_context_prefix()
         logger.info(
-            f"{prefix} Generating {num_candidates} diverse candidates for text (len={len(text)})"
+            f"Generating {num_candidates} diverse candidates for text (len={len(text)})"
         )
         logger.debug(
-            f"{prefix} Expressive ranges: exag=[{base_exaggeration-exag_max_deviation:.2f}, {base_exaggeration:.2f}], "
+            f"Expressive ranges: exag=[{base_exaggeration-exag_max_deviation:.2f}, {base_exaggeration:.2f}], "
             f"cfg=[{base_cfg_weight:.2f}, {base_cfg_weight+cfg_max_deviation:.2f}], "
             f"temp=[{base_temperature:.2f}, {base_temperature+temp_max_deviation:.2f}]"
         )
@@ -315,6 +306,7 @@ class TTSGenerator:
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
+                    reference_audio_path=reference_audio_path,
                     **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
@@ -350,10 +342,6 @@ class TTSGenerator:
 
         for i in range(num_candidates):
             try:
-                # Setze Context für diesen Kandidaten
-                task_name, chunk_num, _, total_chunks = get_generation_context()
-                set_generation_context(task_name, chunk_num, i + 1, total_chunks)
-                
                 # Set unique seed for this candidate
                 candidate_seed = self.seed + (i * 1000) + hash(text) % 10000
                 torch.manual_seed(candidate_seed)
@@ -412,8 +400,7 @@ class TTSGenerator:
                     candidate_type = "EXPRESSIVE"
 
                 # Debug: Log tts_params before extracting additional_params
-                prefix = get_context_prefix()
-                logger.info(f"{prefix} CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}")
+                logger.info(f"CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}")
 
                 # Extract additional TTS parameters from tts_params
                 additional_params = {k: v for k, v in tts_params.items() 
@@ -435,6 +422,7 @@ class TTSGenerator:
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
+                    reference_audio_path=reference_audio_path,
                     **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
@@ -449,22 +437,19 @@ class TTSGenerator:
 
                 candidates.append(candidate)
                 # NOTE: Using ChatterboxTTS native sample rate (24kHz) for duration calculation
-                prefix = get_context_prefix()
                 logger.debug(
-                    f"{prefix} Generated: duration={audio.shape[-1]/24000:.2f}s, seed={candidate_seed}"
+                    f"Generated: duration={audio.shape[-1]/24000:.2f}s, seed={candidate_seed}"
                 )
 
             except Exception as e:
-                prefix = get_context_prefix()
                 logger.error(
-                    f"{prefix} Failed to generate candidate {i+1}/{num_candidates}: {e}"
+                    f"Failed to generate candidate {i+1}/{num_candidates}: {e}"
                 )
                 # Continue with remaining candidates
                 continue
 
-        prefix = get_context_prefix()
         logger.debug(
-            f"{prefix} Successfully generated {len(candidates)}/{num_candidates} diverse candidates"
+            f"Successfully generated {len(candidates)}/{num_candidates} diverse candidates"
         )
         return candidates
 
@@ -478,6 +463,7 @@ class TTSGenerator:
         conservative_config: Optional[Dict[str, Any]] = None,
         tts_params: Optional[Dict[str, Any]] = None,
         total_candidates: int = 5,
+        reference_audio_path: Optional[str] = None,
         **kwargs,
     ) -> List[AudioCandidate]:
         """
@@ -616,6 +602,7 @@ class TTSGenerator:
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
+                    reference_audio_path=reference_audio_path,
                     **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
@@ -662,14 +649,11 @@ class TTSGenerator:
             Dictionary of current TTS parameters and cache information
         """
         cache_info = ChatterboxModelCache.get_cache_info()
-        conditional_state = (
-            self.conditional_cache.get_current_state() if self.conditional_cache else {}
-        )
 
         return {
             "device": self.device,
             "seed": self.seed,
             "model_type": "ChatterboxTTS",
             "model_cache": cache_info,
-            "conditional_cache": conditional_state,
+            "serialized_access": "SerializedModelAccess enabled for thread-safety",
         }

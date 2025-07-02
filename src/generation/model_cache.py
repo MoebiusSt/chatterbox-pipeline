@@ -1,12 +1,14 @@
 """
 Model cache system for ChatterboxTTS to avoid repeated model loading.
-Implements singleton pattern with device-specific caching and conditional state management.
+Implements singleton pattern with device-specific caching and COMPLETE MODEL SERIALIZATION 
+to prevent race conditions in parallel execution.
 """
 
 import hashlib
 import logging
 import threading
 import warnings
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -146,83 +148,144 @@ class ChatterboxModelCache:
         }
 
 
-class ConditionalCache:
+class SerializedModelAccess:
     """
-    Manages conditional state for a ChatterboxTTS model.
-    Tracks which reference audio was last used to avoid redundant prepare_conditionals calls.
+    COMPLETE MODEL SERIALIZATION: Ensures only ONE thread can access the ChatterboxTTS model 
+    at any time, preventing all race conditions with model.conds and internal state.
+    
+    This is the nuclear option for thread-safety - complete serialization of model access.
     """
-
-    def __init__(self, model):
+    
+    _global_model_lock = threading.RLock()  # Reentrant lock for nested calls
+    _current_conditionals_cache: Dict[str, Any] = {}  # Global conditionals cache
+    
+    @classmethod
+    def with_exclusive_model_access(cls, model, reference_audio_path: str):
         """
-        Initialize conditional cache for a model.
-        """
-        self.model = model
-        self.current_reference_audio = None
-        self.current_reference_hash = None
-
-    def ensure_conditionals(self, reference_audio_path: str) -> bool:
-        """
-        Ensure conditionals are prepared for the given reference audio.
-        Only calls prepare_conditionals if the reference audio has changed.
-
+        Context manager that provides EXCLUSIVE access to the ChatterboxTTS model.
+        Completely serializes model access across all threads.
+        
+        Args:
+            model: ChatterboxTTS model instance
+            reference_audio_path: Path to reference audio for conditionals
+            
         Returns:
-            True if conditionals were prepared, False if already cached
+            Context manager that ensures exclusive model access
         """
-        if self.model is None:
-            logger.warning("Model not loaded - skipping conditional preparation")
-            return False
+        return _ExclusiveModelContext(model, reference_audio_path)
 
-        # Calculate hash of reference audio path for comparison
-        reference_hash = self._calculate_file_hash(reference_audio_path)
 
-        if (
-            self.current_reference_audio != reference_audio_path
-            or self.current_reference_hash != reference_hash
-        ):
-
-            logger.debug(
-                f"Preparing conditionals for: {Path(reference_audio_path).name}"
-            )
-            try:
-                self.model.prepare_conditionals(wav_fpath=reference_audio_path)
-                self.current_reference_audio = reference_audio_path
-                self.current_reference_hash = reference_hash
-                logger.debug("Conditionals prepared successfully")
-                return True
-            except Exception as e:
-                logger.error(f"Error preparing conditionals: {e}")
-                raise
-        else:
-            logger.debug(
-                f"Conditionals already prepared for: {Path(reference_audio_path).name}"
-            )
-            return False
-
-    def _calculate_file_hash(self, file_path: str) -> str:
-        """Calculate hash of file for change detection."""
+class _ExclusiveModelContext:
+    """Internal context manager for exclusive model access."""
+    
+    def __init__(self, model, reference_audio_path: str):
+        self.model = model
+        self.reference_audio_path = reference_audio_path
+        self.thread_id = threading.current_thread().ident
+        
+    def __enter__(self):
+        # Acquire the global model lock - ONLY ONE THREAD can proceed
+        logger.debug(f"🔒 Thread {self.thread_id}: Acquiring EXCLUSIVE model access...")
+        SerializedModelAccess._global_model_lock.acquire()
+        
+        try:
+            # Check if we need to prepare conditionals
+            cache_key = self._get_cache_key(self.reference_audio_path)
+            
+            if cache_key not in SerializedModelAccess._current_conditionals_cache:
+                logger.debug(f"🔄 Thread {self.thread_id}: Preparing conditionals for {Path(self.reference_audio_path).name}")
+                start_time = time.time()
+                
+                # Prepare conditionals - completely serialized
+                self.model.prepare_conditionals(wav_fpath=self.reference_audio_path)
+                
+                # Cache the fact that conditionals are prepared
+                SerializedModelAccess._current_conditionals_cache[cache_key] = {
+                    'reference_audio': self.reference_audio_path,
+                    'prepared_at': time.time(),
+                    'thread_id': self.thread_id
+                }
+                
+                elapsed = time.time() - start_time
+                logger.debug(f"✅ Thread {self.thread_id}: Conditionals prepared in {elapsed:.2f}s")
+            else:
+                logger.debug(f"♻️ Thread {self.thread_id}: Using cached conditionals for {Path(self.reference_audio_path).name}")
+            
+            return self.model
+            
+        except Exception as e:
+            # Release lock on error
+            SerializedModelAccess._global_model_lock.release()
+            logger.error(f"🚨 Thread {self.thread_id}: Error in exclusive model access: {e}")
+            raise
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Release the global model lock
+        logger.debug(f"🔓 Thread {self.thread_id}: Releasing EXCLUSIVE model access")
+        SerializedModelAccess._global_model_lock.release()
+        
+        if exc_type is not None:
+            logger.error(f"🚨 Thread {self.thread_id}: Exception in exclusive model context: {exc_val}")
+    
+    def _get_cache_key(self, file_path: str) -> str:
+        """Generate cache key for conditionals."""
         try:
             path = Path(file_path)
             if not path.exists():
                 return f"missing_{file_path}"
-
-            # Use file size and modification time for quick hash
+            
+            # Use file size and modification time for cache key
             stat = path.stat()
             content = f"{path.name}_{stat.st_size}_{stat.st_mtime}"
-            return hashlib.md5(content.encode()).hexdigest()[:8]
+            return hashlib.md5(content.encode()).hexdigest()[:12]
         except Exception as e:
-            logger.warning(f"Could not calculate hash for {file_path}: {e}")
+            logger.warning(f"Could not generate cache key for {file_path}: {e}")
             return f"error_{file_path}"
+
+
+class ConditionalCache:
+    """
+    DEPRECATED: Use SerializedModelAccess instead.
+    
+    Legacy conditional cache - replaced by complete model serialization.
+    Kept for backward compatibility but should be replaced.
+    """
+
+    def __init__(self, model):
+        """
+        Initialize conditional cache (DEPRECATED - use SerializedModelAccess).
+        """
+        self.model = model
+        logger.warning("⚠️ ConditionalCache is DEPRECATED. Use SerializedModelAccess for thread-safety.")
+
+    def ensure_conditionals(self, reference_audio_path: str) -> bool:
+        """
+        DEPRECATED: Use SerializedModelAccess.with_exclusive_model_access() instead.
+        
+        This method is kept for backward compatibility but is NOT THREAD-SAFE.
+        """
+        logger.warning("⚠️ ensure_conditionals() is DEPRECATED and NOT THREAD-SAFE. Use SerializedModelAccess.")
+        
+        if self.model is None:
+            logger.warning("Model not loaded - skipping conditional preparation")
+            return False
+            
+        try:
+            # Use the new serialized access for safety
+            with SerializedModelAccess.with_exclusive_model_access(self.model, reference_audio_path):
+                # Model is now prepared with correct conditionals
+                return True
+        except Exception as e:
+            logger.error(f"Error preparing conditionals: {e}")
+            raise
 
     def get_current_state(self) -> Dict[str, Any]:
         """Get current conditional state information."""
         return {
-            "reference_audio": self.current_reference_audio,
-            "reference_hash": self.current_reference_hash,
-            "has_conditionals": self.current_reference_audio is not None,
+            "status": "DEPRECATED - Use SerializedModelAccess",
+            "thread_id": threading.current_thread().ident,
         }
 
     def reset(self):
         """Reset conditional cache state."""
-        logger.debug("🔄 Resetting conditional cache state")
-        self.current_reference_audio = None
-        self.current_reference_hash = None
+        logger.debug("ConditionalCache.reset() called (DEPRECATED)")

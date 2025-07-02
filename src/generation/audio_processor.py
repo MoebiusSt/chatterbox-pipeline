@@ -7,8 +7,7 @@ import torchaudio as ta
 
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Use the centralized logging configuration from main.py
 logger = logging.getLogger(__name__)
 
 

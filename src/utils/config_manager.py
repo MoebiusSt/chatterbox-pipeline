@@ -197,11 +197,13 @@ class ConfigManager:
         """
         Apply path sanitization to identifiers used in path generation.
         
+        IMPORTANT: This method ONLY sanitizes path-generating identifiers.
+        Input file names (text_file, reference_audio) are NOT modified 
+        to ensure they can still be found by the file system.
+        
         Sanitizes:
         - job: name (used for directory names)
         - job: run-label (used in filename schema)
-        - input: text_file (stem used as text_base in filename schema)
-        - input: reference_audio (stem used for consistency)
         
         The filename schema uses underscores as separators:
         {run_label}_{text_base}_{timestamp}
@@ -210,7 +212,7 @@ class ConfigManager:
             config: Configuration dictionary
             
         Returns:
-            Config with sanitized path identifiers
+            Config with sanitized path identifiers (input files unchanged)
         """
         # Create a deep copy to avoid modifying the original
         sanitized_config = copy.deepcopy(config)
@@ -235,37 +237,9 @@ class ConfigManager:
                     job_section["run-label"] = sanitized_label
                     logger.debug(f"Sanitized run-label: '{original_label}' → '{sanitized_label}'")
         
-        # Sanitize input file identifiers (filename stems used in path generation)
-        if "input" in sanitized_config:
-            input_section = sanitized_config["input"]
-            
-            # Sanitize text_file (stem becomes text_base in filename schema)
-            if "text_file" in input_section and isinstance(input_section["text_file"], str):
-                original_text_file = input_section["text_file"]
-                # Split filename and extension
-                path_obj = Path(original_text_file)
-                original_stem = path_obj.stem
-                extension = path_obj.suffix
-                
-                sanitized_stem = self._sanitize_path_identifier(original_stem)
-                if original_stem != sanitized_stem:
-                    sanitized_text_file = f"{sanitized_stem}{extension}"
-                    input_section["text_file"] = sanitized_text_file
-                    logger.debug(f"Sanitized text_file: '{original_text_file}' → '{sanitized_text_file}'")
-            
-            # Sanitize reference_audio (for consistency and potential future path usage)
-            if "reference_audio" in input_section and isinstance(input_section["reference_audio"], str):
-                original_audio_file = input_section["reference_audio"]
-                # Split filename and extension
-                path_obj = Path(original_audio_file)
-                original_stem = path_obj.stem
-                extension = path_obj.suffix
-                
-                sanitized_stem = self._sanitize_path_identifier(original_stem)
-                if original_stem != sanitized_stem:
-                    sanitized_audio_file = f"{sanitized_stem}{extension}"
-                    input_section["reference_audio"] = sanitized_audio_file
-                    logger.debug(f"Sanitized reference_audio: '{original_audio_file}' → '{sanitized_audio_file}'")
+        # NOTE: Input files (text_file, reference_audio) are NOT sanitized!
+        # They must remain unchanged to ensure file system can find them.
+        # Only their STEMS are used (sanitized) for path generation in create_task_config().
         
         return sanitized_config
 
@@ -480,6 +454,9 @@ class ConfigManager:
     ) -> TaskConfig:
         """
         Create a TaskConfig object from merged configuration.
+        
+        Sanitizes ONLY the path components used for directory/file generation,
+        while preserving original input file names for system lookups.
 
         Returns:
             TaskConfig object
@@ -487,23 +464,32 @@ class ConfigManager:
         if timestamp is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        job_name = config["job"]["name"]
-        run_label = config["job"].get("run-label", "")
-        text_file = config["input"]["text_file"]
+        job_name = config["job"]["name"]  # Already sanitized in _apply_path_sanitization()
+        run_label = config["job"].get("run-label", "")  # Already sanitized
+        text_file = config["input"]["text_file"]  # Original filename preserved
 
-        # Create task directory name
-        text_base = Path(text_file).stem
+        # Extract and sanitize text_base for path generation ONLY
+        original_text_base = Path(text_file).stem
+        sanitized_text_base = self._sanitize_path_identifier(original_text_base)
+        
+        # Log sanitization if needed for debugging
+        if original_text_base != sanitized_text_base:
+            logger.debug(f"Sanitized text_base for path generation: '{original_text_base}' → '{sanitized_text_base}'")
+
+        # Create task directory name using sanitized components
         if run_label:
-            task_dir_name = f"{run_label}_{text_base}_{timestamp}"
+            task_dir_name = f"{run_label}_{sanitized_text_base}_{timestamp}"
+            task_name = f"{run_label}_{sanitized_text_base}_{timestamp}"
         else:
-            task_dir_name = f"{text_base}_{timestamp}"
+            task_dir_name = f"{sanitized_text_base}_{timestamp}"
+            task_name = f"{sanitized_text_base}_{timestamp}"
 
         # Create task directory path
         job_dir = self.output_dir / job_name
         task_directory = job_dir / task_dir_name
 
         return TaskConfig(
-            task_name=f"{run_label}_{text_base}_{timestamp}" if run_label else f"{text_base}_{timestamp}",
+            task_name=task_name,
             run_label=run_label,
             timestamp=timestamp,
             base_output_dir=task_directory,
@@ -516,6 +502,8 @@ class ConfigManager:
     ) -> Path:
         """
         Save task configuration as task-yaml file with preserved key order.
+        
+        Uses sanitized filename components while preserving original input data.
 
         Returns:
             Path to saved task-yaml file
@@ -524,18 +512,21 @@ class ConfigManager:
         job_dir = self.output_dir / task_config.job_name
         job_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create task-yaml filename
-        # Extract original text_base from config_data instead of using task_name (which already has timestamp)
-        text_file = config_data["input"]["text_file"]
-        text_base = Path(text_file).stem
+        # Create task-yaml filename using sanitized components
+        # Extract and sanitize text_base for filename generation
+        text_file = config_data["input"]["text_file"]  # Original filename preserved in config
+        original_text_base = Path(text_file).stem
+        sanitized_text_base = self._sanitize_path_identifier(original_text_base)
+        
         if task_config.run_label:
-            config_filename = f"{task_config.run_label}_{text_base}_{task_config.timestamp}_config.yaml"
+            config_filename = f"{task_config.run_label}_{sanitized_text_base}_{task_config.timestamp}_config.yaml"
         else:
-            config_filename = f"{text_base}_{task_config.timestamp}_config.yaml"
+            config_filename = f"{sanitized_text_base}_{task_config.timestamp}_config.yaml"
 
         config_path = job_dir / config_filename
 
         # Save configuration with preserved key order
+        # The config_data preserves original input filenames for system lookups
         with open(config_path, "w", encoding="utf-8") as f:
             self._dump_yaml_with_order(config_data, f)
 
