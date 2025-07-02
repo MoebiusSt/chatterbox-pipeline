@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import threading
+import sys
+import io
 
 import torch
 
@@ -15,6 +18,57 @@ from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 logger = logging.getLogger(__name__)
 
+# Thread-lokaler Context für Chunk/Candidate-Information
+_thread_local = threading.local()
+
+def set_generation_context(task_name: str = "", chunk_num: int = 0, candidate_num: int = 0, total_chunks: int = 0):
+    """Setzt den aktuellen Generierungskontext für Thread-lokales Logging."""
+    _thread_local.task_name = task_name
+    _thread_local.chunk_num = chunk_num
+    _thread_local.candidate_num = candidate_num 
+    _thread_local.total_chunks = total_chunks
+
+def get_generation_context() -> tuple:
+    """Holt den aktuellen Generierungskontext."""
+    task_name = getattr(_thread_local, 'task_name', '')
+    chunk_num = getattr(_thread_local, 'chunk_num', 0)
+    candidate_num = getattr(_thread_local, 'candidate_num', 0)
+    total_chunks = getattr(_thread_local, 'total_chunks', 0)
+    return task_name, chunk_num, candidate_num, total_chunks
+
+def get_context_prefix() -> str:
+    """Erstellt einen Context-Prefix für Log-Ausgaben."""
+    task_name, chunk_num, candidate_num, total_chunks = get_generation_context()
+    if task_name and chunk_num > 0:
+        return f"[{task_name[:8]}-Chk{chunk_num:02d}/{total_chunks:02d}-Cd{candidate_num:02d}]"
+    elif task_name:
+        return f"[{task_name[:8]}]"
+    return ""
+
+class ContextualStdErrHandler:
+    """Fängt stderr ab und formatiert tqdm-Ausgaben mit Context."""
+    
+    def __init__(self, original_stderr: Any) -> None:
+        self.original_stderr = original_stderr
+        self.buffer = io.StringIO()
+        
+    def write(self, data: str) -> int:
+        # Prüfe, ob es eine tqdm/Sampling-Ausgabe ist
+        if "Sampling:" in data:
+            # Ersetze "Sampling:" mit Context-Info
+            task_name, chunk_num, candidate_num, total_chunks = get_generation_context()
+            if chunk_num > 0:
+                context_prefix = f"Chk:{chunk_num:02d}/{total_chunks:02d}, Cd:{candidate_num:02d}"
+                data = data.replace("Sampling:", context_prefix)
+        
+        return self.original_stderr.write(data)
+        
+    def flush(self) -> None:
+        self.original_stderr.flush()
+        
+    def close(self) -> None:
+        if hasattr(self.original_stderr, 'close'):
+            self.original_stderr.close()
 
 class TTSGenerator:
     """
@@ -82,18 +136,20 @@ class TTSGenerator:
             Audio tensor containing the generated speech.
         """
         if not text or not text.strip():
-            logger.warning("Empty text provided for generation")
+            prefix = get_context_prefix()
+            logger.warning(f"{prefix} Empty text provided for generation")
             return torch.zeros((1, 1000), device=self.device)
 
         try:
+            prefix = get_context_prefix()
             logger.debug(
-                f"Generating audio for text (len={len(text)}): '{text[:50]}...'"
+                f"{prefix} Generating audio for text (len={len(text)}): '{text[:50]}...'"
             )
 
             # Check if model is loaded
             if self.model is None:
-                logger.error("🚨 CRITICAL: TTS Model not loaded - generating MOCK AUDIO (noise)!")
-                logger.error("⚠️  This will result in NO SPEECH in your final output!")
+                logger.error(f"{prefix} 🚨 CRITICAL: TTS Model not loaded - generating MOCK AUDIO (noise)!")
+                logger.error(f"{prefix} ⚠️  This will result in NO SPEECH in your final output!")
                 # Return mock audio with length proportional to text length (24kHz sample rate)
                 mock_duration = len(text) * 0.05  # ~50ms per character
                 mock_samples = int(mock_duration * 24000)
@@ -121,26 +177,34 @@ class TTSGenerator:
                     "ignore", message=".*attn_implementation.*", category=FutureWarning
                 )
 
+                # Leite stderr um, um tqdm-Ausgaben mit Context zu formatieren
+                original_stderr = sys.stderr
+                contextual_stderr = ContextualStdErrHandler(original_stderr)
                 
-                # Generate audio using the ChatterboxTTS model
-                audio = self.model.generate(
-                    text,
-                    exaggeration=exaggeration,
-                    cfg_weight=cfg_weight,
-                    temperature=temperature,
-                    **kwargs,
-                )
+                try:
+                    sys.stderr = contextual_stderr  # type: ignore
+                    # Generate audio using the ChatterboxTTS model
+                    audio = self.model.generate(
+                        text,
+                        exaggeration=exaggeration,
+                        cfg_weight=cfg_weight,
+                        temperature=temperature,
+                        **kwargs,
+                    )
+                finally:
+                    sys.stderr = original_stderr
 
             # ChatterboxTTS returns 1D tensor - ensure consistency
             if audio.ndim == 2:
                 audio = audio.squeeze(0)  # Remove batch dimension if present
             audio = audio.to(self.device)
 
-            logger.debug(f"Generated audio with shape: {audio.shape}")
+            logger.debug(f"{prefix} Generated audio with shape: {audio.shape}")
             return audio
 
         except Exception as e:
-            logger.error(f"Error generating audio for text '{text[:50]}...': {e}")
+            prefix = get_context_prefix()
+            logger.error(f"{prefix} Error generating audio for text '{text[:50]}...': {e}")
             # Return silence as fallback
             return torch.zeros((1, 1000), device=self.device)
 
@@ -196,11 +260,12 @@ class TTSGenerator:
         cfg_max_deviation = tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = tts_params.get("temperature_max_deviation", 0.2)
 
+        prefix = get_context_prefix()
         logger.info(
-            f"Generating {num_candidates} diverse candidates for text (len={len(text)})"
+            f"{prefix} Generating {num_candidates} diverse candidates for text (len={len(text)})"
         )
         logger.debug(
-            f"Expressive ranges: exag=[{base_exaggeration-exag_max_deviation:.2f}, {base_exaggeration:.2f}], "
+            f"{prefix} Expressive ranges: exag=[{base_exaggeration-exag_max_deviation:.2f}, {base_exaggeration:.2f}], "
             f"cfg=[{base_cfg_weight:.2f}, {base_cfg_weight+cfg_max_deviation:.2f}], "
             f"temp=[{base_temperature:.2f}, {base_temperature+temp_max_deviation:.2f}]"
         )
@@ -285,6 +350,10 @@ class TTSGenerator:
 
         for i in range(num_candidates):
             try:
+                # Setze Context für diesen Kandidaten
+                task_name, chunk_num, _, total_chunks = get_generation_context()
+                set_generation_context(task_name, chunk_num, i + 1, total_chunks)
+                
                 # Set unique seed for this candidate
                 candidate_seed = self.seed + (i * 1000) + hash(text) % 10000
                 torch.manual_seed(candidate_seed)
@@ -343,7 +412,8 @@ class TTSGenerator:
                     candidate_type = "EXPRESSIVE"
 
                 # Debug: Log tts_params before extracting additional_params
-                logger.info(f"🔍 tts_params for candidate {i+1}: {tts_params}")
+                prefix = get_context_prefix()
+                logger.info(f"{prefix} CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}")
 
                 # Extract additional TTS parameters from tts_params
                 additional_params = {k: v for k, v in tts_params.items() 
@@ -359,8 +429,6 @@ class TTSGenerator:
                     **additional_params,  # Include repetition_penalty and other TTS params
                     **kwargs,
                 }
-
-                logger.debug(f"Candidate {i+1} ({candidate_type}):")
 
                 audio = self.generate_single(
                     text,
@@ -381,20 +449,22 @@ class TTSGenerator:
 
                 candidates.append(candidate)
                 # NOTE: Using ChatterboxTTS native sample rate (24kHz) for duration calculation
+                prefix = get_context_prefix()
                 logger.debug(
-                    f"Generated candidate {i+1}/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s, idx={candidate.candidate_idx}"
-                    + f" exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}\n"
+                    f"{prefix} Generated: duration={audio.shape[-1]/24000:.2f}s, seed={candidate_seed}"
                 )
 
             except Exception as e:
+                prefix = get_context_prefix()
                 logger.error(
-                    f"Failed to generate candidate {i+1}/{num_candidates}: {e}"
+                    f"{prefix} Failed to generate candidate {i+1}/{num_candidates}: {e}"
                 )
                 # Continue with remaining candidates
                 continue
 
+        prefix = get_context_prefix()
         logger.debug(
-            f"Successfully generated {len(candidates)}/{num_candidates} diverse candidates"
+            f"{prefix} Successfully generated {len(candidates)}/{num_candidates} diverse candidates"
         )
         return candidates
 
@@ -424,8 +494,6 @@ class TTSGenerator:
           by their position in the full `num_candidates` range, respecting the ramping logic.
         - If a conservative candidate is requested, its parameters will be used.
         """
-        candidates = []
-
         if not candidate_indices:
             logger.warning("No candidate indices provided for specific generation")
             return []
@@ -435,7 +503,7 @@ class TTSGenerator:
             f"from total set of {total_candidates}\n"
         )
 
-        candidates = []
+        candidates: List[AudioCandidate] = []
 
         # Get parameters from config if not provided
         if tts_params is None:

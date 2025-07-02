@@ -195,27 +195,27 @@ class ConfigManager:
 
     def _apply_path_sanitization(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Apply path sanitization to job identifiers in config.
+        Apply path sanitization to identifiers used in path generation.
         
-        Only sanitizes:
-        - job: name
-        - job: run-label
+        Sanitizes:
+        - job: name (used for directory names)
+        - job: run-label (used in filename schema)
+        - input: text_file (stem used as text_base in filename schema)
+        - input: reference_audio (stem used for consistency)
         
-        Does NOT sanitize:
-        - input: reference_audio (real filename)
-        - input: text_file (real filename)
-        - Any other fields
+        The filename schema uses underscores as separators:
+        {run_label}_{text_base}_{timestamp}
         
         Args:
             config: Configuration dictionary
             
         Returns:
-            Config with sanitized job identifiers
+            Config with sanitized path identifiers
         """
         # Create a deep copy to avoid modifying the original
         sanitized_config = copy.deepcopy(config)
         
-        # Only sanitize job-related identifiers
+        # Sanitize job-related identifiers
         if "job" in sanitized_config:
             job_section = sanitized_config["job"]
             
@@ -234,6 +234,38 @@ class ConfigManager:
                 if original_label != sanitized_label:
                     job_section["run-label"] = sanitized_label
                     logger.debug(f"Sanitized run-label: '{original_label}' → '{sanitized_label}'")
+        
+        # Sanitize input file identifiers (filename stems used in path generation)
+        if "input" in sanitized_config:
+            input_section = sanitized_config["input"]
+            
+            # Sanitize text_file (stem becomes text_base in filename schema)
+            if "text_file" in input_section and isinstance(input_section["text_file"], str):
+                original_text_file = input_section["text_file"]
+                # Split filename and extension
+                path_obj = Path(original_text_file)
+                original_stem = path_obj.stem
+                extension = path_obj.suffix
+                
+                sanitized_stem = self._sanitize_path_identifier(original_stem)
+                if original_stem != sanitized_stem:
+                    sanitized_text_file = f"{sanitized_stem}{extension}"
+                    input_section["text_file"] = sanitized_text_file
+                    logger.debug(f"Sanitized text_file: '{original_text_file}' → '{sanitized_text_file}'")
+            
+            # Sanitize reference_audio (for consistency and potential future path usage)
+            if "reference_audio" in input_section and isinstance(input_section["reference_audio"], str):
+                original_audio_file = input_section["reference_audio"]
+                # Split filename and extension
+                path_obj = Path(original_audio_file)
+                original_stem = path_obj.stem
+                extension = path_obj.suffix
+                
+                sanitized_stem = self._sanitize_path_identifier(original_stem)
+                if original_stem != sanitized_stem:
+                    sanitized_audio_file = f"{sanitized_stem}{extension}"
+                    input_section["reference_audio"] = sanitized_audio_file
+                    logger.debug(f"Sanitized reference_audio: '{original_audio_file}' → '{sanitized_audio_file}'")
         
         return sanitized_config
 

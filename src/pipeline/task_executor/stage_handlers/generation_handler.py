@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List
 
 from generation.candidate_manager import CandidateManager
-from generation.tts_generator import TTSGenerator
+from generation.tts_generator import TTSGenerator, set_generation_context
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from chunking.base_chunker import TextChunk
@@ -107,6 +107,11 @@ class GenerationHandler:
                 
                 for chunk, existing_file_count in chunks_to_generate:
                     chunk_num = chunk.idx + 1
+                    
+                    # Setze Context für diese Chunk-Verarbeitung
+                    task_name = self.file_manager.task_config.task_name if hasattr(self.file_manager, 'task_config') else "unknown"
+                    set_generation_context(task_name, chunk_num, 0, total_chunks)
+                    
                     logger.info(f"🎯 CHUNK {chunk_num}/{total_chunks}")
                     logger.debug(f"Text length: {len(chunk.text)} characters")
                     if len(chunk.text) > 80:
