@@ -22,7 +22,7 @@ chunking:
   spacy_model: "en_core_web_sm"
 
 generation:
-  num_candidates: 1
+  num_candidates: 6
   max_retries: 0
   tts_params:
     # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
@@ -35,6 +35,7 @@ generation:
     cfg_weight_max_deviation: 0.20      # Range: (ramp UP) [cfg_weight, cfg_weight+max_dev] 
     temperature: 0.9                    # MIN: give minimum
     temperature_max_deviation: 0.3      # Range: (ramp UP) [temp, temp+max_dev] 
+    repetition_penalty: 1.3             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
     
   # Conservative candidate parameters for guaranteed correctness
   conservative_candidate:

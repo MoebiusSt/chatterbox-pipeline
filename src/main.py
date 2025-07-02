@@ -200,14 +200,11 @@ def main() -> int:
         
         # Validate CLI arguments for problematic combinations
         if args.job and args.config_files:
-            logger.error("❌ Invalid combination of arguments!")
-            logger.error("You cannot specify --job and config files at the same time.")
-            logger.error("Use EITHER:")
-            logger.error(f"  python {sys.argv[0]} --job \"{args.job}\" --mode {args.mode or 'new'}")
-            logger.error(f"OR:")
-            logger.error(f"  python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)}")
-            logger.error("If you want to run multiple jobs at the same time, use:")
-            logger.error(f"  python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)} --mode {args.mode or 'new'}")
+            logger.error("❌ Invalid combination of arguments! You cannot specify --job {string} and config-files at the same time.")
+            logger.info(" Use EITHER:")
+            logger.info(f"   python {sys.argv[0]} --job  \"{args.job}\" --mode {args.mode or 'new'}")
+            logger.info(f" OR:")
+            logger.info(f"   python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)} --mode {args.mode or 'new'}")
             return 1
 
         # Update verbose mode based on arguments

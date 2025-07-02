@@ -1,4 +1,35 @@
-neuer genration parameter "repetition_penalty: 1.2". Höhere Werte bestrafen wiederholungen. Niedrigere erzeugen wiederholungen. Ausprobieren.
+Wir haben ein Textpräprocessor als Hülse vorgesehen, um den Inputtext für das TTS Model chatterbox ggfs. vorzubereiten. Ich habe eine Idee und brauche dafür eine Recherche oder Planung über die mögliche Machbarkeit: Das Problem: Das TTS modell ist spezialisiert auf English. Es kann nur Englische Texte in Englische Sprache umsetzten. Es wird Fremdwörter demnach so aussprechen wie ein Engländer, der sein Bestes gibt, das Wort auszusprechen, so wie seine Muttersprache diese Phoneme nunmal aussprechen würde. Das ist natürlich oft total falsch. Unsere Texte enthalten leider viele OOV - out of vocabulary words. IPA als universales Phonemalphabet ist dem TTS_Modell leider unbekannt. Darum brauche ich einen Möglichkeit dennoch mit dem Modell zu einer besseres Sprachausgabe zu kommen, indem wir Fremdwörter mit smarttags oder markup im Quelltext zu umgrenzen. Und diese sollen im Präprozessor für die Sprachausgabe umgewandelt werden. Die IDEE ist: die mit einer Sprache gekennzeichneten Wörter oder Passagen in einem ersten Schritt zunöchst mit einem G2P "Grapheme-to-Phoneme" Framework in IPA oder eSpeak unter angabe der Zielsprache (aus dem Smarttags) umzuwandeln. Diese könnte das TTS-Modell wie oben erwähnt dann immernoch noch nicht aussprechen, da es nur Englische Texte vorlesen kann. In einem zweiten Transformationsschritt sollen die IPA- oder eSpeak-Passagen dann mit einem P2G (Phoneme-to-Grapheme)-Framework, wiederum unter der Maßgabe "Englische Sprache", zu einer englisch klingendenen Pseudo-Sprache umzuwandeln. Es würde die IPA-phonem-strings zu einer Art "how-a-brit-would-read-it"-British strings umwandeln:
+
+--> INPUT with Irish Words:
+"I come from [lang=irish]Glais a Chú[/lang] in the [lang=irish]North West Gaeltacht[/lang]"
+--> to IPS:
+"I come from /Glais ə Chu/ in the /nɔːθ wɛst Gaeltacht/."
+--> IPS to Brit-Lingo:
+"I come from Glas ɑ Koo in the norf west Gayl-tahkt"
+--> continue TSS-processing.
+
+Ich habe ein gitHub-Projekt gefunden, das scheinbar BEIDE dieser Aufgaben übernehmen kann "goruut" (https://github.com/neurlang/goruut). Es gibt dafür einen Python Wrapper (?), hier: https://pypi.org/project/pygoruut/. Ich weiß nicht was das ist und ob es für uns die Verwendung vereinfachen würde? Aber das Beispiel aus dem Python-Wrapper ist vielversprechend:
+
+Es stellt genau kurz und präzise das oben gewünschte Beispiel der HIn- und Zurücktransformation dar. HIN von einer beliebig definierten Sprache zu IPA, dann zurück von IPA zu einer Sprache mit der Option "is_reverse=True":
+
+"from pygoruut.pygoruut import Pygoruut
+
+pygoruut = Pygoruut()
+
+print(str(pygoruut.phonemize(language="English", sentence="fast racing car")))
+
+# Prints: fˈæst ɹˈeɪsɪŋ kˈɑɹ
+
+# Now, convert it back
+
+print(str(pygoruut.phonemize(language="English", sentence="fˈæst ɹˈeɪsɪŋ kˈɑɹ", is_reverse=True)))
+
+# Prints: fast racing car"
+
+Es scheint als ließe sich dies für ein Quasi-Pseudo-britisch mißbrauchen.
+
+Können wir goruut in unserem Präprozessor verwenden? Reicht pygoruut??
+
 
 
 ----------------------------------
@@ -55,14 +86,3 @@ Try:
       "[end_of_label]": 639,
       
 
-      --------------------------------------
-      
-Perhaps there IS another way for foreign words? Let's say we would convert [irish/chinese/whatever] words to IPA, then use another tool that would convert the IPA-phonem-strings back to "how-a-brit-would-read-it"-British looking text? For instance:
-
---> INPUT:
-"I come from Glais a Chú in the North West Gaeltacht"
---> to IPS:
-"I come from /Glais ə Chu/ in the /nɔːθ wɛst Gaeltacht/."
---> IPS to Brit-Lingo:
-"I come from Glas ɑ Koo in the norf west Gayl-tahkt"
---> feed to Chatterbox.

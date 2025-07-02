@@ -1,6 +1,6 @@
 job:
-  name: "testjob1"
-  run-label: "test1"
+  name: "test"
+  run-label: "repeats"
 
 input:
   text_file: "test_short.txt"

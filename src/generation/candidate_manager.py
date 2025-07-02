@@ -155,6 +155,7 @@ class CandidateManager:
             temperature=tts_params.get("temperature", 0.8),
             conservative_config=conservative_config,
             total_candidates=total_candidates,
+            tts_params=tts_params,
         )
 
         # Save the specific candidates using FileManager structure (chunk_XXX/candidate_YY.wav)
@@ -225,17 +226,19 @@ class CandidateManager:
         logger.info(f"Phase 1: Generating {self.max_candidates} normal candidates")
 
         try:
-            params_for_attempt = generation_params.copy()
-            conservative_config_for_call = params_for_attempt.pop(
-                "conservative_config", None
-            )
+            # Extract only TTS-relevant parameters from generation_params
+            tts_params = generation_params.get("tts_params", {})
+            conservative_config_for_call = generation_params.get("conservative_candidate", None)
 
-            # Generate normal candidates
+            # Generate normal candidates with correct parameter passing
             normal_candidates = tts_generator.generate_candidates(
                 text=chunk.text,
                 num_candidates=self.max_candidates,
+                exaggeration=tts_params.get("exaggeration"),
+                cfg_weight=tts_params.get("cfg_weight"),
+                temperature=tts_params.get("temperature"),
                 conservative_config=conservative_config_for_call,
-                **params_for_attempt,
+                tts_params=tts_params,  # Pass complete tts_params for repetition_penalty etc.
             )
 
             # Filter out failed candidates (those with very short audio)

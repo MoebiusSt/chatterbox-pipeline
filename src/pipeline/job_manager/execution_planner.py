@@ -7,6 +7,7 @@ for unified menu handling across all execution paths.
 """
 
 import logging
+import sys
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -81,7 +82,12 @@ class ExecutionPlanner:
             # Job-name execution path
             job_name = args.job
             existing_tasks = self.job_manager.find_existing_tasks(job_name)
-            job_configs = self.job_manager.find_jobs_by_name(job_name) if not existing_tasks else None
+            
+            # For job-name execution, we need to find config files, not existing tasks
+            # Only look for config files if no existing tasks found
+            job_configs = None
+            if not existing_tasks:
+                job_configs = self.config_manager.find_configs_by_job_name(job_name)
             
             return ExecutionContext(
                 existing_tasks=existing_tasks,
@@ -174,6 +180,19 @@ class ExecutionPlanner:
                 logger.debug(f"Using provided config files: {[str(p) for p in job_configs]}")
             elif context.job_name:
                 # Job-name execution path - find configs by name
+                
+                # Check if user might have passed a YAML file as job name
+                if context.job_name.lower().endswith('.yaml') or context.job_name.lower().endswith('.yml'):
+                    logger.warning(f"🤔 It looks like you might have passed a YAML file as a job name: '{context.job_name}'")
+                    logger.info("💡 Did you mean to use one of these instead?")
+                    logger.info(f" python {sys.argv[0]} {context.job_name}")
+                    logger.info(f" python {sys.argv[0]} --job \"job_name_from_yaml\"")
+                    logger.info("")
+                    logger.info("The --job option searches for jobs by name, not for YAML files.")
+                    logger.info("To run a specific YAML file, just pass it as an argument without --job.")
+                    logger.info("")
+                    
+                # Find config files for this job name
                 job_configs = self.config_manager.find_configs_by_job_name(context.job_name)
                 if not job_configs:
                     logger.error(f"No job config found for job name: {context.job_name}")
@@ -233,6 +252,9 @@ class ExecutionPlanner:
         - job: run-label  
         - input: text_file
         
+        Args:
+            job_config_paths: List of Path objects pointing to job config files
+            
         Returns:
             List of distinct TaskConfig objects
         """
@@ -241,6 +263,11 @@ class ExecutionPlanner:
         
         for config_path in job_config_paths:
             try:
+                # Ensure we have a Path object
+                if not isinstance(config_path, Path):
+                    logger.warning(f"Skipping non-Path config: {type(config_path)} - {config_path}")
+                    continue
+                    
                 # Load config and create task signature for conflict detection
                 job_config = self.config_manager.load_cascading_config(config_path)
                 

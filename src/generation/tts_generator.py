@@ -121,6 +121,7 @@ class TTSGenerator:
                     "ignore", message=".*attn_implementation.*", category=FutureWarning
                 )
 
+                
                 # Generate audio using the ChatterboxTTS model
                 audio = self.model.generate(
                     text,
@@ -171,7 +172,6 @@ class TTSGenerator:
         candidates = []
 
         # Get parameters from config if not provided
-        # Use passed tts_params if available, otherwise fall back to self.config
         if tts_params is None:
             generation_config = self.config.get("generation", {})
             tts_params = generation_config.get("tts_params", {})
@@ -224,12 +224,20 @@ class TTSGenerator:
                 var_temperature = conservative_config.get("temperature", 0.5)
                 candidate_type = "CONSERVATIVE"
 
+                # Debug: Log tts_params before extracting additional_params
+                logger.info(f"🔍 tts_params for candidate 1: {tts_params}")
+                # Extract additional TTS parameters from tts_params
+                additional_params = {k: v for k, v in tts_params.items() 
+                                   if k not in ["exaggeration", "cfg_weight", "temperature", 
+                                               "exaggeration_max_deviation", "cfg_weight_max_deviation", "temperature_max_deviation"]}
+                
                 generation_params = {
                     "exaggeration": var_exaggeration,
                     "cfg_weight": var_cfg_weight,
                     "temperature": var_temperature,
                     "seed": candidate_seed,
                     "type": candidate_type,
+                    **additional_params,  # Include repetition_penalty and other TTS params
                     **kwargs,
                 }
 
@@ -242,6 +250,7 @@ class TTSGenerator:
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
+                    **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
 
@@ -333,12 +342,21 @@ class TTSGenerator:
 
                     candidate_type = "EXPRESSIVE"
 
+                # Debug: Log tts_params before extracting additional_params
+                logger.info(f"🔍 tts_params for candidate {i+1}: {tts_params}")
+
+                # Extract additional TTS parameters from tts_params
+                additional_params = {k: v for k, v in tts_params.items() 
+                                   if k not in ["exaggeration", "cfg_weight", "temperature", 
+                                               "exaggeration_max_deviation", "cfg_weight_max_deviation", "temperature_max_deviation"]}
+                
                 generation_params = {
                     "exaggeration": var_exaggeration,
                     "cfg_weight": var_cfg_weight,
                     "temperature": var_temperature,
                     "seed": candidate_seed,
                     "type": candidate_type,
+                    **additional_params,  # Include repetition_penalty and other TTS params
                     **kwargs,
                 }
 
@@ -349,6 +367,7 @@ class TTSGenerator:
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
+                    **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
 
@@ -504,12 +523,18 @@ class TTSGenerator:
 
                     candidate_type = "EXPRESSIVE"
 
+                # Extract additional TTS parameters from tts_params
+                additional_params = {k: v for k, v in tts_params.items() 
+                                   if k not in ["exaggeration", "cfg_weight", "temperature", 
+                                               "exaggeration_max_deviation", "cfg_weight_max_deviation", "temperature_max_deviation"]}
+                
                 generation_params = {
                     "exaggeration": var_exaggeration,
                     "cfg_weight": var_cfg_weight,
                     "temperature": var_temperature,
                     "seed": candidate_seed,
                     "type": candidate_type,
+                    **additional_params,  # Include repetition_penalty and other TTS params
                     **kwargs,
                 }
 
@@ -523,6 +548,7 @@ class TTSGenerator:
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
+                    **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
 

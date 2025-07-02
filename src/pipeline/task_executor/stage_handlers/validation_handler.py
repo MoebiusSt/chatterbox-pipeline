@@ -461,7 +461,7 @@ class ValidationHandler:
         Returns:
             True if validation successful, False otherwise
         """
-        logger.info("🧐 Starting Selective Validation Stage")
+        logger.info("▶️ Starting Selective Validation Stage")
         try:
             chunks = self.file_manager.get_chunks()
             all_candidates = self.file_manager.get_candidates()
