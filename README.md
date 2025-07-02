@@ -620,7 +620,7 @@ chunking:
 
 generation:
   num_candidates: 1
-  max_retries: 0
+  max_retries: 1
   tts_params:
     # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
     # - exaggeration: MAX value (ramps DOWN from here)

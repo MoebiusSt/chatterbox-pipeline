@@ -428,7 +428,7 @@ class ValidationHandler:
                         exaggeration = cfg_weight = temperature = 0.0
 
                     logger.info(
-                        f"Chunk_{chunk.idx + 1:02d}: score {min_score:.3f} to {max_score:.3f}. "
+                        f"Chunk_{chunk.idx + 1:02d} - "
                         f"Best candidate: {best_candidate_display} of {len(candidates_list)} (score: {best_score_value:.3f}) "
                         f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}"
                     )
