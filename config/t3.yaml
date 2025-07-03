@@ -17,8 +17,8 @@ generation:
     exaggeration: 0.50                  # give MAX here
     exaggeration_max_deviation: 0.20    # ramp DOWN 
 
-    cfg_weight: 0.2                     # give MIN here
-    cfg_weight_max_deviation: 0.40      # ramp UP 
+    cfg_weight: 0.25                     # give MIN here
+    cfg_weight_max_deviation: 0.35      # ramp UP 
 
     temperature: 0.85                    # give MIN here
     temperature_max_deviation: 0.3      # ramp UP 
@@ -30,6 +30,6 @@ generation:
     enabled: true
     exaggeration: 0.4
     cfg_weight: 0.5
-    temperature: 0.7
+    temperature: 0.75
 
 # All other settings will be inherited from default_config.yaml

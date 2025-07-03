@@ -15,13 +15,13 @@ generation:
     # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
     # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
     exaggeration: 0.60                  # give MAX here
-    exaggeration_max_deviation: 0.20    # ramp DOWN 
+    exaggeration_max_deviation: 0.15    # ramp DOWN 
 
     cfg_weight: 0.15                     # give MIN here
-    cfg_weight_max_deviation: 0.50      # ramp UP 
+    cfg_weight_max_deviation: 0.35      # ramp UP 
 
-    temperature: 0.95                    # give MIN here
-    temperature_max_deviation: 0.4      # ramp UP 
+    temperature: 0.90                    # give MIN here
+    temperature_max_deviation: 0.35      # ramp UP 
 
     repetition_penalty: 1.5             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
     
@@ -29,7 +29,12 @@ generation:
   conservative_candidate:
     enabled: true
     exaggeration: 0.4
-    cfg_weight: 0.5
-    temperature: 0.8
+    cfg_weight: 0.4
+    temperature: 0.75
+
+audio:
+  silence_duration:
+    normal: 0.50 # chunk split between sentences
+    paragraph: 0.90 # chunk split between paragraphs
 
 # All other settings will be inherited from default_config.yaml

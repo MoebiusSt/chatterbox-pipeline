@@ -14,13 +14,13 @@ generation:
     # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
     # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
     # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
-    exaggeration: 0.55                  # give MAX here
+    exaggeration: 0.50                  # give MAX here
     exaggeration_max_deviation: 0.30    # ramp DOWN 
 
-    cfg_weight: 0.35                     # give MIN here
-    cfg_weight_max_deviation: 0.40      # ramp UP 
+    cfg_weight: 0.40                     # give MIN here
+    cfg_weight_max_deviation: 0.30      # ramp UP 
 
-    temperature: 0.9                    # give MIN here
+    temperature: 0.95                    # give MIN here
     temperature_max_deviation: 0.2      # ramp UP 
 
     repetition_penalty: 1.3             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 

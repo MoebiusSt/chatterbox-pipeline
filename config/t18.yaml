@@ -15,7 +15,7 @@ generation:
     # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
     # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
     exaggeration: 0.50                  # give MAX here
-    exaggeration_max_deviation: 0.20    # ramp DOWN 
+    exaggeration_max_deviation: 0.25    # ramp DOWN 
 
     cfg_weight: 0.15                     # give MIN here
     cfg_weight_max_deviation: 0.45      # ramp UP 
@@ -31,5 +31,10 @@ generation:
     exaggeration: 0.37
     cfg_weight: 0.45
     temperature: 0.75
+
+audio:
+  silence_duration:
+    normal: 0.50 # chunk split between sentences
+    paragraph: 0.90 # chunk split between paragraphs
 
 # All other settings will be inherited from default_config.yaml

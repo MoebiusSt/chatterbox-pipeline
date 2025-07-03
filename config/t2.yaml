@@ -18,12 +18,12 @@ generation:
     exaggeration_max_deviation: 0.25    # ramp DOWN 
 
     cfg_weight: 0.2                     # give MIN here
-    cfg_weight_max_deviation: 0.50      # ramp UP 
+    cfg_weight_max_deviation: 0.40      # ramp UP 
 
     temperature: 1.0                    # give MIN here
     temperature_max_deviation: 0.3      # ramp UP 
 
-    repetition_penalty: 1.3             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
+    repetition_penalty: 1.5             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
     
   # Conservative candidate parameters for most likely success
   conservative_candidate:

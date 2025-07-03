@@ -14,8 +14,8 @@ generation:
     # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
     # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
     # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
-    exaggeration: 0.60                  # give MAX here
-    exaggeration_max_deviation: 0.20    # ramp DOWN 
+    exaggeration: 0.55                  # give MAX here
+    exaggeration_max_deviation: 0.25    # ramp DOWN 
 
     cfg_weight: 0.15                     # give MIN here
     cfg_weight_max_deviation: 0.30      # ramp UP 

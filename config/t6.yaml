@@ -8,19 +8,19 @@ input:
 
 generation:
   num_candidates: 5
-  max_retries: 1
+  max_retries: 2
   tts_params:
     # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
     # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
     # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
     # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
-    exaggeration: 0.70                  # give MAX here
-    exaggeration_max_deviation: 0.40    # ramp DOWN 
+    exaggeration: 0.60                  # give MAX here
+    exaggeration_max_deviation: 0.35    # ramp DOWN 
 
     cfg_weight: 0.35                     # give MIN here
     cfg_weight_max_deviation: 0.45      # ramp UP 
 
-    temperature: 1.0                    # give MIN here
+    temperature: 0.85                    # give MIN here
     temperature_max_deviation: 0.3      # ramp UP 
 
     repetition_penalty: 1.6             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
