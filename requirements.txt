@@ -9,3 +9,4 @@ pyyaml>=6.0                    # Configuration management
 tqdm>=4.65.0                   # Progress tracking
 pytest>=7.0.0                  # Testing framework
 pytest-cov>=4.0.0             # Coverage reporting
+pygoruut>=0.6.2                # G2P/P2G transformations for language-tagged text
