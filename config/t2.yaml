@@ -1,14 +1,14 @@
 job:
-  name: test
+  name: training
   run-label: cori_samuel_2
 
 input:
   reference_audio: cori_samuel_2.wav        
-  text_file: raise_children.txt
+  text_file: training.txt
 
 generation:
   num_candidates: 5
-  max_retries: 1
+  max_retries: 0
   tts_params:
     # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
     # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
