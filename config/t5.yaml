@@ -1,9 +1,9 @@
 job:
   name: training
-  run-label: david_barnes_2"
+  run-label: david_barnes_2
 
 input:
-  reference_audio: david_barnes_2.wav        
+  reference_audio: david_barnes_2.wav
   text_file: training.txt
 
 generation:

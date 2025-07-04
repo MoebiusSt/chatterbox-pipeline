@@ -1,10 +1,10 @@
 job:
   name: Backes Reads Column
-  run-label: ""  # empty by default
+  run-label: "" # empty by default
 
 input:
-  reference_audio: stefan_backes.wav        # Filename in the reference_audio folder
-  text_file: input-document.txt   # Text-File from the texts folder
+  reference_audio: stefan_backes.wav# Filename in the reference_audio folder
+  text_file: input-document.txt # Text-File from the texts folder
 
 preprocessing:
   enabled: true

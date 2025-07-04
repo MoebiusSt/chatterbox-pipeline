@@ -1,9 +1,9 @@
 job:
   name: training
-  run-label: stephan_moebius_6"
+  run-label: stephan_moebius_6
 
 input:
-  reference_audio: stephan_moebius_6.wav        
+  reference_audio: stephan_moebius_6.wav
   text_file: training.txt
 
 generation:

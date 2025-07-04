@@ -1,9 +1,9 @@
 job:
   name: training
-  run-label: gesine_1"
+  run-label: gesine_1
 
 input:
-  reference_audio: gesine_1.wav        
+  reference_audio: gesine_1.wav
   text_file: training.txt
 
 generation:

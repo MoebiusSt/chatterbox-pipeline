@@ -1,9 +1,9 @@
 job:
   name: training
-  run-label: peter_yearsley_1"
+  run-label: peter_yearsley_1
 
 input:
-  reference_audio: peter_yearsley_1.wav        
+  reference_audio: peter_yearsley_1.wav
   text_file: training.txt
 
 generation:

@@ -1,9 +1,9 @@
 job:
   name: training
-  run-label: glen_hallstrom_3"
+  run-label: glen_hallstrom_3
 
 input:
-  reference_audio: glen_hallstrom_3.wav        
+  reference_audio: glen_hallstrom_3.wav
   text_file: training.txt
 
 generation:

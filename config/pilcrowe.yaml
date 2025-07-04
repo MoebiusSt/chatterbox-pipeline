@@ -3,7 +3,7 @@ job:
   run-label: eric_prochnow
 
 input:
-  reference_audio: cori_samuel_1.wav        
+  reference_audio: cori_samuel_1.wav
   text_file: pilcrowe.txt
 
 preprocessing:

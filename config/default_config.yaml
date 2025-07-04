@@ -1,6 +1,6 @@
 job:
   name: default
-  run-label: ""  # empty by default, use it to organise the tasks/files/folders
+  run-label: "" # empty by default, use it to organise the tasks/files/folders
 
 input:
   reference_audio: mike_kamp_1.wav  # file name in reference_audio folder
