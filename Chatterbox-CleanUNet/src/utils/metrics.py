@@ -6,7 +6,7 @@ from pesq import pesq
 from pystoi import stoi
 import scipy.signal
 
-def compute_pesq(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int = 16000) -> float:
+def compute_pesq(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int = 24000) -> float:
     """
     Compute PESQ score between clean and enhanced audio
     
@@ -28,9 +28,9 @@ def compute_pesq(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int =
         clean_np = clean_np[:min_length]
         enhanced_np = enhanced_np[:min_length]
         
-        # PESQ expects specific sample rates
+        # PESQ expects specific sample rates (8000 or 16000)
         if sample_rate not in [8000, 16000]:
-            # Resample to 16000 for PESQ
+            # Resample to 16000 for PESQ (closest to 24000)
             clean_np = librosa.resample(clean_np, orig_sr=sample_rate, target_sr=16000)
             enhanced_np = librosa.resample(enhanced_np, orig_sr=sample_rate, target_sr=16000)
             sample_rate = 16000
@@ -43,7 +43,7 @@ def compute_pesq(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int =
         print(f"Error computing PESQ: {e}")
         return 0.0
 
-def compute_stoi(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int = 16000) -> float:
+def compute_stoi(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int = 24000) -> float:
     """
     Compute STOI score between clean and enhanced audio
     
@@ -73,7 +73,7 @@ def compute_stoi(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int =
         print(f"Error computing STOI: {e}")
         return 0.0
 
-def compute_estoi(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int = 16000) -> float:
+def compute_estoi(clean: torch.Tensor, enhanced: torch.Tensor, sample_rate: int = 24000) -> float:
     """
     Compute Extended STOI score between clean and enhanced audio
     
@@ -243,7 +243,7 @@ def compute_mcd(clean: torch.Tensor, enhanced: torch.Tensor, n_fft: int = 512) -
     return mcd
 
 def compute_all_metrics(clean: torch.Tensor, enhanced: torch.Tensor, 
-                       sample_rate: int = 16000) -> Dict[str, float]:
+                       sample_rate: int = 24000) -> Dict[str, float]:
     """
     Compute all audio quality metrics
     
@@ -310,7 +310,7 @@ def compute_all_metrics(clean: torch.Tensor, enhanced: torch.Tensor,
 class MetricsCalculator:
     """Class for batch computation of audio quality metrics"""
     
-    def __init__(self, sample_rate: int = 16000):
+    def __init__(self, sample_rate: int = 24000):
         self.sample_rate = sample_rate
         self.reset()
     

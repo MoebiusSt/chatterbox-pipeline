@@ -4,11 +4,11 @@ inference:
   batch_size: 1
   
   # Audio processing
-  sample_rate: 16000
-  chunk_size: 32768  # 2 seconds at 16kHz
+  sample_rate: 24000
+  chunk_size: 48000  # 2 seconds at 24kHz
   overlap: 0.25      # 25% overlap between chunks
   
   # Output
   output_format: "wav"
-  output_sample_rate: 16000
+  output_sample_rate: 24000
   normalize_output: true 

@@ -63,7 +63,7 @@ class Trainer:
         
         # Metrics calculator
         self.metrics_calculator = MetricsCalculator(
-            sample_rate=config.get('model', {}).get('sample_rate', 16000)
+            sample_rate=config.get('model', {}).get('sample_rate', 24000)
         )
         
         print(f"Trainer initialized with device: {device}")
@@ -363,7 +363,7 @@ class Trainer:
         output_dir.mkdir(parents=True, exist_ok=True)
         
         self.model.eval()
-        sample_rate = self.config.get('model', {}).get('sample_rate', 16000)
+        sample_rate = self.config.get('model', {}).get('sample_rate', 24000)
         
         with torch.no_grad():
             for batch_idx, batch in enumerate(self.val_loader):

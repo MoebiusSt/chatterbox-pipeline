@@ -29,8 +29,8 @@ class AudioEnhancer:
         self.device = torch.device(self.inference_config.get('device', 'cuda' if torch.cuda.is_available() else 'cpu'))
         
         # Audio parameters
-        self.sample_rate = self.inference_config.get('sample_rate', 16000)
-        self.chunk_size = self.inference_config.get('chunk_size', 32768)
+        self.sample_rate = self.inference_config.get('sample_rate', 24000)
+        self.chunk_size = self.inference_config.get('chunk_size', 48000)
         self.overlap = self.inference_config.get('overlap', 0.25)
         self.normalize_output = self.inference_config.get('normalize_output', True)
         

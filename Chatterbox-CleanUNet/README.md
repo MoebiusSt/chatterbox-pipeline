@@ -225,9 +225,9 @@ python scripts/enhance_audio.py input.wav output.wav \
 ```yaml
 model:
   # Audio-Parameter
-  sample_rate: 16000
-  n_fft: 512
-  hop_length: 128
+  sample_rate: 24000
+  n_fft: 1024
+  hop_length: 256
   
   # Modell-Architektur
   encoder_channels: [64, 128, 256, 512, 512, 512, 512, 512]
@@ -265,7 +265,7 @@ hardware:
 inference:
   model_path: "models/final/cleanunet_best.pth"
   device: "cuda"
-  chunk_size: 32768    # 2 Sekunden bei 16kHz
+  chunk_size: 48000    # 2 Sekunden bei 24kHz
   overlap: 0.25        # 25% Überlappung
 ```
 
@@ -300,7 +300,7 @@ train/clean/speaker1_002.wav    ←→    train/noisy/speaker1_002.wav
 
 - **Minimum**: 100 Stunden Audio-Paare
 - **Empfohlen**: 500+ Stunden
-- **Format**: WAV, 16-48kHz
+- **Format**: WAV, 24kHz (optimiert)
 - **Qualität**: Clean audio SNR > 40dB
 
 ## 📈 Evaluation
@@ -340,13 +340,13 @@ from src.utils.audio_utils import load_audio, save_audio
 enhancer = AudioEnhancer(inference_config, model_config)
 
 # Audio laden
-audio, sr = load_audio("input.wav", sample_rate=16000)
+audio, sr = load_audio("input.wav", sample_rate=24000)
 
 # Audio enhancen
 enhanced = enhancer.enhance_audio(audio)
 
 # Speichern
-save_audio(enhanced, "output.wav", sample_rate=16000)
+save_audio(enhanced, "output.wav", sample_rate=24000)
 ```
 
 ### Training API

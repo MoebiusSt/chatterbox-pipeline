@@ -25,8 +25,8 @@ class TTSArtifactDataset(Dataset):
         self.noisy_dir = Path(noisy_dir)
         self.config = config
         self.mode = mode
-        self.sample_rate = config.get('sample_rate', 16000)
-        self.crop_length = config.get('crop_length', 32768)
+        self.sample_rate = config.get('sample_rate', 24000)
+        self.crop_length = config.get('crop_length', 48000)
         
         # Get matching clean/noisy pairs
         self.file_pairs = self._get_file_pairs()

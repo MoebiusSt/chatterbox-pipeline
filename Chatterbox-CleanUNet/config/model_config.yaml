@@ -1,9 +1,9 @@
 model:
   # Audio parameters
-  sample_rate: 16000
-  n_fft: 512
-  hop_length: 128
-  win_length: 512
+  sample_rate: 24000
+  n_fft: 1024
+  hop_length: 256
+  win_length: 1024
   
   # Model architecture
   encoder_layers: 8
@@ -22,10 +22,11 @@ model:
   stride: 2
   activation: "LeakyReLU"
   normalization: "BatchNorm1d"
+  crop_length: 48000  # 2 seconds at 24kHz
 
 loss:
   l1_weight: 1.0
   stft_weight: 0.5
   high_band_stft_weight: 0.3
-  high_band_freq_min: 4000
-  high_band_freq_max: 8000 
+  high_band_freq_min: 6000   # Adjusted for 24kHz
+  high_band_freq_max: 12000  # Nyquist frequency at 24kHz 

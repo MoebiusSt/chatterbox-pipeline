@@ -6,7 +6,7 @@ import soundfile as sf
 from typing import Tuple, List, Optional
 from pathlib import Path
 
-def load_audio(file_path: str, sample_rate: int = 16000) -> Tuple[torch.Tensor, int]:
+def load_audio(file_path: str, sample_rate: int = 24000) -> Tuple[torch.Tensor, int]:
     """
     Load audio file and resample if necessary
     
@@ -35,7 +35,7 @@ def load_audio(file_path: str, sample_rate: int = 16000) -> Tuple[torch.Tensor, 
         print(f"Error loading audio file {file_path}: {e}")
         raise
 
-def save_audio(audio: torch.Tensor, file_path: str, sample_rate: int = 16000):
+def save_audio(audio: torch.Tensor, file_path: str, sample_rate: int = 24000):
     """
     Save audio tensor to file
     
@@ -224,7 +224,7 @@ def apply_gain(audio: torch.Tensor, gain_db: float) -> torch.Tensor:
     gain_linear = 10 ** (gain_db / 20)
     return audio * gain_linear
 
-def high_pass_filter(audio: torch.Tensor, cutoff_freq: float, sample_rate: int = 16000) -> torch.Tensor:
+def high_pass_filter(audio: torch.Tensor, cutoff_freq: float, sample_rate: int = 24000) -> torch.Tensor:
     """
     Apply high-pass filter to audio
     
@@ -245,7 +245,7 @@ def high_pass_filter(audio: torch.Tensor, cutoff_freq: float, sample_rate: int =
     # Convert back to tensor
     return torch.tensor(filtered).unsqueeze(0)
 
-def compute_spectral_centroid(audio: torch.Tensor, sample_rate: int = 16000) -> torch.Tensor:
+def compute_spectral_centroid(audio: torch.Tensor, sample_rate: int = 24000) -> torch.Tensor:
     """
     Compute spectral centroid of audio
     
