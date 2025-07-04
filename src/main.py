@@ -74,7 +74,7 @@ Usage Examples:
   %(prog)s --job "testjob*"          # Run all jobs starting with "testjob"
   %(prog)s --job "test?job"          # Run jobs like "test1job", "test2job" etc.
 
-  %(prog)s --mode new                # Global:Create new tasks for all given jobs
+  %(prog)s --mode new                # Global:Create new task for all given jobs
   %(prog)s --mode all                # Global: Run all exisiting tasks of all given jobs
   %(prog)s --mode latest             # Global: Run latest task of all given jobs
   %(prog)s --mode "job1:new,job2:all"  # Specify different strategies per job

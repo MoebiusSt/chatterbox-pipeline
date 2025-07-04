@@ -8,6 +8,8 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .language_tag_processor import LanguageTagProcessor
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,6 +25,18 @@ class TextPreprocessor:
         """
         self.config = config or {}
         self.enabled = self.config.get("enabled", True)
+        
+        # Initialize language tag processor if enabled
+        self.language_processor: Optional[LanguageTagProcessor] = None
+        if self.config.get("process_language_tags", False):
+            try:
+                self.language_processor = LanguageTagProcessor(
+                    self.config.get("language_tag_processor", {})
+                )
+                logger.info("✅ Language tag processing enabled")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize language tag processor: {e}")
+                self.language_processor = None
 
     def process_text_file(
         self, input_text_path: Path, output_dir: Path, text_base_name: str
@@ -82,6 +96,22 @@ class TextPreprocessor:
         """
         processed_text = text
 
+        # Process language tags if enabled
+        if self.language_processor is not None:
+            try:
+                logger.info("🔄 Processing language tags...")
+                original_length = len(processed_text)
+                processed_text = self.language_processor.process_text(processed_text)
+                
+                if len(processed_text) != original_length:
+                    logger.info(f"✅ Language tags processed (length: {original_length} → {len(processed_text)})")
+                else:
+                    logger.info("✅ Language tags processed (no changes)")
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Language tag processing failed: {e}")
+                # Continue with original text if processing fails
+                
         # Normalize line endings (moved from SpaCy chunker)
         if self.config.get("normalize_line_endings", True):
             original_length = len(processed_text)

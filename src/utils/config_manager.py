@@ -675,9 +675,13 @@ class ConfigManager:
 
         return configs
 
-    def find_existing_tasks(self, job_name: str) -> List[TaskConfig]:
+    def find_existing_tasks(self, job_name: str, run_label: Optional[str] = None) -> List[TaskConfig]:
         """
         Find existing completed task configurations within the output directory for a given job.
+        
+        Args:
+            job_name: Name of the job to search for
+            run_label: Optional run-label to filter tasks by. If provided, only tasks with matching run-label are returned.
 
         Returns:
             List of TaskConfig objects, sorted by timestamp (newest first)
@@ -689,6 +693,12 @@ class ConfigManager:
             for config_file in job_dir.glob("*_config.yaml"):
                 try:
                     task_config = self.load_task_config(config_file)
+                    
+                    # Filter by run_label if specified
+                    if run_label and task_config.run_label != run_label:
+                        logger.debug(f"Skipping task {task_config.task_name} - run_label mismatch: '{task_config.run_label}' != '{run_label}'")
+                        continue
+                    
                     tasks.append(task_config)
                 except Exception as e:
                     logger.warning(f"Error loading task config {config_file}: {e}")
@@ -702,4 +712,10 @@ class ConfigManager:
                 return datetime.min
 
         tasks.sort(key=lambda t: parse_timestamp(t.timestamp), reverse=True)
+        
+        if run_label:
+            logger.debug(f"Found {len(tasks)} tasks for job '{job_name}' with run-label '{run_label}'")
+        else:
+            logger.debug(f"Found {len(tasks)} tasks for job '{job_name}' (no run-label filter)")
+            
         return tasks

@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
+from preprocessor.text_preprocessor import TextPreprocessor
 from utils.file_manager.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,10 @@ class PreprocessingHandler:
         self.file_manager = file_manager
         self.config = config
         self.chunker = chunker
+        
+        # Initialize text preprocessor
+        preprocessing_config = config.get("preprocessing", {})
+        self.text_preprocessor = TextPreprocessor(preprocessing_config)
 
     def execute_preprocessing(self) -> bool:
         """Execute the text preprocessing stage."""
@@ -51,8 +56,17 @@ class PreprocessingHandler:
                 logger.error("⚠️  The preprocessing stage cannot proceed without valid input text.")
                 return False
 
-            # Chunk text
-            text_chunks = self.chunker.chunk_text(input_text)
+            # CRITICAL: Apply text preprocessing BEFORE chunking
+            logger.info("🔄 Applying text preprocessing...")
+            processed_text = self.text_preprocessor._process_text_content(input_text)
+            
+            if len(processed_text) != len(input_text):
+                logger.info(f"📝 Text preprocessing changed length: {len(input_text)} → {len(processed_text)} characters")
+            else:
+                logger.debug("📝 Text preprocessing completed (no length change)")
+
+            # Chunk preprocessed text
+            text_chunks = self.chunker.chunk_text(processed_text)
             logger.info(f"Generated {len(text_chunks)} text chunks")
 
             # Update indices for TextChunk objects

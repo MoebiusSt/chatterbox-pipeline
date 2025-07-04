@@ -38,7 +38,12 @@ Es scheint als ließe sich dies für ein Quasi-Pseudo-britisch mißbrauchen.
 
 Können wir goruut in unserem Präprozessor verwenden? Reicht pygoruut??
 
+----------------------------------------
 
+
+
+
+"python src/main.py data/input/texts/test_short.txt config/default_config.yaml --mode new --verbose" Man kann der main.py keine Text-Datei übergeben. Bisher kann man ihr nur KOnfigurationsdateien übergeben. Aber das ist eine Ausgezeichnete Idee. Bitte füge diese Möglichkeit eben hinzu. Eine übergebene ".txt"-Datei soll global jegliche input: text_file: Angaben aus jeglichen Job- oder Task Yaml-Dateien und auch der Default_config.yaml overriden. Auch wenn die --job "xxx" Option verwendet wird, sollen die gefundenen Tasks im Job xx alle die im CLI übergebene override Text-DAtei verwenden. Übersehe ich dabei ein Problem, einen möglichen Konflikt? Ja! Tasks tragen den Dokument-Namen im eigenen Task-DAteinamen. Und Tasks erzeugen auch Verzeichnisse, die das INput-Dokument im namen tragen. Es würde also zu orpblemen führen, wenn die Tasks gezwungen würden entgegen ihres eigenen Konfigurationsinhaltes ein anderes Dokument vorzulesen. Bei Übergabe eines ".txt"-Dokumentes ist also --mode new-all forciert! Damit werden korrekte Task-Yaml-Dateien und Verzeichnisse mit dem neuen Dokumentnamen im Job Verzeichnis angelegt. Der Nutzer muss darauf hingeweisen werden, daß die Übergabe eines textdokuments neue Tasks erzeungen hat
 
 ----------------------------------
 

@@ -1,0 +1,488 @@
+# Optimal Phoneme Mappings - DeepPhonemizer Native + R-Sound Fix
+# Combination of proven HuggingFace practices + solution for R→L problem
+# Complete mapping from PygoruutLanguages for all supported languages
+
+# Language code mappings (ISO 639 → pygoruut names)
+# Complete mapping from PygoruutLanguages.languagesISO639
+language_mappings:
+  # ISO 639 language codes (complete from pygoruut)
+  af: Afrikaans
+  am: Amharic
+  ar: Arabic
+  az: Azerbaijani
+  be: Belarusian
+  bn: Bengali
+  my: Burmese
+  ceb: Cebuano
+  ce: Chechen
+  zh: ChineseMandarin
+  cs: Czech
+  da: Danish
+  nl: Dutch
+  dz: Dzongkha
+  en: English
+  eo: Esperanto
+  fa: Farsi
+  fi: Finnish
+  fr: French
+  de: German
+  el: Greek
+  gu: Gujarati
+  ha: Hausa
+  he: Hebrew
+  hi: Hindi
+  hu: Hungarian
+  is: Icelandic
+  id: Indonesian
+  tts: Isan
+  it: Italian
+  jam: Jamaican
+  ja: Japanese
+  jv: Javanese
+  kk: Kazakh
+  ko: Korean
+  lb: Luxembourgish
+  mk: Macedonian
+  ml: Malayalam
+  ms: MalayLatin
+  mt: Maltese
+  mr: Marathi
+  mn: Mongolian
+  ne: Nepali
+  no: Norwegian
+  ps: Pashto
+  pl: Polish
+  pt: Portuguese
+  pa: Punjabi
+  ro: Romanian
+  ru: Russian
+  sk: Slovak
+  es: Spanish
+  sw: Swahili
+  sv: Swedish
+  ta: Tamil
+  te: Telugu
+  th: Thai
+  bo: Tibetan
+  tr: Turkish
+  uk: Ukrainian
+  ur: Urdu
+  ug: Uyghur
+  vi: VietnameseNorthern
+  zu: Zulu
+  hy: Armenian
+  eu: Basque
+  bg: Bulgarian
+  ca: Catalan
+  ny: Chichewa
+  hr: Croatian
+  et: Estonian
+  gl: Galician
+  ka: Georgian
+  km: KhmerCentral
+  lo: Lao
+  lv: Latvian
+  lt: Lithuanian
+  sr: Serbian
+  tl: Tagalog
+  yo: Yoruba
+  sq: Albanian
+  an: Aragonese
+  as: Assamese
+  ba: Bashkir
+  bpy: BishnupriyaManipuri
+  bs: Bosnian
+  chr: Cherokee
+  cu: Chuvash
+  gla: GaelicScottish
+  gle: GaelicIrish
+  kl: Greenlandic
+  gn: Guarani
+  ht: HaitianCreole
+  haw: Hawaiian
+  io: Ido
+  ia: Interlingua
+  kn: Kannada
+  quc: Kiche
+  kok: Konkani
+  ku: Kurdish
+  ky: Kyrgyz
+  qdb: LangBelta
+  ltg: Latgalian
+  la: LatinClassical
+  lat: LatinEcclesiastical
+  lfn: LinguaFrancaNova
+  jbo: Lojban
+  smj: LuleSaami
+  mi: Maori
+  nah: NahuatlCentral
+  nci: NahuatlMecayapan
+  ncz: NahuatlTetelcingo
+  nog: Nogai
+  om: Oromo
+  pap: Papiamento
+  qu: Quechua
+  qya: Quenya
+  tn: Setswana
+  shn: ShanTaiYai
+  sjn: Sindarin
+  sd: Sindhi
+  si: Sinhala
+  sl: Slovenian
+  tt: Tatar
+  tk: Turkmen
+  uz: Uzbek
+  cyw: WelshNorth
+  cys: WelshSouth
+  yue: Cantonese
+  
+  # Non-ISO 639 dialects (pygoruut also supports these)
+  BengaliDhaka: BengaliDhaka
+  BengaliRahr: BengaliRahr  
+  MalayArab: MalayArab
+  VietnameseCentral: VietnameseCentral
+  VietnameseSouthern: VietnameseSouthern
+  EnglishAmerican: EnglishAmerican
+  EnglishBritish: EnglishBritish
+  NahuatlClassical: NahuatlClassical
+  Hebrew2: Hebrew2
+  MinnanTawianese: MinnanTawianese
+  MinnanHokkien: MinnanHokkien
+
+# Optimal Global Mappings: HuggingFace DeepPhonemizer + R-Sound Fix
+global_mappings:
+  # Original DeepPhonemizer mappings (from HuggingFace example)
+  l: ɫ      # l → velarized l
+  ʌ: ə      # ʌ → schwa  
+  g: ɡ      # g → voiced velar stop
+  
+  # R-Sound preservation (solves the original R→L problem)
+  ʁ: ɹ      # uvular r → English r
+  ɾ: ɹ      # tap r → English r
+  ʀ: ɹ      # trill r → English r
+  r: ɹ      # any remaining r → English r
+
+# No active language-specific mappings - keep it minimal for best results
+custom_mappings: {}
+
+# ============================================================================
+# EXTENDED MAPPINGS - AS REFERENCE FOR FUTURE EXPERIMENTS
+# ============================================================================
+# These mappings are commented out, but can be activated if needed.
+# They showed mixed results in tests - sometimes over-optimized.
+
+  # Extended language-specific mappings (experimental):
+  # custom_mappings:
+  #
+  # de:  # German
+  #   # Vowel mappings
+  #   ʏ: ɪ    # ü-sound → i-sound
+  #   ø: e    # ö-sound → e-sound
+  #   
+  #   # Consonant mappings - optimized for English TTS
+  #   ç: ʃ    # ich-sound (München) → sh-sound (much more natural!)
+  #   x: ʃ    # ach-sound (Bach) → sh-sound (better approximation)
+  #   
+  #   # Digraph and complex sound mappings
+  #   ts: s   # German "z" sound → simple s
+  #   pf: f   # German "pf" sound → simplified to f
+  #   kv: kw  # German "qu" sequence → English kw
+  #   
+  #   # Advanced digraph mappings for better approximation
+  #   ʃt: st  # German "scht" → English "st"
+  #   ʃp: sp  # German "schp" → English "sp"
+  #   ʃk: sk  # German "schk" → English "sk"
+  #   
+  #   # Vowel cluster simplifications
+  #   yː: i   # long ü → simple i (München → Minchen)
+  #   øː: e   # long ö → simple e
+  #   
+  #   # Regional improvements
+  #   ɐ: ə    # German unstressed 'er' → schwa
+  #   
+  #   # Diphthong mappings
+  #   aɪ: aɪ  # German "ei" → English "eye" (keep as is)
+  #   aʊ: aʊ  # German "au" → English "ow" (keep as is)
+  #   ɔɪ: ɔɪ  # German "eu/äu" → English "oy" (keep as is)
+  #   
+  #   # Nasal vowel normalizations
+  #   ɛ̃: ɛ    # nasal vowel → regular vowel
+  #   ɔ̃: ɔ    # nasal vowel → regular vowel
+  #   ã: a    # nasal vowel → regular vowel
+  #   ĩ: i    # nasal vowel → regular vowel
+  #   ũ: u    # nasal vowel → regular vowel
+  #   
+  # fr:  # French
+  #   œ: e    # œ → e
+  #   ɛ̃: ɛ    # nasal vowel → regular vowel
+  #   ɔ̃: ɔ    # nasal vowel → regular vowel
+  #   ã: a    # nasal vowel → regular vowel
+  #   ĩ: i    # nasal vowel → regular vowel
+  #   ũ: u    # nasal vowel → regular vowel
+  #   y: i    # y → i
+  #   
+  # es:  # Spanish
+  #   β: b    # β → b
+  #   ð: d    # ð → d
+  #   ɣ: g    # ɣ → g
+  #   ʎ: l    # ʎ → l
+  #   ɲ: n    # ɲ → n
+  #   
+  # it:  # Italian
+  #   ʎ: l    # ʎ → l
+  #   ɲ: n    # ɲ → n
+  #   dz: z   # dz → z
+  #   ts: s   # ts → s
+  #   
+  # ru:  # Russian
+  #   ɨ: i    # ɨ → i
+  #   ʲ: j    # palatalization → j
+  #   ʷ: w    # labialization → w
+  #   ɕ: ʃ    # ɕ → ʃ
+  #   ʑ: ʒ    # ʑ → ʒ
+  #   
+  # ja:  # Japanese
+  #   ɯ: u    # ɯ → u
+  #   ɸ: f    # ɸ → f
+  #   ç: h    # ç → h
+  #   ɴ: n    # ɴ → n
+  #   
+  # zh:  # Chinese
+  #   ɯ: u    # ɯ → u
+  #   ɥ: j    # ɥ → j
+  #   ɻ: ɹ    # ɻ → ɹ
+  #   ʈʂ: tʃ  # ʈʂ → tʃ
+  #   ʐ: ʒ    # ʐ → ʒ
+  #   
+  # nl:  # Dutch
+  #   ɣ: g    # ɣ → g
+  #   ʏ: ɪ    # ʏ → ɪ
+  #   ø: e    # ø → e
+  #   œ: e    # œ → e
+  #   
+  # pt:  # Portuguese
+  #   ʎ: l    # ʎ → l
+  #   ɲ: n    # ɲ → n
+  #   ʒ: ʃ    # ʒ → ʃ
+  #   β: b    # β → b
+  #   ð: d    # ð → d
+  #   ɣ: g    # ɣ → g
+  #   
+  # ar:  # Arabic
+  #   ʕ: a    # ʕ → a
+  #   ħ: h    # ħ → h
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   χ: k    # χ → k
+  #   ɣ: g    # ɣ → g
+  #   
+  # tr:  # Turkish
+  #   ɯ: u    # ɯ → u
+  #   ɲ: n    # ɲ → n
+  #   ʎ: l    # ʎ → l
+  #   ɟ: j    # ɟ → j
+  #   
+  # pl:  # Polish
+  #   ɕ: ʃ    # ɕ → ʃ
+  #   ʑ: ʒ    # ʑ → ʒ
+  #   ɲ: n    # ɲ → n
+  #   ʎ: l    # ʎ → l
+  #   
+  # cs:  # Czech
+  #   ɲ: n    # ɲ → n
+  #   ʎ: l    # ʎ → l
+  #   ɟ: j    # ɟ → j
+  #   c: ts   # c → ts
+  #   
+  # sv:  # Swedish
+  #   ɵ: e    # ɵ → e
+  #   ʏ: ɪ    # ʏ → ɪ
+  #   ø: e    # ø → e
+  #   œ: e    # œ → e
+  #   
+  # no:  # Norwegian
+  #   ɵ: e    # ɵ → e
+  #   ʏ: ɪ    # ʏ → ɪ
+  #   ø: e    # ø → e
+  #   œ: e    # œ → e
+  #   
+  # da:  # Danish
+  #   ɵ: e    # ɵ → e
+  #   ʏ: ɪ    # ʏ → ɪ
+  #   ø: e    # ø → e
+  #   œ: e    # œ → e
+  #   
+  # fi:  # Finnish
+  #   ɯ: u    # ɯ → u
+  #   ɑ: a    # ɑ → a
+  #   ɒ: o    # ɒ → o
+  #   ʋ: v    # ʋ → v
+  #   
+  # hu:  # Hungarian
+  #   ɟ: j    # ɟ → j
+  #   ɲ: n    # ɲ → n
+  #   ʎ: l    # ʎ → l
+  #   c: ts   # c → ts
+  #   
+  # ko:  # Korean
+  #   ɯ: u    # ɯ → u
+  #   ɹ: l    # ɹ → l (Korean r-sound)
+  #   ʌ: ə    # ʌ → ə
+  #   ɕ: ʃ    # ɕ → ʃ
+  #   
+  # th:  # Thai
+  #   ɯ: u    # ɯ → u
+  #   ɕ: ʃ    # ɕ → ʃ
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   ɲ: n    # ɲ → n
+  #   
+  # vi:  # Vietnamese
+  #   ɯ: u    # ɯ → u
+  #   ɕ: ʃ    # ɕ → ʃ
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   ɲ: n    # ɲ → n
+  #   
+  # hi:  # Hindi
+  #   ɳ: n    # ɳ → n
+  #   ɭ: l    # ɭ → l
+  #   ɻ: ɹ    # ɻ → ɹ
+  #   ʈ: t    # ʈ → t
+  #   ɖ: d    # ɖ → d
+  #   ɽ: ɹ    # ɽ → ɹ
+  #   
+  # bn:  # Bengali
+  #   ɳ: n    # ɳ → n
+  #   ɭ: l    # ɭ → l
+  #   ɻ: ɹ    # ɻ → ɹ
+  #   ʈ: t    # ʈ → t
+  #   ɖ: d    # ɖ → d
+  #   ɽ: ɹ    # ɽ → ɹ
+  #   
+  # ur:  # Urdu
+  #   ɳ: n    # ɳ → n
+  #   ɭ: l    # ɭ → l
+  #   ɻ: ɹ    # ɻ → ɹ
+  #   ʈ: t    # ʈ → t
+  #   ɖ: d    # ɖ → d
+  #   ɽ: ɹ    # ɽ → ɹ
+  #   
+  # fa:  # Persian
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   χ: k    # χ → k
+  #   ɣ: g    # ɣ → g
+  #   ɯ: u    # ɯ → u
+  #   
+  # he:  # Hebrew
+  #   ʕ: a    # ʕ → a
+  #   ħ: h    # ħ → h
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   χ: k    # χ → k
+  #   ɣ: g    # ɣ → g
+  #   
+  # el:  # Greek
+  #   ç: k    # ç → k
+  #   ɣ: g    # ɣ → g
+  #   ʎ: l    # ʎ → l
+  #   ɲ: n    # ɲ → n
+  #   
+  # is:  # Icelandic
+  #   ɣ: g    # ɣ → g
+  #   ç: k    # ç → k
+  #   ʏ: ɪ    # ʏ → ɪ
+  #   ø: e    # ø → e
+  #   
+  # cy:  # Welsh
+  #   ɬ: l    # ɬ → l
+  #   ʎ: l    # ʎ → l
+  #   ɲ: n    # ɲ → n
+  #   ɣ: g    # ɣ → g
+  #   
+  # ga:  # Irish
+  #   ɣ: g    # ɣ → g
+  #   ç: k    # ç → k
+  #   ʎ: l    # ʎ → l
+  #   ɲ: n    # ɲ → n
+  #   
+  # eu:  # Basque
+  #   ɲ: n    # ɲ → n
+  #   ʎ: l    # ʎ → l
+  #   ɾ: ɹ    # ɾ → ɹ
+  #   ʀ: ɹ    # ʀ → ɹ
+  #   
+  # ca:  # Catalan
+  #   ɲ: n    # ɲ → n
+  #   ʎ: l    # ʎ → l
+  #   ʒ: ʃ    # ʒ → ʃ
+  #   β: b    # β → b
+  #   ð: d    # ð → d
+  #   ɣ: g    # ɣ → g
+  #   
+  # gl:  # Galician
+  #   ɲ: n    # ɲ → n
+  #   ʎ: l    # ʎ → l
+  #   ʒ: ʃ    # ʒ → ʃ
+  #   β: b    # β → b
+  #   ð: d    # ð → d
+  #   ɣ: g    # ɣ → g
+  #   
+  # af:  # Afrikaans
+  #   ɣ: g    # ɣ → g
+  #   ɒ: o    # ɒ → o
+  #   ʏ: ɪ    # ʏ → ɪ
+  #   ø: e    # ø → e
+  #   
+  # sw:  # Swahili
+  #   ɓ: b    # ɓ → b
+  #   ɗ: d    # ɗ → d
+  #   ɠ: g    # ɠ → g
+  #   ɲ: n    # ɲ → n
+  #   
+  # zu:  # Zulu
+  #   ɓ: b    # ɓ → b
+  #   ɗ: d    # ɗ → d
+  #   ɠ: g    # ɠ → g
+  #   ɲ: n    # ɲ → n
+  #   ɬ: l    # ɬ → l
+  #   
+  # mt:  # Maltese
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   ħ: h    # ħ → h
+  #   ʕ: a    # ʕ → a
+  #   ɣ: g    # ɣ → g
+  #   
+  # tl:  # Filipino
+  #   ɲ: n    # ɲ → n
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   ɾ: ɹ    # ɾ → ɹ
+  #   ʀ: ɹ    # ʀ → ɹ
+  #   
+  # ms:  # Malay
+  #   ɲ: n    # ɲ → n
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   ɾ: ɹ    # ɾ → ɹ
+  #   ʀ: ɹ    # ʀ → ɹ
+  #   
+  # id:  # Indonesian
+  #   ɲ: n    # ɲ → n
+  #   ʔ: ""   # ʔ → empty (glottal stop)
+  #   ɾ: ɹ    # ɾ → ɹ
+  #   ʀ: ɹ    # ʀ → ɹ 
+  #     
+  # ... additional languages can be added here as reference
+
+# ============================================================================
+# USAGE INSTRUCTIONS
+# ============================================================================
+# 1. RECOMMENDED CONFIGURATION (currently active):
+#    - DeepPhonemizer Native Mappings (l→ɫ, ʌ→ə, g→ɡ)
+#    - R-Sound Fix (r/ʁ/ɾ/ʀ→ɹ)
+#    - No language-specific mappings
+#
+# 2. FOR EXPERIMENTS:
+#    - Copy desired mappings from the commented section
+#    - Test individual languages first
+#    - Compare results with the minimal configuration
+#
+# 3. WARNING:
+#    - More mappings ≠ better results
+#    - DeepPhonemizer is designed for complete IPA
+#    - Too many changes can be counterproductive 

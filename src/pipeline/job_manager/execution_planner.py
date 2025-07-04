@@ -99,15 +99,22 @@ class ExecutionPlanner:
             
         elif config_files:
             # Config-files execution path  
-            # Extract job_name from first config file to check for existing tasks
+            # Extract job_name and run_label from first config file to check for existing tasks
             try:
                 first_config = self.config_manager.load_cascading_config(config_files[0])
                 job_name = first_config.get("job", {}).get("name", "")
+                run_label = first_config.get("job", {}).get("run-label", "")
                 
                 # OPTIMIZATION: Skip loading existing tasks if --mode new is explicitly specified
                 existing_tasks = []
                 if job_name and hasattr(args, 'mode') and args.mode != 'new':
-                    existing_tasks = self.job_manager.find_existing_tasks(job_name)
+                    # Pass run_label for proper filtering based on mode
+                    filter_by_run_label = None
+                    if args.mode in ['all', 'last', 'all-new'] and run_label:
+                        filter_by_run_label = run_label
+                        logger.debug(f"Filtering existing tasks by run-label: '{run_label}' for mode: {args.mode}")
+                    
+                    existing_tasks = self.job_manager.find_existing_tasks(job_name, filter_by_run_label)
                 
                 return ExecutionContext(
                     existing_tasks=existing_tasks,

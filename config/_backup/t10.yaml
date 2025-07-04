@@ -1,0 +1,35 @@
+job:
+  name: "test"
+  run-label: "glen_hallstrom_2"
+
+input:
+  reference_audio: "glen_hallstrom_2.wav"        
+  text_file: "test_short.txt"
+
+generation:
+  num_candidates: 5
+  max_retries: 1
+  tts_params:
+    # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
+    # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
+    # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
+    # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
+    exaggeration: 0.45                  # give MAX here
+    exaggeration_max_deviation: 0.20    # ramp DOWN 
+
+    cfg_weight: 0.25                     # give MIN here
+    cfg_weight_max_deviation: 0.30      # ramp UP 
+
+    temperature: 0.85                    # give MIN here
+    temperature_max_deviation: 0.2      # ramp UP 
+
+    repetition_penalty: 1.3             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
+    
+  # Conservative candidate parameters for most likely success
+  conservative_candidate:
+    enabled: true
+    exaggeration: 0.4
+    cfg_weight: 0.45
+    temperature: 0.7
+
+# All other settings will be inherited from default_config.yaml

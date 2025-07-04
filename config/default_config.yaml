@@ -9,6 +9,9 @@ input:
 preprocessing:
   enabled: true
   normalize_line_endings: true    # Convert \r\n and \r to \n
+  process_language_tags: true     # Process [lang="code"]text[/lang] tags
+  language_tag_processor:
+    phoneme_mappings_path: "config/phoneme_mappings_minimal.yaml"
   # Future preprocessing options can be added here
   # normalize_quotes: false
   # remove_extra_whitespace: false
