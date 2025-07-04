@@ -335,42 +335,14 @@ class ConfigManager:
             return self._apply_path_sanitization(config)
         
         if self.is_task_config(config_path):
-            # 3-level cascade: default → job → task
+            # 2-level cascade for task configs: default → task
+            # Task configs should be self-contained and not search for parent job configs
+            # This prevents the alphabetical sorting problem (t10.yaml vs t4.yaml)
             
-            # Load task-config once and reuse it
+            # Load task-config and merge directly with default
             task_config_data = self.load_job_config(config_path)
-            
-            # First, try to find and merge parent job-config using job_name from already loaded task-config
-            job_name = task_config_data.get("job", {}).get("name")
-            if job_name:
-                # Search for job-config files in config directory
-                parent_job_config_path = None
-                for config_file in self.config_dir.glob("*.yaml"):
-                    if config_file.name == "default_config.yaml":
-                        continue  # Skip default config
-                        
-                    try:
-                        config_data = self.load_job_config(config_file)
-                        if config_data.get("job", {}).get("name") == job_name:
-                            parent_job_config_path = config_file
-                            break
-                    except Exception as e:
-                        logger.warning(f"Error reading config {config_file}: {e}")
-                
-                if parent_job_config_path:
-                    job_config = self.load_job_config(parent_job_config_path)
-                    config = self.merge_configs(job_config, config)
-                    logger.debug(f"Merged parent job config: {parent_job_config_path}")
-                else:
-                    logger.debug(f"No parent job config found for task: {config_path}")
-                    logger.debug(f"No parent job config found, using default config as base")
-            else:
-                logger.warning(f"No job name found in task config: {config_path}")
-                logger.debug(f"No parent job config found, using default config as base")
-            
-            # Then merge task-config on top (reuse already loaded task_config_data)
             config = self.merge_configs(task_config_data, config)
-            logger.debug(f"Merged task config: {config_path}")
+            logger.debug(f"Merged task config: {config_path} (no parent job config search)")
             
         else:
             # 2-level cascade: default → job
@@ -675,9 +647,13 @@ class ConfigManager:
 
         return configs
 
-    def find_existing_tasks(self, job_name: str) -> List[TaskConfig]:
+    def find_existing_tasks(self, job_name: str, run_label: Optional[str] = None) -> List[TaskConfig]:
         """
         Find existing completed task configurations within the output directory for a given job.
+        
+        Args:
+            job_name: Name of the job to search for
+            run_label: Optional run-label to filter tasks by. If provided, only tasks with matching run-label are returned.
 
         Returns:
             List of TaskConfig objects, sorted by timestamp (newest first)
@@ -685,13 +661,36 @@ class ConfigManager:
         tasks = []
         job_dir = self.output_dir / job_name
 
-        if job_dir.exists():
-            for config_file in job_dir.glob("*_config.yaml"):
-                try:
-                    task_config = self.load_task_config(config_file)
-                    tasks.append(task_config)
-                except Exception as e:
-                    logger.warning(f"Error loading task config {config_file}: {e}")
+        if not job_dir.exists():
+            if run_label:
+                logger.debug(f"Found 0 tasks for job '{job_name}' with run-label '{run_label}' (job directory not found)")
+            else:
+                logger.debug(f"Found 0 tasks for job '{job_name}' (job directory not found)")
+            return tasks
+
+        # Pre-filter files based on filename pattern if run_label is specified
+        if run_label:
+            # Sanitize run_label for filename matching (same logic as in create_task_config)
+            sanitized_run_label = self._sanitize_path_identifier(run_label)
+            pattern = f"{sanitized_run_label}_*_config.yaml"
+            config_files = list(job_dir.glob(pattern))
+            logger.debug(f"Pre-filtering by filename pattern '{pattern}': found {len(config_files)} matching files")
+        else:
+            config_files = list(job_dir.glob("*_config.yaml"))
+            logger.debug(f"Scanning all config files: found {len(config_files)} files")
+
+        for config_file in config_files:
+            try:
+                task_config = self.load_task_config(config_file)
+                
+                # Double-check run_label match (filename might not be perfect due to sanitization edge cases)
+                if run_label and task_config.run_label != run_label:
+                    logger.debug(f"Skipping task {task_config.task_name} - run_label mismatch after loading: '{task_config.run_label}' != '{run_label}'")
+                    continue
+                
+                tasks.append(task_config)
+            except Exception as e:
+                logger.warning(f"Error loading task config {config_file}: {e}")
 
         # Sort by timestamp (newest first) - convert to datetime for proper sorting
         def parse_timestamp(timestamp_str: str) -> datetime:
@@ -702,4 +701,10 @@ class ConfigManager:
                 return datetime.min
 
         tasks.sort(key=lambda t: parse_timestamp(t.timestamp), reverse=True)
+        
+        if run_label:
+            logger.debug(f"Found {len(tasks)} tasks for job '{job_name}' with run-label '{run_label}'")
+        else:
+            logger.debug(f"Found {len(tasks)} tasks for job '{job_name}' (no run-label filter)")
+            
         return tasks

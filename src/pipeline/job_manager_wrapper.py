@@ -46,8 +46,8 @@ class JobManager:
         self.config_validator = ConfigValidator(self.core_manager, config_manager)
 
     # Delegate to core manager
-    def find_existing_tasks(self, job_name: str) -> List[TaskConfig]:
-        return self.core_manager.find_existing_tasks(job_name)
+    def find_existing_tasks(self, job_name: str, run_label: Optional[str] = None) -> List[TaskConfig]:
+        return self.core_manager.find_existing_tasks(job_name, run_label)
 
     def find_jobs_by_name(self, job_name: str) -> List[Any]:
         """Find job configs by name."""
