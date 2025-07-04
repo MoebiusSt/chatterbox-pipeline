@@ -106,30 +106,109 @@ python scripts/train.py --resume models/checkpoints/checkpoint_epoch_50.pth
 
 ## 🎯 Training
 
-### 1. Daten vorbereiten
+### Kompletter Training-Workflow
 
-Erstelle deine Trainings-/Validierungsdaten in folgender Struktur:
+Der Training-Prozess besteht aus **4 aufeinanderfolgenden Schritten**:
 
+```mermaid
+graph LR
+    A[1. Datenvorbereitung] --> B[2. Training]
+    B --> C[3. Evaluation]
+    C --> D[4. Produktive Nutzung]
+```
+
+#### **Warum 3 Datensets (train/validation/test)?**
+
+```
+Deine Audio-Paare (100%)
+├── train/ (80%)      → Modell lernt von diesen Daten
+├── validation/ (10%) → Überwacht Lernfortschritt, verhindert Overfitting
+└── test/ (10%)       → Unabhängige finale Qualitätsbewertung
+```
+
+### 1. Schritt: Daten vorbereiten
+
+#### **🎯 Du brauchst nur EINEN Datensatz!**
+
+Sammle **alle** deine Audio-Paare in zwei Ordnern:
+
+```
+your_audio_collection/
+├── clean/                    # ALLE deine sauberen Aufnahmen
+│   ├── speaker1_001.wav
+│   ├── speaker1_002.wav
+│   ├── speaker2_001.wav
+│   └── ... (z.B. 1000 Dateien)
+└── noisy/                    # Entsprechende verrauschte Versionen  
+    ├── speaker1_001.wav      # Gleiche Dateinamen!
+    ├── speaker1_002.wav
+    ├── speaker2_001.wav
+    └── ... (1000 entsprechende Dateien)
+```
+
+**Option A: Automatische Aufteilung (empfohlen)**
+```bash
+# Automatische Aufteilung: 80% train, 10% validation, 10% test
+python scripts/prepare_dataset.py \
+    --clean_dir your_audio_collection/clean \
+    --noisy_dir your_audio_collection/noisy \
+    --output_dir data/processed
+```
+
+**➜ Das Script verteilt ZUFÄLLIG deine Audio-Paare auf train/validation/test!**
+
+**Option B: Manuelle Struktur erstellen**
 ```
 data/processed/
 ├── train/
-│   ├── clean/          # Saubere Reference-Audiodateien
-│   └── noisy/          # Verrauschte/artifacted Audiodateien
-└── validation/
-    ├── clean/          # Saubere Reference-Audiodateien
-    └── noisy/          # Verrauschte/artifacted Audiodateien
+│   ├── clean/          # 80% deiner sauberen Audio-Dateien
+│   └── noisy/          # 80% der entsprechenden verrauschten Dateien
+├── validation/
+│   ├── clean/          # 10% für Validierung während Training
+│   └── noisy/          # 10% entsprechende verrauschte Dateien
+└── test/
+    ├── clean/          # 10% für finale Evaluation
+    └── noisy/          # 10% entsprechende verrauschte Dateien
 ```
 
 **Wichtig:** Die Dateinamen in `clean/` und `noisy/` müssen übereinstimmen!
 
-### 2. Konfiguration anpassen
+#### **🎲 Beispiel: Automatische Aufteilung**
+
+Du hast **1000 Audio-Paare** gesammelt:
+
+**Deine Eingabe:**
+```
+your_audio_collection/clean/    → 1000 saubere .wav Dateien
+your_audio_collection/noisy/    → 1000 entsprechende verrauschte .wav Dateien
+```
+
+**prepare_dataset.py erstellt automatisch:**
+```
+data/processed/
+├── train/              # 800 zufällige Paare (80%)
+│   ├── clean/
+│   └── noisy/
+├── validation/         # 100 zufällige Paare (10%)
+│   ├── clean/
+│   └── noisy/
+└── test/              # 100 zufällige Paare (10%)
+    ├── clean/
+    └── noisy/
+```
+
+**Du musst NICHT selbst entscheiden welche Dateien wohin kommen!**
+
+### 2. Schritt: Training durchführen
+
+**2.1 Konfiguration anpassen (optional)**
 
 Bearbeite `config/train_config.yaml` und `config/model_config.yaml` nach deinen Bedürfnissen:
 
 ```yaml
 # config/train_config.yaml
 training:
-  batch_size: 8          # Reduziere bei Speicherproblemen
+  batch_size: 8          # Reduziere bei GPU-Speicherproblemen
   num_epochs: 100
   learning_rate: 0.0001
   
@@ -138,39 +217,99 @@ hardware:
   mixed_precision: true  # Für RTX 4080 empfohlen
 ```
 
-### 3. Training starten
+**2.2 Training starten**
 
 ```bash
-# Basis-Training
+# Standard-Training (verwendet train/ und validation/ automatisch)
 python scripts/train.py
 
-# Mit erweiterten Optionen
+# Mit eigenen Pfaden
 python scripts/train.py \
-    --config config/train_config.yaml \
-    --model_config config/model_config.yaml \
-    --output_dir outputs/my_training \
-    --mixed_precision \
-    --verbose
+    --train_data data/processed/train \
+    --val_data data/processed/validation \
+    --output_dir outputs/my_training
 ```
 
-### 4. Training überwachen
+**2.3 Training überwachen**
 
 ```bash
-# Tensorboard starten
+# Tensorboard starten (parallel zum Training)
 tensorboard --logdir outputs/training/logs
 ```
+→ Öffne http://localhost:6006 im Browser für Live-Monitoring
 
-Öffne http://localhost:6006 im Browser.
+**Was passiert während dem Training?**
+- Modell lernt von `train/`-Daten
+- Validiert sich selbst an `validation/`-Daten
+- Speichert beste Checkpoints automatisch
+- Stoppt bei Overfitting (Early Stopping)
 
-### 5. Training-Fortschritt prüfen
+### 3. Schritt: Modell evaluieren
+
+Nach dem Training → Finale Qualitätsbewertung:
 
 ```bash
-# Logs anzeigen
-tail -f outputs/training/logs/training.log
-
-# Checkpoints auflisten
-ls -la models/checkpoints/
+# Evaluation auf unabhängigem test/-Set
+python scripts/evaluate_model.py \
+    --model models/final/cleanunet_best.pth \
+    --test_data data/processed/test \
+    --output_dir outputs/evaluation
 ```
+
+**Was macht evaluate_model.py?**
+- Testet das trainierte Modell auf `test/`-Daten (die es noch nie gesehen hat)
+- Berechnet objektive Metriken (PESQ, STOI, SNR)
+- Erstellt detaillierten Qualitäts-Report
+- Speichert Enhanced Audio-Beispiele
+
+### 4. Schritt: Produktive Nutzung
+
+Nach erfolgreichem Training → Echte Audio-Dateien enhancen:
+
+```bash
+# Neue Audio-Dateien verarbeiten
+python scripts/enhance_audio.py input_audio.wav enhanced_audio.wav \
+    --model models/final/cleanunet_best.pth
+
+# Batch-Verarbeitung für viele Dateien
+python scripts/enhance_audio.py input_directory/ output_directory/ \
+    --batch --verbose
+```
+
+## 📋 **Training-Checkliste**
+
+```
+☐ 1. Audio-Paare gesammelt (clean + noisy, gleiche Dateinamen)
+☐ 2. prepare_dataset.py ausgeführt → automatische train/val/test Aufteilung
+☐ 3. train.py gestartet → Modell trainiert mit train/, validiert mit validation/
+☐ 4. evaluate_model.py ausgeführt → finale Qualitätsbewertung mit test/
+☐ 5. enhance_audio.py getestet → produktiv einsatzbereit
+```
+
+## ❓ **Häufige Fragen (FAQ)**
+
+**Q: Muss ich separate Datensätze für Training und Validation erstellen?**
+**A: NEIN!** Du sammelst alle Audio-Paare in einem Ordner. `prepare_dataset.py` teilt automatisch auf.
+
+**Q: Woher weiß das Script, welche Dateien zu train/validation/test gehören?**
+**A: Zufällige Aufteilung!** Das Script mischt alle Paare und teilt sie prozentual auf (80/10/10).
+
+**Q: Können sich train/validation/test-Daten überschneiden?**
+**A: NEIN!** Jedes Audio-Paar kommt nur in EIN Set. Das garantiert unabhängige Evaluation.
+
+**Q: Was ist der Unterschied zwischen validation/ und test/?**
+**A:** 
+- **validation/**: Wird WÄHREND dem Training für Early Stopping verwendet
+- **test/**: Wird NACH dem Training für finale, unabhängige Qualitätsbewertung verwendet
+
+## 🔄 **Script-Übersicht**
+
+| Script | Zweck | Wann verwenden |
+|--------|-------|----------------|
+| `prepare_dataset.py` | Daten aufteilen | **Einmalig** vor Training |
+| `train.py` | Modell trainieren | **Einmalig** für jedes Modell |
+| `evaluate_model.py` | Qualität bewerten | **Nach** jedem Training |
+| `enhance_audio.py` | Audio verbessern | **Produktiv** für echte Dateien |
 
 ## 🔮 Inferenz
 
