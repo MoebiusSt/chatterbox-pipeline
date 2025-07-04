@@ -689,19 +689,36 @@ class ConfigManager:
         tasks = []
         job_dir = self.output_dir / job_name
 
-        if job_dir.exists():
-            for config_file in job_dir.glob("*_config.yaml"):
-                try:
-                    task_config = self.load_task_config(config_file)
-                    
-                    # Filter by run_label if specified
-                    if run_label and task_config.run_label != run_label:
-                        logger.debug(f"Skipping task {task_config.task_name} - run_label mismatch: '{task_config.run_label}' != '{run_label}'")
-                        continue
-                    
-                    tasks.append(task_config)
-                except Exception as e:
-                    logger.warning(f"Error loading task config {config_file}: {e}")
+        if not job_dir.exists():
+            if run_label:
+                logger.debug(f"Found 0 tasks for job '{job_name}' with run-label '{run_label}' (job directory not found)")
+            else:
+                logger.debug(f"Found 0 tasks for job '{job_name}' (job directory not found)")
+            return tasks
+
+        # Pre-filter files based on filename pattern if run_label is specified
+        if run_label:
+            # Sanitize run_label for filename matching (same logic as in create_task_config)
+            sanitized_run_label = self._sanitize_path_identifier(run_label)
+            pattern = f"{sanitized_run_label}_*_config.yaml"
+            config_files = list(job_dir.glob(pattern))
+            logger.debug(f"Pre-filtering by filename pattern '{pattern}': found {len(config_files)} matching files")
+        else:
+            config_files = list(job_dir.glob("*_config.yaml"))
+            logger.debug(f"Scanning all config files: found {len(config_files)} files")
+
+        for config_file in config_files:
+            try:
+                task_config = self.load_task_config(config_file)
+                
+                # Double-check run_label match (filename might not be perfect due to sanitization edge cases)
+                if run_label and task_config.run_label != run_label:
+                    logger.debug(f"Skipping task {task_config.task_name} - run_label mismatch after loading: '{task_config.run_label}' != '{run_label}'")
+                    continue
+                
+                tasks.append(task_config)
+            except Exception as e:
+                logger.warning(f"Error loading task config {config_file}: {e}")
 
         # Sort by timestamp (newest first) - convert to datetime for proper sorting
         def parse_timestamp(timestamp_str: str) -> datetime:
