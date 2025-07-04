@@ -4,7 +4,7 @@ job:
 
 input:
   reference_audio: "annie_coleman_rothenberg_2.wav"        
-  text_file: "test_short.txt"
+  text_file: "raise_children.txt"
 
 generation:
   num_candidates: 5

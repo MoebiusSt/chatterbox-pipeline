@@ -1,0 +1,14 @@
+inference:
+  model_path: "models/final/cleanunet_best.pth"
+  device: "cuda"
+  batch_size: 1
+  
+  # Audio processing
+  sample_rate: 16000
+  chunk_size: 32768  # 2 seconds at 16kHz
+  overlap: 0.25      # 25% overlap between chunks
+  
+  # Output
+  output_format: "wav"
+  output_sample_rate: 16000
+  normalize_output: true 

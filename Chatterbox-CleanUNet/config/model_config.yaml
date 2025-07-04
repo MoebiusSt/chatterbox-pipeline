@@ -1,0 +1,31 @@
+model:
+  # Audio parameters
+  sample_rate: 16000
+  n_fft: 512
+  hop_length: 128
+  win_length: 512
+  
+  # Model architecture
+  encoder_layers: 8
+  decoder_layers: 8
+  encoder_channels: [64, 128, 256, 512, 512, 512, 512, 512]
+  decoder_channels: [512, 512, 512, 512, 256, 128, 64, 32]
+  
+  # Self-attention parameters
+  attention_heads: 8
+  attention_dim: 512
+  attention_layers: 4
+  attention_dropout: 0.1
+  
+  # Other parameters
+  kernel_size: 3
+  stride: 2
+  activation: "LeakyReLU"
+  normalization: "BatchNorm1d"
+
+loss:
+  l1_weight: 1.0
+  stft_weight: 0.5
+  high_band_stft_weight: 0.3
+  high_band_freq_min: 4000
+  high_band_freq_max: 8000 

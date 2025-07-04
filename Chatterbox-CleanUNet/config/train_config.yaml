@@ -1,0 +1,33 @@
+training:
+  batch_size: 8
+  num_epochs: 100
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  gradient_clip_norm: 5.0
+  
+  # Scheduler
+  scheduler: "ReduceLROnPlateau"
+  scheduler_patience: 10
+  scheduler_factor: 0.5
+  
+  # Validation
+  validation_freq: 1
+  save_freq: 5
+  early_stopping_patience: 20
+  
+  # Data
+  train_data_dir: "data/processed/train"
+  val_data_dir: "data/processed/validation"
+  num_workers: 4
+  pin_memory: true
+  
+  # Augmentation
+  use_augmentation: true
+  time_stretch_range: [0.9, 1.1]
+  pitch_shift_range: [-2, 2]
+  noise_snr_range: [10, 30]
+
+hardware:
+  device: "cuda"
+  mixed_precision: true
+  compile_model: false 
