@@ -1,10 +1,10 @@
 job:
-  name: "default"
-  run-label: ""  # empty by default, use it to organise the tasks/files/folders
+  name: default
+  run-label: """  # empty by default, use it to organise the tasks/files/folders
 
 input:
-  reference_audio: "mike_kamp_1.wav"  # file name in reference_audio folder
-  text_file: "input-document.txt"     # file name in texts folder
+  reference_audio: mike_kamp_1.wav  # file name in reference_audio folder
+  text_file: input-document.txt     # file name in texts folder
 
 preprocessing:
   enabled: true
@@ -18,7 +18,7 @@ chunking:
   target_chunk_limit: 380
   max_chunk_limit: 460
   min_chunk_length: 80
-  spacy_model: "en_core_web_sm"
+  spacy_model: en_core_web_sm
 
 generation:
   num_candidates: 3
@@ -47,7 +47,7 @@ generation:
     temperature: 0.7
   
 validation:
-  whisper_model: "small" # "base" "small" "medium" "large"
+  whisper_model: small # base < small < medium < large
   similarity_threshold: 0.8
   min_quality_score: 0.75
 

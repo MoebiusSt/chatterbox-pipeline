@@ -17,6 +17,10 @@ import yaml
 logger = logging.getLogger(__name__)
 
 
+# Custom YAML dumper is no longer needed - using standard YAML dump
+# All config files will use consistent formatting without quotes for simple strings
+
+
 @dataclass
 class TaskConfig:
     """Configuration for a task."""
@@ -658,7 +662,7 @@ class ConfigManager:
         Returns:
             List of TaskConfig objects, sorted by timestamp (newest first)
         """
-        tasks = []
+        tasks: List[TaskConfig] = []
         job_dir = self.output_dir / job_name
 
         if not job_dir.exists():

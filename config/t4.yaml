@@ -1,10 +1,10 @@
 job:
-  name: "test"
-  run-label: "david_barnes_1"
+  name: test
+  run-label: david_barnes_1"
 
 input:
-  reference_audio: "david_barnes_1.wav"        
-  text_file: "raise_children.txt"
+  reference_audio: david_barnes_1.wav        
+  text_file: raise_children.txt
 
 generation:
   num_candidates: 5

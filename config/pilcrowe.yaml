@@ -1,10 +1,10 @@
 job:
-  name: "pilcrowe"
-  run-label: "eric_prochnow"
+  name: pilcrowe
+  run-label: eric_prochnow
 
 input:
-  reference_audio: "cori_samuel_1.wav"        
-  text_file: "pilcrowe.txt"
+  reference_audio: cori_samuel_1.wav        
+  text_file: pilcrowe.txt
 
 preprocessing:
   enabled: true
@@ -18,7 +18,7 @@ chunking:
   target_chunk_limit: 380
   max_chunk_limit: 460
   min_chunk_length: 80
-  spacy_model: "en_core_web_sm"
+  spacy_model: en_core_web_sm
 
 generation:
   num_candidates: 1
