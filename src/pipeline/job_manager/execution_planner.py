@@ -103,7 +103,11 @@ class ExecutionPlanner:
             try:
                 first_config = self.config_manager.load_cascading_config(config_files[0])
                 job_name = first_config.get("job", {}).get("name", "")
-                existing_tasks = self.job_manager.find_existing_tasks(job_name) if job_name else []
+                
+                # OPTIMIZATION: Skip loading existing tasks if --mode new is explicitly specified
+                existing_tasks = []
+                if job_name and hasattr(args, 'mode') and args.mode != 'new':
+                    existing_tasks = self.job_manager.find_existing_tasks(job_name)
                 
                 return ExecutionContext(
                     existing_tasks=existing_tasks,
