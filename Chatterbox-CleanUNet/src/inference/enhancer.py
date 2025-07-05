@@ -7,11 +7,19 @@ from typing import Dict, List, Optional, Tuple
 import yaml
 import time
 
-from ..models.cleanunet import CleanUNet
-from ..utils.audio_utils import (
-    load_audio, save_audio, normalize_audio, 
-    chunk_audio, reconstruct_audio
-)
+try:
+    from ..models.cleanunet import CleanUNet
+    from ..utils.audio_utils import (
+        load_audio, save_audio, normalize_audio, 
+        chunk_audio, reconstruct_audio
+    )
+except ImportError:
+    # Fallback for direct script execution
+    from models.cleanunet import CleanUNet
+    from utils.audio_utils import (
+        load_audio, save_audio, normalize_audio, 
+        chunk_audio, reconstruct_audio
+    )
 
 class AudioEnhancer:
     """Audio enhancement using trained CleanUNet model"""
@@ -273,7 +281,11 @@ class AudioEnhancer:
         
         # If reference provided, compute metrics
         if reference_path:
-            from ..utils.metrics import compute_all_metrics
+            try:
+                from ..utils.metrics import compute_all_metrics
+            except ImportError:
+                # Fallback for direct script execution
+                from utils.metrics import compute_all_metrics
             
             # Load reference and enhanced audio
             reference_audio, _ = load_audio(reference_path, self.sample_rate)

@@ -75,11 +75,11 @@ def setup_device(args, config):
     
     return device
 
-def create_datasets(config, args):
+def create_datasets(train_config, model_config, args):
     """Create training and validation datasets"""
     # Override data paths if provided
-    train_data_dir = args.train_data or config['training']['train_data_dir']
-    val_data_dir = args.val_data or config['training']['val_data_dir']
+    train_data_dir = args.train_data or train_config['training']['train_data_dir']
+    val_data_dir = args.val_data or train_config['training']['val_data_dir']
     
     # Check if data directories exist
     if not os.path.exists(train_data_dir):
@@ -91,14 +91,14 @@ def create_datasets(config, args):
     train_dataset = TTSArtifactDataset(
         clean_dir=os.path.join(train_data_dir, 'clean'),
         noisy_dir=os.path.join(train_data_dir, 'noisy'),
-        config=config['model'],
+        config=model_config['model'],
         mode='train'
     )
     
     val_dataset = TTSArtifactDataset(
         clean_dir=os.path.join(val_data_dir, 'clean'),
         noisy_dir=os.path.join(val_data_dir, 'noisy'),
-        config=config['model'],
+        config=model_config['model'],
         mode='val'
     )
     
@@ -219,7 +219,7 @@ def main():
     
     # Create datasets
     print("Creating datasets...")
-    train_dataset, val_dataset = create_datasets(train_config, args)
+    train_dataset, val_dataset = create_datasets(train_config, model_config, args)
     
     # Create data loaders
     print("Creating data loaders...")

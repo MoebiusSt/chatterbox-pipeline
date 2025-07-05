@@ -11,8 +11,13 @@ from pathlib import Path
 import yaml
 from tqdm import tqdm
 
-from ..utils.metrics import MetricsCalculator
-from ..utils.audio_utils import save_audio
+try:
+    from ..utils.metrics import MetricsCalculator
+    from ..utils.audio_utils import save_audio
+except ImportError:
+    # Fallback for direct script execution
+    from utils.metrics import MetricsCalculator
+    from utils.audio_utils import save_audio
 
 class Trainer:
     """Training class for CleanUNet model"""

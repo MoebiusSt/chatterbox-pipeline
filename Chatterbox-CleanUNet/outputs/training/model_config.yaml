@@ -1,0 +1,40 @@
+loss:
+  high_band_freq_max: 12000
+  high_band_freq_min: 6000
+  high_band_stft_weight: 0.3
+  l1_weight: 1.0
+  stft_weight: 0.5
+model:
+  activation: LeakyReLU
+  attention_dim: 512
+  attention_dropout: 0.1
+  attention_heads: 8
+  attention_layers: 4
+  crop_length: 48000
+  decoder_channels:
+  - 512
+  - 512
+  - 512
+  - 512
+  - 256
+  - 128
+  - 64
+  - 32
+  decoder_layers: 8
+  encoder_channels:
+  - 64
+  - 128
+  - 256
+  - 512
+  - 512
+  - 512
+  - 512
+  - 512
+  encoder_layers: 8
+  hop_length: 256
+  kernel_size: 3
+  n_fft: 1024
+  normalization: BatchNorm1d
+  sample_rate: 24000
+  stride: 2
+  win_length: 1024
