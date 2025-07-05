@@ -59,7 +59,7 @@ class AudioEnhancer:
         model = CleanUNet(self.model_config)
         
         # Load checkpoint
-        checkpoint = torch.load(model_path, map_location=self.device)
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
         
         # Load state dict
         if 'model_state_dict' in checkpoint:

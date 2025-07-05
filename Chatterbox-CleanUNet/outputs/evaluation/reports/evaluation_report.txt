@@ -1,0 +1,30 @@
+CleanUNet Model Evaluation Report
+==================================================
+
+Model: outputs/training/checkpoints/final_checkpoint.pth
+Evaluation date: 2025-07-05 04:52:01
+
+Dataset Statistics:
+--------------------
+Total files: 90
+Successfully processed: 0
+Failed: 90
+Success rate: 0.0%
+
+Performance Statistics:
+-------------------------
+Total processing time: 0.00s
+Total audio length: 0.00s
+Average real-time factor: 0.000x
+
+Quality Metrics (Average ± Std):
+-----------------------------------
+PESQ:      0.000 ± 0.000
+STOI:      0.000 ± 0.000
+ESTOI:     0.000 ± 0.000
+SNR:       0.000 ± 0.000 dB
+SI-SNR:    0.000 ± 0.000 dB
+LSD:       0.000 ± 0.000
+Spec Conv: 0.000 ± 0.000
+MCD:       0.000 ± 0.000
+

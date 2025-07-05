@@ -1,0 +1,33 @@
+{
+  "total_files": 90,
+  "processed_files": 0,
+  "failed_files": 90,
+  "total_processing_time": 0,
+  "total_audio_length": 0,
+  "individual_results": [],
+  "overall_metrics": {
+    "pesq": 0.0,
+    "pesq_std": 0.0,
+    "stoi": 0.0,
+    "stoi_std": 0.0,
+    "estoi": 0.0,
+    "estoi_std": 0.0,
+    "snr": 0.0,
+    "snr_std": 0.0,
+    "si_snr": 0.0,
+    "si_snr_std": 0.0,
+    "lsd": 0.0,
+    "lsd_std": 0.0,
+    "spectral_convergence": 0.0,
+    "spectral_convergence_std": 0.0,
+    "mcd": 0.0,
+    "mcd_std": 0.0
+  },
+  "average_real_time_factor": 0,
+  "evaluation_metadata": {
+    "model_path": "outputs/training/checkpoints/final_checkpoint.pth",
+    "test_data_path": "data/processed/test",
+    "evaluation_time": 0.5477921962738037,
+    "timestamp": "2025-07-05 04:52:01"
+  }
+}

@@ -10,7 +10,7 @@ model:
   attention_dropout: 0.1
   attention_heads: 8
   attention_layers: 4
-  crop_length: 48000
+  crop_length: 48128
   decoder_channels:
   - 512
   - 512

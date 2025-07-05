@@ -22,7 +22,7 @@ model:
   stride: 2
   activation: "LeakyReLU"
   normalization: "BatchNorm1d"
-  crop_length: 48000  # 2 seconds at 24kHz
+  crop_length: 48128  # Original training length (matches model output)
 
 loss:
   l1_weight: 1.0

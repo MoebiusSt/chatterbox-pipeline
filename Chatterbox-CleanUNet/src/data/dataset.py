@@ -100,9 +100,14 @@ class TTSArtifactDataset(Dataset):
     def _preprocess_audio(self, clean_audio: torch.Tensor, noisy_audio: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Preprocess audio (cropping, normalization, etc.)"""
         
-        # Random cropping for training
-        if self.mode == 'train' and clean_audio.shape[1] > self.crop_length:
-            start = random.randint(0, clean_audio.shape[1] - self.crop_length)
+        # Cropping for all modes to ensure consistent tensor sizes
+        if clean_audio.shape[1] > self.crop_length:
+            if self.mode == 'train':
+                # Random cropping for training
+                start = random.randint(0, clean_audio.shape[1] - self.crop_length)
+            else:
+                # Center cropping for validation/test
+                start = (clean_audio.shape[1] - self.crop_length) // 2
             clean_audio = clean_audio[:, start:start + self.crop_length]
             noisy_audio = noisy_audio[:, start:start + self.crop_length]
         
