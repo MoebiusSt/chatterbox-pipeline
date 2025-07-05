@@ -109,7 +109,8 @@ class AudioEnhancer:
         
         # Enhance
         with torch.no_grad():
-            enhanced = self.model(audio)
+            enhanced = self.model(audio.unsqueeze(0))  # Add batch dimension
+            enhanced = enhanced.squeeze(0)  # Remove batch dimension
         
         # Trim back to original length
         if original_length < enhanced.shape[1]:
@@ -131,7 +132,8 @@ class AudioEnhancer:
             
             # Enhance chunk
             with torch.no_grad():
-                enhanced_chunk = self.model(chunk)
+                enhanced_chunk = self.model(chunk.unsqueeze(0))  # Add batch dimension
+                enhanced_chunk = enhanced_chunk.squeeze(0)  # Remove batch dimension
             
             enhanced_chunks.append(enhanced_chunk.cpu())
             

@@ -1,0 +1,93 @@
+best_val_loss: 0.29483457406361896
+best_val_pesq: !!python/object/apply:numpy.core.multiarray.scalar
+- !!python/object/apply:numpy.dtype
+  args:
+  - f8
+  - false
+  - true
+  state: !!python/tuple
+  - 3
+  - <
+  - null
+  - null
+  - null
+  - -1
+  - -1
+  - 0
+- !!binary |
+  x3Ec12fP9T8=
+device: cuda
+model_config:
+  loss:
+    high_band_freq_max: 12000
+    high_band_freq_min: 6000
+    high_band_stft_weight: 0.2
+    l1_weight: 0.5
+    stft_weight: 0.8
+  model:
+    activation: LeakyReLU
+    attention_dim: 512
+    attention_dropout: 0.1
+    attention_heads: 8
+    attention_layers: 4
+    crop_length: 48128
+    decoder_channels:
+    - 512
+    - 512
+    - 512
+    - 512
+    - 256
+    - 128
+    - 64
+    - 32
+    decoder_layers: 8
+    encoder_channels:
+    - 64
+    - 128
+    - 256
+    - 512
+    - 512
+    - 512
+    - 512
+    - 512
+    encoder_layers: 8
+    hop_length: 256
+    kernel_size: 3
+    n_fft: 1024
+    normalization: BatchNorm1d
+    sample_rate: 24000
+    stride: 2
+    win_length: 1024
+total_epochs: 50
+train_config:
+  hardware:
+    compile_model: false
+    device: cuda
+    mixed_precision: true
+  training:
+    batch_size: 8
+    early_stopping_patience: 15
+    gradient_clip_norm: 5.0
+    learning_rate: 5.0e-05
+    noise_snr_range:
+    - 20
+    - 40
+    num_epochs: 50
+    num_workers: 4
+    pin_memory: true
+    pitch_shift_range:
+    - -1
+    - 1
+    save_freq: 5
+    scheduler: ReduceLROnPlateau
+    scheduler_factor: 0.7
+    scheduler_patience: 5
+    time_stretch_range:
+    - 0.95
+    - 1.05
+    train_data_dir: data/processed/train
+    use_augmentation: true
+    val_data_dir: data/processed/validation
+    validation_freq: 1
+    weight_decay: 1.0e-05
+training_completed: true

@@ -28,6 +28,12 @@ class TTSArtifactDataset(Dataset):
         self.sample_rate = config.get('sample_rate', 24000)
         self.crop_length = config.get('crop_length', 48000)
         
+        # Augmentation settings
+        self.use_augmentation = config.get('use_augmentation', False) and mode == 'train'
+        self.time_stretch_range = config.get('time_stretch_range', [0.95, 1.05])
+        self.pitch_shift_range = config.get('pitch_shift_range', [-1, 1])
+        self.gain_range = config.get('gain_range', [0.0, 0.0])  # Disabled by default
+        
         # Get matching clean/noisy pairs
         self.file_pairs = self._get_file_pairs()
         
@@ -35,6 +41,8 @@ class TTSArtifactDataset(Dataset):
             raise ValueError(f"No matching file pairs found in {clean_dir} and {noisy_dir}")
         
         print(f"Loaded {len(self.file_pairs)} file pairs for {mode} mode")
+        if self.use_augmentation:
+            print(f"Augmentation enabled - Time stretch: {self.time_stretch_range}, Pitch shift: {self.pitch_shift_range}, Gain: {self.gain_range}")
         
     def _get_file_pairs(self) -> List[Tuple[Path, Path]]:
         """Get matching clean/noisy file pairs"""
@@ -82,6 +90,10 @@ class TTSArtifactDataset(Dataset):
             clean_audio = clean_audio[:, :min_length]
             noisy_audio = noisy_audio[:, :min_length]
             
+            # Apply augmentation (before preprocessing)
+            if self.use_augmentation:
+                clean_audio, noisy_audio = self._apply_augmentation(clean_audio, noisy_audio)
+            
             # Apply preprocessing
             clean_audio, noisy_audio = self._preprocess_audio(clean_audio, noisy_audio)
             
@@ -96,6 +108,48 @@ class TTSArtifactDataset(Dataset):
             print(f"Error loading {clean_path}: {e}")
             # Return a random other sample
             return self.__getitem__(random.randint(0, len(self.file_pairs) - 1))
+    
+    def _apply_augmentation(self, clean_audio: torch.Tensor, noisy_audio: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply audio augmentation"""
+        
+        # Time stretching
+        if self.time_stretch_range[0] != self.time_stretch_range[1]:
+            stretch_factor = random.uniform(self.time_stretch_range[0], self.time_stretch_range[1])
+            if stretch_factor != 1.0:
+                time_stretch = torchaudio.transforms.TimeStretch(
+                    n_freq=513, 
+                    fixed_rate=stretch_factor
+                )
+                # Apply STFT, stretch, and inverse STFT
+                clean_stft = torch.stft(clean_audio.squeeze(0), n_fft=1024, hop_length=256, return_complex=True)
+                noisy_stft = torch.stft(noisy_audio.squeeze(0), n_fft=1024, hop_length=256, return_complex=True)
+                
+                clean_stretched = time_stretch(clean_stft)
+                noisy_stretched = time_stretch(noisy_stft)
+                
+                clean_audio = torch.istft(clean_stretched, n_fft=1024, hop_length=256).unsqueeze(0)
+                noisy_audio = torch.istft(noisy_stretched, n_fft=1024, hop_length=256).unsqueeze(0)
+        
+        # Pitch shifting
+        if self.pitch_shift_range[0] != self.pitch_shift_range[1]:
+            pitch_shift_semitones = random.uniform(self.pitch_shift_range[0], self.pitch_shift_range[1])
+            if pitch_shift_semitones != 0.0:
+                pitch_shift = torchaudio.transforms.PitchShift(
+                    sample_rate=self.sample_rate,
+                    n_steps=pitch_shift_semitones
+                )
+                clean_audio = pitch_shift(clean_audio)
+                noisy_audio = pitch_shift(noisy_audio)
+        
+        # Gain adjustment (if enabled)
+        if self.gain_range[0] != self.gain_range[1]:
+            gain_db = random.uniform(self.gain_range[0], self.gain_range[1])
+            if gain_db != 0.0:
+                gain_linear = 10 ** (gain_db / 20)
+                clean_audio = clean_audio * gain_linear
+                noisy_audio = noisy_audio * gain_linear
+        
+        return clean_audio, noisy_audio
     
     def _preprocess_audio(self, clean_audio: torch.Tensor, noisy_audio: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Preprocess audio (cropping, normalization, etc.)"""

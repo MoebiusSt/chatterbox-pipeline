@@ -1,31 +1,32 @@
 training:
   batch_size: 8
-  num_epochs: 100
-  learning_rate: 0.0001
+  num_epochs: 50                    # Reduziert von 100 - Übertraining vermeiden
+  learning_rate: 0.00005            # Reduziert von 0.0001 - langsameres Lernen
   weight_decay: 0.00001
   gradient_clip_norm: 5.0
   
-  # Scheduler
+  # Scheduler settings
   scheduler: "ReduceLROnPlateau"
-  scheduler_patience: 10
-  scheduler_factor: 0.5
+  scheduler_patience: 5             # Reduziert von 10 - frühere LR-Reduktion
+  scheduler_factor: 0.7             # Sanfter von 0.5
   
-  # Validation
+  # Validation and saving
   validation_freq: 1
   save_freq: 5
-  early_stopping_patience: 20
+  early_stopping_patience: 15       # Reduziert von 20 - früher stoppen
   
-  # Data
+  # Data settings
   train_data_dir: "data/processed/train"
   val_data_dir: "data/processed/validation"
   num_workers: 4
   pin_memory: true
   
-  # Augmentation
-  use_augmentation: true
-  time_stretch_range: [0.9, 1.1]
-  pitch_shift_range: [-2, 2]
-  noise_snr_range: [10, 30]
+  # Data augmentation (reduziert für weniger Verzerrung)
+  use_augmentation: false
+  time_stretch_range: [0.95, 1.05]  # Reduziert von [0.9, 1.1]
+  pitch_shift_range: [-1, 1]        # Reduziert von [-2, 2]  
+  gain_range: [0.0, 0.0]            # Deaktiviert - TTS-Ausgaben haben konstante Lautstärke
+  noise_snr_range: [20, 40]         # Erhöht von [10, 30] - weniger Rauschen
 
 hardware:
   device: "cuda"

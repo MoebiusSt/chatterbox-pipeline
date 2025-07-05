@@ -25,8 +25,8 @@ model:
   crop_length: 48128  # Original training length (matches model output)
 
 loss:
-  l1_weight: 1.0
-  stft_weight: 0.5
-  high_band_stft_weight: 0.3
+  l1_weight: 0.5          # Reduziert von 1.0 - weniger aggressiv
+  stft_weight: 0.8        # Erhöht von 0.5 - mehr Frequenz-Fokus
+  high_band_stft_weight: 0.2  # Reduziert von 0.3 - weniger High-Freq-Fokus
   high_band_freq_min: 6000   # Adjusted for 24kHz
   high_band_freq_max: 12000  # Nyquist frequency at 24kHz 

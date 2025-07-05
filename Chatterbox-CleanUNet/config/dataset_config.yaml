@@ -1,0 +1,22 @@
+dataset:
+  # Input directories
+  clean_dir: "data/raw/clean"
+  noisy_dir: "data/raw/noisy"
+  
+  # Output directory
+  output_dir: "data/processed"
+  
+  # Split ratios
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  
+  # Audio processing
+  target_sample_rate: 24000
+  file_pattern: "*.wav"
+  
+  # Processing options
+  copy_files: true
+  validate_pairs: true
+  seed: 42
+  verbose: true 

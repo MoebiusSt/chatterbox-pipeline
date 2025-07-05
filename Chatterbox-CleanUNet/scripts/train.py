@@ -162,7 +162,7 @@ def load_pretrained_weights(model, pretrained_path):
     """Load pretrained model weights"""
     print(f"Loading pretrained weights from: {pretrained_path}")
     
-                checkpoint = torch.load(pretrained_path, map_location='cpu', weights_only=False)
+    checkpoint = torch.load(pretrained_path, map_location='cpu', weights_only=False)
     
     if 'model_state_dict' in checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
