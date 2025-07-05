@@ -1,0 +1,15 @@
+CleanUNet Dataset Information
+========================================
+
+Total audio pairs: 11
+Training pairs: 8 (72.7%)
+Validation pairs: 1 (9.1%)
+Test pairs: 2 (18.2%)
+
+Target sample rate: 24000 Hz
+File pattern: *.wav
+Random seed: 42
+
+Source directories:
+  Clean: data/filtered_high_quality/clean
+  Noisy: data/filtered_high_quality/noisy
