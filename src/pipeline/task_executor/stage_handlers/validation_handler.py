@@ -43,7 +43,6 @@ class ValidationHandler:
 
             validation_results = {}
             logger.info(f"🚦 VALIDATION PHASE: Processing {len(chunks)} chunks")
-            logger.info("=" * 50)
 
             for chunk in chunks:
                 chunk_candidates = all_candidates.get(chunk.idx, [])
@@ -330,6 +329,8 @@ class ValidationHandler:
             "chunks": {},
             "selected_candidates": {},
         }
+        logger.info("")
+        logger.info("🔍 Create enhanced metrics")
 
         for chunk in chunks:
             chunk_candidates = candidates.get(chunk.idx, [])

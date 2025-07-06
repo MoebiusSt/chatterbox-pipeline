@@ -348,7 +348,13 @@ def main() -> int:
                 logger.info(f"📊 Task: {result.task_config.task_name}")
                 if result.task_config.run_label:
                     logger.info(f"Label: {result.task_config.run_label}")
-                logger.info(f"⏳ Execution time: {result.execution_time:.2f} seconds")
+                total_seconds = result.execution_time
+                # Format duration as HH:MM:SS or MM:SS
+                hours, remainder = divmod(int(total_seconds), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours > 0 else f"{minutes:02d}:{seconds:02d}"
+                logger.info(f"⏳ Execution time: {formatted_time}")
                 logger.info(f"Final stage: {result.completion_stage.value}")
 
                 if result.final_audio_path:
