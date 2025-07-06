@@ -1,0 +1,7 @@
+torch>=2.0.0                    # PyTorch for TTS model
+torchaudio>=2.0.0              # Audio processing
+spacy>=3.7.0,<3.8.0           # NLP and sentence segmentation
+openai-whisper>=20231117       # Speech-to-text validation
+chatterbox-tts>=0.1.2          # TTS Generation - Updated to latest version with min_p parameters
+fuzzywuzzy>=0.18.0             # Fuzzy text matching
+pyyaml>=6.0                    # Configuration management

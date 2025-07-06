@@ -1,0 +1,17 @@
+job:
+  name: test
+  run-label: annie_coleman_rothenberg_1
+
+input:
+  text_file: test_short.txt # file name in texts folder
+
+generation:
+  num_candidates: 3
+  max_retries: 2
+  
+  # Speaker system - Speaker 0 is the default speaker
+  speakers:
+    - id: '0'
+      reference_audio: annie_coleman_rothenberg_1.wav # file name in reference_audio folder
+
+# All other settings will be inherited from default_config.yaml

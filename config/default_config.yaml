@@ -1,0 +1,98 @@
+job:
+  name: default
+  run-label:   # empty by default, use it to organise the tasks/files/folders
+
+input:
+  text_file: input-document.txt     # file name in texts folder
+  # reference_audio moved to speakers[0].reference_audio
+
+preprocessing:
+  enabled: true
+  normalize_line_endings: true    # Convert \r\n and \r to \n
+  # Future preprocessing options can be added here
+  # normalize_quotes: false
+  # remove_extra_whitespace: false
+  # fix_encoding_issues: false
+
+chunking:
+  target_chunk_limit: 180
+  max_chunk_limit: 460
+  min_chunk_length: 80
+  spacy_model: en_core_web_sm
+
+generation:
+  num_candidates: 3
+  max_retries: 2
+  
+  # Speaker definitions - Speaker 0 is the default speaker
+  speakers:
+    - id: default                        # Default speaker. must be '0' or 'default'
+      reference_audio: david_barnes_1.wav  # file name in reference_audio folder
+      tts_params:
+        # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
+        # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
+        # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
+        # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
+        exaggeration: 0.55                  # give MAX here
+        exaggeration_max_deviation: 0.20    # ramp DOWN 
+
+        cfg_weight: 0.2                     # give MIN here
+        cfg_weight_max_deviation: 0.40      # ramp UP 
+
+        temperature: 0.9                    # give MIN here
+        temperature_max_deviation: 0.3      # ramp UP 
+
+        repetition_penalty: 1.3             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
+        
+      # Conservative candidate parameters for most likely success
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.4
+        cfg_weight: 0.5
+        temperature: 0.7
+    
+    - id: narrator                    # Additional speaker example
+      reference_audio: cori_samuel_1.wav
+      tts_params:
+        exaggeration: 0.65
+        exaggeration_max_deviation: 0.25
+        cfg_weight: 0.3
+        cfg_weight_max_deviation: 0.35
+        temperature: 1.0
+        temperature_max_deviation: 0.3
+        repetition_penalty: 1.2
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.45
+        cfg_weight: 0.5
+        temperature: 0.75
+    
+    - id: character                   # Another speaker example
+      reference_audio: mike_kamp_1.wav
+      tts_params:
+        exaggeration: 0.45
+        exaggeration_max_deviation: 0.20
+        cfg_weight: 0.4
+        cfg_weight_max_deviation: 0.30
+        temperature: 0.85
+        temperature_max_deviation: 0.25
+        repetition_penalty: 1.3
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.35
+        cfg_weight: 0.6
+        temperature: 0.8
+  
+validation:
+  whisper_model: small # base small medium large
+  similarity_threshold: 0.8
+  min_quality_score: 0.75
+
+audio:
+  silence_duration:
+    normal: 0.40 # inserted between chunks if split was between sentences
+    paragraph: 0.80 # inserted if split was before paragraph break blank line
+  # ChatterboxTTS native sample rate - NOT a user setting!
+  # This must match the actual output sample rate of ChatterboxTTS (24kHz)
+  # Only change this if ChatterboxTTS itself changes its output sample rate
+  sample_rate: 24000 

@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Finde nach Änderungen der Codebasis bitte proaktiv Programm-Inkonsistenzen. Reagiere nicht erst zur Runtime, sondern verfolge und verstehe die Code-Architektur und alle Abhängigkeiten im vorhinein. Nach Refactoring alle Referenzen durchdenken und überprüfen. Code-Verfolgung von A bis Z:
+Datenstruktur-Änderungen → Alle Konsumenten finden
+API-Breaking Changes → Vollständige Impact-Analyse
+Systematische Suche → grep, find für vollständige Abdeckung
+Präventive Validierung → Vor Test/Commit alles durchprüfen mit myPy Type checking.

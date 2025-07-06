@@ -1,0 +1,24 @@
+job:
+  name: test
+  run-label: david_barnes_3
+input:
+  text_file: test_short.txt
+generation:
+  num_candidates: 5
+  max_retries: 2
+  speakers:
+  - id: '0'
+    reference_audio: david_barnes_3.wav
+    tts_params:
+      exaggeration: 0.6
+      exaggeration_max_deviation: 0.35
+      cfg_weight: 0.35
+      cfg_weight_max_deviation: 0.45
+      temperature: 0.85
+      temperature_max_deviation: 0.3
+      repetition_penalty: 1.6
+    conservative_candidate:
+      enabled: true
+      exaggeration: 0.4
+      cfg_weight: 0.6
+      temperature: 0.7

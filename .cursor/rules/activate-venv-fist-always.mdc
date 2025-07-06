@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Always run "source venv/bin/activate" first, if this is your first command or tool-call in a chat.

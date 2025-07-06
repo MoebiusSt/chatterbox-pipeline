@@ -1,0 +1,24 @@
+job:
+  name: test
+  run-label: glen_hallstrom_1
+input:
+  text_file: test_short.txt
+generation:
+  num_candidates: 5
+  max_retries: 1
+  speakers:
+  - id: '0'
+    reference_audio: glen_hallstrom_1.wav
+    tts_params:
+      exaggeration: 0.55
+      exaggeration_max_deviation: 0.25
+      cfg_weight: 0.25
+      cfg_weight_max_deviation: 0.4
+      temperature: 0.9
+      temperature_max_deviation: 0.25
+      repetition_penalty: 1.2
+    conservative_candidate:
+      enabled: true
+      exaggeration: 0.4
+      cfg_weight: 0.5
+      temperature: 0.8

@@ -1,0 +1,44 @@
+job:
+  name: test
+  run-label: mike_kamp_1
+
+input:
+  text_file: test_short.txt
+
+generation:
+  num_candidates: 5
+  max_retries: 1
+  
+  # Speaker system - Speaker 0 is the default speaker
+  speakers:
+    - id: '0'
+      reference_audio: mike_kamp_1.wav
+      tts_params:
+        # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
+        # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
+        # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
+        # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
+        exaggeration: 0.50                  # give MAX here
+        exaggeration_max_deviation: 0.25    # ramp DOWN 
+
+        cfg_weight: 0.15                     # give MIN here
+        cfg_weight_max_deviation: 0.45      # ramp UP 
+
+        temperature: 0.9                    # give MIN here
+        temperature_max_deviation: 0.3      # ramp UP 
+
+        repetition_penalty: 1.3             # Penalty for repeated output tokens (Chatterbox' default is 1.2) 
+        
+      # Conservative candidate parameters for most likely success
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.37
+        cfg_weight: 0.45
+        temperature: 0.75
+
+audio:
+  silence_duration:
+    normal: 0.50 # chunk split between sentences
+    paragraph: 0.90 # chunk split between paragraphs
+
+# All other settings will be inherited from default_config.yaml

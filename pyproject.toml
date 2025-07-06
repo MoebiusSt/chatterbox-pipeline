@@ -1,0 +1,126 @@
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+# A regex preceded by # is ignored.
+(
+  /(
+      \.eggs
+    | \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | venv
+    | _build
+    | buck-out
+    | build
+    | dist
+  )/
+)
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["src"]
+src_paths = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+show_error_context = true
+pretty = true
+
+# Set PYTHONPATH to recognize src directory
+mypy_path = "src"
+
+# Exclude specific directories
+exclude = [
+    "venv/",
+    "build/",
+    "dist/",
+    "docs/",
+    "tests/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "whisper.*",
+    "TTS.*",
+    "spacy.*",
+    "scipy.*",
+    "librosa.*",
+    "soundfile.*",
+    "pydub.*",
+    "numpy.*",
+    "torch.*",
+    "transformers.*",
+]
+ignore_missing_imports = true
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503"]
+exclude = [
+    ".git",
+    "__pycache__",
+    "venv",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tts-pipeline-enhanced"
+version = "0.1.0"
+description = "Text-to-Speech pipeline based on resemble-ai/chatterbox with a job and task pipeline manager to prepare Readings of longer texts like entiere Chapters or Books. But it is a CLI - no fancy user interface here."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" } # Assuming MIT based on Chatterbox
+authors = [
+    {name = "MoebiusSt", email = "stephan.moebius@gmail.com"}
+]
+dependencies = [
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "spacy>=3.7.0,<3.8.0",
+    "openai-whisper>=20231117",
+    "chatterbox-tts>=0.1.2",
+    "fuzzywuzzy>=0.18.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.2.0"
+] 

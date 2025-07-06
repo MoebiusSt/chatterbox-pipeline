@@ -1,0 +1,123 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Audio files (except reference samples)
+data/output/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.pkf
+# Keep reference audio samples
+!data/input/reference_audio/stephan_moebius_*.wav
+
+# Model files and checkpoints
+models/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.bin
+
+# Logs and temporary files
+*.log
+logs/
+batch_report_*.txt
+data/tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Config files with secrets
+config/*secret*
+config/*private*
+
+# Large data files
+*.tar.gz
+*.zip
+*.7z
+
+# Whisper cache
+~/.cache/whisper/
+.cache/whisper/
+
+# HuggingFace cache
+~/.cache/huggingface/
+.cache/huggingface/
+
+# Temporary audio processing files
+data/tests/
+temp_audio/
+transcriptions/
+validation_logs/
+
+# GitHub token
+src/config/github_token.txt
+scripts/github_token.txt
+
+# New token
+.github_token 
