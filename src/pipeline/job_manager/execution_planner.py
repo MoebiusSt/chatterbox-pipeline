@@ -148,9 +148,12 @@ class ExecutionPlanner:
             if hasattr(args, 'mode') and args.mode != 'new':
                 existing_tasks = self.job_manager.find_existing_tasks(job_name)
             
+            # For default execution, use the default_config.yaml directly
+            default_config_path = self.config_manager.project_root / "config" / "default_config.yaml"
+            
             return ExecutionContext(
                 existing_tasks=existing_tasks,
-                job_configs=None,
+                job_configs=[default_config_path],
                 execution_path="default",
                 job_name=job_name,
                 available_strategies=self._get_available_strategies()
