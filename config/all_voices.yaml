@@ -1,5 +1,5 @@
 job:
-  name: default
+  name: voice_tests
   run-label:   # empty by default, use it to organise the tasks/files/folders
 
 input:
@@ -11,7 +11,7 @@ preprocessing:
   # Future preprocessing options can be added here
 
 chunking:
-  target_chunk_limit: 180
+  target_chunk_limit: 380
   max_chunk_limit: 460
   min_chunk_length: 80
   spacy_model: en_core_web_sm

@@ -37,7 +37,7 @@ Back to the default speaker.
 
 ### Supported Tags
 - `<speaker:id>` - Switches to speaker with corresponding ID
-- `<speaker:default>` - Back to default speaker (first speaker in list)
+- `<speaker:default>` - Back to default speaker (configured via default_speaker key)
 - `<speaker:0>` - Alternative for default speaker
 - `<speaker:reset>` - Another alternative for default speaker
 
@@ -46,7 +46,7 @@ Back to the default speaker.
 - ✅ **Speaker changes have highest chunking priority**
 - ✅ **Unknown IDs** → Warning + fallback to default speaker
 - ✅ **Syntax errors** → Ignore + warning
-- ✅ **First speaker in config** → Automatically the default speaker
+- ✅ **Default speaker** → Explicitly configured via `default_speaker` key
 
 ---
 
@@ -57,10 +57,11 @@ Back to the default speaker.
 generation:
   num_candidates: 3
   max_retries: 2
+  default_speaker: david                    # Explicit default speaker configuration
   
-  # Speaker definitions - First speaker in list is automatically the default
+  # Speaker definitions - Define all your speakers here
   speakers:
-    - id: david                          # Default speaker (first in list)
+    - id: david                          # Speaker referenced by default_speaker
       reference_audio: david_barnes_1.wav
       tts_params:
         exaggeration: 0.55
@@ -114,8 +115,9 @@ The speaker system uses a clear and intuitive structure:
 
 ```yaml
 generation:
+  default_speaker: david                  # Explicit default speaker – must exist in speakers-list or default_config.yaml
   speakers:
-    - id: david                         # Default speaker (first in list)
+    - id: david                         
       reference_audio: voice.wav
       tts_params: {...}
       conservative_candidate: {...}
@@ -125,10 +127,11 @@ generation:
 ```
 
 ### Important Notes
-- **Default Speaker**: The first speaker in the `speakers` list is automatically the default
-- **Speaker Aliases**: `<speaker:0>`, `<speaker:default>`, `<speaker:reset>` all refer to the first speaker
-- **Fallback Behavior**: Unknown speaker IDs automatically fallback to the default speaker
-- **Backward Compatibility**: Text without markup uses the default speaker
+- **Default Speaker**: Explicitly configured via `default_speaker` key in generation config
+- **Speaker Aliases**: `<speaker:0>`, `<speaker:default>`, `<speaker:reset>` all refer to the configured default speaker
+- **Fallback Behavior**: Unknown speaker IDs automatically fallback to the CONFIGURED default_speaker
+- **Validation**: The `default_speaker` value must match an existing speaker ID in the speakers list
+- **Note**: Text without markup uses the configured default speaker
 
 ---
 
@@ -141,6 +144,9 @@ speaker_config = config_manager.get_speaker_config(config, "narrator")
 
 # Available speaker IDs
 speaker_ids = config_manager.get_available_speaker_ids(config)
+
+# Get default speaker ID
+default_speaker = config_manager.get_default_speaker_id(config)
 
 # Speaker validation
 is_valid = config_manager.validate_speakers_config(config)
@@ -208,14 +214,14 @@ python -m pytest tests/test_chunker_speakers.py
 ```python
 def test_speaker_chunking():
     chunker = SpaCyChunker()
-    # Set available speakers (first one becomes default)
+    # Set available speakers (default determined by config)
     chunker.set_available_speakers(["david", "narrator", "character"])
     
     text = "Default text. <speaker:narrator>Narrator here."
     chunks = chunker.chunk_text(text)
     
     assert len(chunks) == 2
-    assert chunks[0].speaker_id == "david"        # First speaker = default
+    assert chunks[0].speaker_id == "david"        # Configured default speaker
     assert chunks[1].speaker_id == "narrator"
     assert chunks[1].speaker_transition == True
 ```

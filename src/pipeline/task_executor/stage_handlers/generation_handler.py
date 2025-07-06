@@ -91,7 +91,7 @@ class GenerationHandler:
                 try:
                     reference_audio_path = self.file_manager.get_reference_audio_for_speaker(default_speaker_id)
                     self.tts_generator.load_reference_audio(str(reference_audio_path))
-                    logger.info(f"✅ Default speaker '{default_speaker_id}' loaded: {reference_audio_path.name}")
+                    logger.info(f"🎭 Default speaker '{default_speaker_id}' loaded: {reference_audio_path.name}")
                     self.reference_audio_path = str(reference_audio_path)
                 except Exception as e:
                     logger.error(f"❌ Failed to load default speaker '{default_speaker_id}': {e}")
@@ -225,7 +225,7 @@ class GenerationHandler:
 
             # Speaker-aware generation
             if hasattr(chunk, 'speaker_id') and chunk.speaker_id:
-                logger.debug(f"Using speaker-aware generation for speaker '{chunk.speaker_id}'")
+                logger.debug(f"Using speaker '{chunk.speaker_id}'")
                 
                 # Switch to appropriate speaker if needed
                 if hasattr(chunk, 'speaker_transition') and chunk.speaker_transition:

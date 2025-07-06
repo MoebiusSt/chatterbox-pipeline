@@ -126,7 +126,6 @@ class JobManager:
         # Save task config file
         self.config_manager.save_task_config(task_config, job_config)
 
-        logger.info(f"Created new task: {task_config.config_path}")
         return task_config
 
     def parse_mode_argument(

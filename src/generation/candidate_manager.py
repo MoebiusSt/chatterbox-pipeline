@@ -100,7 +100,7 @@ class CandidateManager:
 
         # Check if chunk has speaker information for speaker-aware generation
         if hasattr(text_chunk, 'speaker_id') and text_chunk.speaker_id:
-            logger.info(f"🎭 Using speaker-aware generation for speaker '{text_chunk.speaker_id}' in chunk {chunk_index + 1}")
+            logger.info(f"🎭 Using speaker '{text_chunk.speaker_id}' in chunk {chunk_index + 1}")
             
             # Generate candidates using speaker-aware method
             config_manager = getattr(self, 'file_manager', None)
@@ -172,9 +172,9 @@ class CandidateManager:
         # Convert 1-based candidate indices to 0-based for TTSGenerator
         zero_based_indices = [idx - 1 for idx in candidate_indices]
 
-        # Check if chunk has speaker information for speaker-aware generation
+        # Check if chunk has speaker information
         if hasattr(text_chunk, 'speaker_id') and text_chunk.speaker_id:
-            logger.info(f"🎭 Using speaker-aware generation for speaker '{text_chunk.speaker_id}'")
+            logger.info(f"🎭 Using speaker for speaker '{text_chunk.speaker_id}'")
             
             # Use speaker-specific generation
             config_manager = getattr(self, 'file_manager', None)

@@ -22,7 +22,6 @@ class PreprocessingHandler:
 
     def execute_preprocessing(self) -> bool:
         """Execute the text preprocessing stage."""
-        logger.info("🚀 Starting Preprocessing Stage")
         try:
             logger.info("Starting preprocessing stage")
 

@@ -526,10 +526,9 @@ class ValidationHandler:
                     continue
 
                 chunk_num = chunk.idx + 1
-                logger.info("")
+                logger.info("-" * 40)
                 logger.info(f"🎯 CHUNK {chunk_num}/{len(chunks)} (selective)")
                 logger.debug(f"Candidates to validate: {len(chunk_candidates)}")
-                logger.info("-" * 40)
 
                 chunk_results = {}
 
