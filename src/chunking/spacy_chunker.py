@@ -203,7 +203,7 @@ class SpaCyChunker(BaseChunker):
                 # First part (before any speaker tag)
                 if text_part.strip():
                     sections.append({
-                        "text": text_part.strip(),
+                        "text": text_part.lstrip(),
                         "speaker_id": current_speaker,
                         "start_pos": 0,
                         "speaker_transition": False,
@@ -222,7 +222,7 @@ class SpaCyChunker(BaseChunker):
                     # This is text content after a speaker tag
                     if text_part.strip():
                         sections.append({
-                            "text": text_part.strip(),
+                            "text": text_part.lstrip(),
                             "speaker_id": current_speaker,
                             "start_pos": 0,  # Will be recalculated
                             "speaker_transition": True,
