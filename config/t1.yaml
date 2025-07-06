@@ -11,7 +11,7 @@ generation:
   
   # Speaker system - Speaker 0 is the default speaker
   speakers:
-    - id: '0'
+    - id: default
       reference_audio: cori_samuel_1.wav
       tts_params:
         # Base TTS parameters - these define the STARTING POINTS for candidate ramping:

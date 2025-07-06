@@ -7,18 +7,14 @@ The TTS pipeline now supports a complete multi-speaker system with dynamic speak
 ### Core Features
 - **🎯 Dynamic speaker switching** within a single document
 - **🎭 Speaker markup syntax** for simple text annotation
-- **🔧 Easy configuration** with speaker system from the start
-- **⚡ Speaker-aware chunking** with highest priority for speaker changes
-- **🛡️ Full backward compatibility** with existing pipelines
-- **🧪 Thread-safe serial processing**
+- **🔧 Easy configuration** with speaker list in default_config.yaml
 
 ### Architecture
 The speaker system extends the existing pipeline with:
 - **Speaker-specific `reference_audio` files**
-- **Individual TTS parameters per speaker**
 - **Markup parser for `<speaker:id>` tags**
 - **Speaker-aware chunk creation**
-- **Dynamic speaker switching in TTS generator**
+
 
 ---
 
@@ -35,20 +31,22 @@ This text is also from the narrator.
 <speaker:character>
 "Hello!", said the character.
 
-<speaker:0>
+<speaker:default>
 Back to the default speaker.
 ```
 
 ### Supported Tags
 - `<speaker:id>` - Switches to speaker with corresponding ID
-- `<speaker:0>` - Back to default speaker (first speaker)
-- `<speaker:reset>` - Alternative for default speaker
+- `<speaker:default>` - Back to default speaker (first speaker in list)
+- `<speaker:0>` - Alternative for default speaker
+- `<speaker:reset>` - Another alternative for default speaker
 
 ### Rules
 - ✅ **Only start tags required** - no end tags needed
 - ✅ **Speaker changes have highest chunking priority**
 - ✅ **Unknown IDs** → Warning + fallback to default speaker
 - ✅ **Syntax errors** → Ignore + warning
+- ✅ **First speaker in config** → Automatically the default speaker
 
 ---
 
@@ -60,9 +58,9 @@ generation:
   num_candidates: 3
   max_retries: 2
   
-  # Speaker definitions - Speaker 0 is the default speaker
+  # Speaker definitions - First speaker in list is automatically the default
   speakers:
-    - id: david                          # Standard speaker
+    - id: david                          # Default speaker (first in list)
       reference_audio: david_barnes_1.wav
       tts_params:
         exaggeration: 0.55
@@ -78,7 +76,7 @@ generation:
         cfg_weight: 0.5
         temperature: 0.7
     
-    - id: narrator                       # Narrator
+    - id: narrator                       # Additional speaker
       reference_audio: cori_samuel_1.wav
       tts_params:
         exaggeration: 0.65
@@ -94,7 +92,7 @@ generation:
         cfg_weight: 0.5
         temperature: 0.75
     
-    - id: character                      # Character
+    - id: character                      # Additional speaker
       reference_audio: mike_kamp_1.wav
       tts_params:
         exaggeration: 0.45
@@ -117,7 +115,7 @@ The speaker system uses a clear and intuitive structure:
 ```yaml
 generation:
   speakers:
-    - id: "0"                           # Default speaker
+    - id: david                         # Default speaker (first in list)
       reference_audio: voice.wav
       tts_params: {...}
       conservative_candidate: {...}
@@ -125,6 +123,12 @@ generation:
       reference_audio: narrator.wav
       tts_params: {...}
 ```
+
+### Important Notes
+- **Default Speaker**: The first speaker in the `speakers` list is automatically the default
+- **Speaker Aliases**: `<speaker:0>`, `<speaker:default>`, `<speaker:reset>` all refer to the first speaker
+- **Fallback Behavior**: Unknown speaker IDs automatically fallback to the default speaker
+- **Backward Compatibility**: Text without markup uses the default speaker
 
 ---
 
@@ -187,26 +191,6 @@ chunks = chunker.chunk_text(text_with_markup)
 
 ---
 
-## 📊 Performance
-
-### Benchmark Results
-```
-Config Loading:     0.4ms per config
-Chunking Speed:     601.8 chunks/sec
-Text Throughput:    49,717 chars/sec
-Speaker Transitions: 100% detected
-Memory Usage:       Minimal overhead
-```
-
-### Optimizations
-- **Serial processing** prevents race conditions
-- **Speaker changes have highest chunking priority**
-- **Efficient markup parsing** with regex
-- **Caching** of speaker configurations
-- **Lazy loading** of reference_audio
-
----
-
 ## 🧪 Testing
 
 ### Unit Tests
@@ -224,11 +208,14 @@ python -m pytest tests/test_chunker_speakers.py
 ```python
 def test_speaker_chunking():
     chunker = SpaCyChunker()
-    text = "Default. <speaker:narrator>Narrator here."
+    # Set available speakers (first one becomes default)
+    chunker.set_available_speakers(["david", "narrator", "character"])
+    
+    text = "Default text. <speaker:narrator>Narrator here."
     chunks = chunker.chunk_text(text)
     
     assert len(chunks) == 2
-    assert chunks[0].speaker_id == "david"
+    assert chunks[0].speaker_id == "david"        # First speaker = default
     assert chunks[1].speaker_id == "narrator"
     assert chunks[1].speaker_transition == True
 ```
@@ -241,54 +228,6 @@ python scripts/test_speaker_pipeline.py
 # Performance tests
 python scripts/test_speaker_performance.py
 ```
-
----
-
-## 🚀 Usage
-
-### 1. Prepare text with speaker markup
-```text
-Welcome to our story.
-
-<speaker:narrator>
-Once upon a time, in a land far away...
-
-<speaker:character>
-"Hello there!" said the brave knight.
-
-<speaker:narrator>
-And so the adventure began.
-
-<speaker:0>
-This concludes our tale.
-```
-
-### 2. Configuration (automatically migrated)
-```yaml
-job:
-  name: "multi-speaker-demo"
-  run-label: "story-telling"
-
-input:
-  text_file: "story.txt"
-
-# Speaker system is inherited from default_config.yaml
-```
-
-### 3. Run pipeline
-```bash
-# Normal pipeline execution
-python main.py config/story_config.yaml
-
-# The system automatically detects speaker markup and
-# switches between configured speakers
-```
-
-### 4. Result
-- ✅ **9 chunks created** with correct speaker assignment
-- ✅ **4 speaker transitions** detected
-- ✅ **Seamless audio generation** for each speaker
-- ✅ **Correct reference_audio** for each section
 
 ---
 
@@ -342,56 +281,8 @@ print(f"Speaker validation: {validation_results}")
 
 ---
 
-## 🎯 Best Practices
-
-### Speaker IDs
-- ✅ **Use meaningful names**: `narrator`, `character`, `villain`
-- ✅ **Consistent naming** throughout the document
-- ✅ **Short, unique IDs** for better readability
-
-### Markup Placement
-- ✅ **At paragraph start** for best chunking results
-- ✅ **Logical speaker changes** at sentence/paragraph boundaries
-- ✅ **Sparse usage** - only for actual changes
-
-### Audio Files
-- ✅ **Consistent quality** of all reference_audio files
-- ✅ **Uniform format** (WAV, 24kHz recommended)
-- ✅ **Clear pronunciation** for better TTS results
-
-### Performance
-- ✅ **Adjust chunking limits** based on speaker density
-- ✅ **Batch processing** for large documents
-- ✅ **Monitor** speaker transition rate
-
----
-
 ## 📈 Roadmap
 
-### Planned Features
+### Possible future Features
 - [ ] **Visual speaker editor** for GUI-based markup creation
-- [ ] **Speaker-specific validation** with individual thresholds
-- [ ] **Dynamic speaker parameters** based on context
-- [ ] **Audio mixing** between speaker transitions
-- [ ] **Speaker voice cloning** from sample audio
-
-### Extensions
-- [ ] **Emotion support** with `<speaker:id:emotion>` syntax
-- [ ] **Prosody control** for emphasis and rhythm
-- [ ] **Multi-language support** with speaker-specific languages
-- [ ] **Real-time speaker switching** for live TTS
-
----
-
-## 🎉 Conclusion
-
-The multi-speaker system extends the TTS pipeline with powerful features for dynamic speaker switching. With the simple markup syntax, automatic migration, and full backward compatibility, it provides a seamless upgrade experience for existing projects.
-
-**Benefits:**
-- ✅ **Easy integration** into existing workflows
-- ✅ **High performance** with minimal overhead
-- ✅ **Flexible configuration** for various use cases
-- ✅ **Robust error handling** with sensible fallbacks
-- ✅ **Comprehensive testing** for production readiness
-
-The system is ready for production use! 🚀
+- [ ] **Dynamic speaker parameters** based on context with **Emotion support** with `<speaker:id:emotion>` syntax

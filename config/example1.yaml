@@ -11,7 +11,7 @@ generation:
   
   # Speaker system - Speaker 0 is the default speaker
   speakers:
-    - id: '0'
+    - id: default
       reference_audio: annie_coleman_rothenberg_1.wav # file name in reference_audio folder
 
 # All other settings will be inherited from default_config.yaml

@@ -7,7 +7,7 @@ generation:
   num_candidates: 5
   max_retries: 1
   speakers:
-  - id: '0'
+  - id: default
     reference_audio: david_barnes_2.wav
     tts_params:
       exaggeration: 0.45

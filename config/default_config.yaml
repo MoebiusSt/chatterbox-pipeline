@@ -22,7 +22,7 @@ chunking:
 
 generation:
   num_candidates: 3
-  max_retries: 2
+  max_retries: 1
   
   # Speaker definitions - Speaker 0 is the default speaker
   speakers:

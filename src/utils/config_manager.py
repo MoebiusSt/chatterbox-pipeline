@@ -384,7 +384,130 @@ class ConfigManager:
                 else:
                     target[key] = value
 
-        merge_recursive(merged, job_config)
+        # Special handling for speakers array - merge by ID instead of replacing entire array
+        if "generation" in job_config and "speakers" in job_config["generation"]:
+            merged = self._merge_speakers_config(merged, job_config)
+            # Remove speakers from job_config so it doesn't get processed again
+            job_config_copy = copy.deepcopy(job_config)
+            job_config_copy["generation"].pop("speakers", None)
+            merge_recursive(merged, job_config_copy)
+        else:
+            merge_recursive(merged, job_config)
+
+        return merged
+
+    def _merge_speakers_config(self, base_config: Dict[str, Any], job_config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Merge speakers configuration with intelligent ID-based merging.
+        
+        Rules:
+        1. Default speaker (position 0) can be overridden by ID or position
+        2. Named speakers are merged by ID
+        3. New speakers are appended
+        4. Missing tts_params are inherited from default_config
+        
+        Args:
+            base_config: Base configuration (usually from default_config.yaml)
+            job_config: Job-specific configuration
+            
+        Returns:
+            Merged configuration with properly merged speakers
+        """
+        merged = copy.deepcopy(base_config)
+        
+        base_speakers = merged.get("generation", {}).get("speakers", [])
+        job_speakers = job_config.get("generation", {}).get("speakers", [])
+        
+        if not job_speakers:
+            return merged
+        
+        # Build lookup maps
+        base_speakers_by_id = {speaker.get("id"): speaker for speaker in base_speakers}
+        job_speakers_by_id = {speaker.get("id"): speaker for speaker in job_speakers}
+        
+        # Get default speaker info
+        default_speaker_id = base_speakers[0].get("id") if base_speakers else "default"
+        
+        merged_speakers: List[Dict[str, Any]] = []
+        processed_ids = set()
+        
+        # Process each job speaker
+        for job_speaker in job_speakers:
+            job_speaker_id = job_speaker.get("id")
+            
+            # Find base speaker to merge with
+            base_speaker = None
+            
+            # 1. Try exact ID match
+            if job_speaker_id in base_speakers_by_id:
+                base_speaker = base_speakers_by_id[job_speaker_id]
+            
+            # 2. Handle default speaker aliases
+            elif job_speaker_id in ["default", "0", "reset"]:
+                base_speaker = base_speakers[0] if base_speakers else None
+            
+            # 3. If this is the first speaker in job config, merge with default speaker
+            elif len(merged_speakers) == 0 and base_speakers:
+                base_speaker = base_speakers[0]
+            
+            # Merge speaker configuration
+            if base_speaker:
+                merged_speaker = self._merge_single_speaker(base_speaker, job_speaker)
+            else:
+                # New speaker - fill in missing fields with defaults from first base speaker
+                merged_speaker = self._merge_single_speaker(
+                    base_speakers[0] if base_speakers else {}, job_speaker
+                )
+            
+            merged_speakers.append(merged_speaker)
+            processed_ids.add(job_speaker_id)
+        
+        # Add remaining base speakers that weren't overridden
+        for base_speaker in base_speakers:
+            base_speaker_id = base_speaker.get("id")
+            if base_speaker_id not in processed_ids:
+                # Check if this was the default speaker that got overridden by position
+                # Only skip if the first job speaker used default aliases AND this is the default speaker
+                skip_default_speaker = False
+                if len(job_speakers) > 0 and base_speaker == base_speakers[0]:
+                    first_job_speaker_id = job_speakers[0].get("id")
+                    if first_job_speaker_id in ["default", "0", "reset"]:
+                        skip_default_speaker = True
+                
+                if not skip_default_speaker:
+                    merged_speakers.append(copy.deepcopy(base_speaker))
+        
+        # Update merged config
+        merged["generation"]["speakers"] = merged_speakers
+        
+        logger.debug(f"Merged speakers: {[s.get('id') for s in merged_speakers]}")
+        return merged
+
+    def _merge_single_speaker(self, base_speaker: Dict[str, Any], job_speaker: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Merge a single speaker configuration.
+        
+        Args:
+            base_speaker: Base speaker configuration
+            job_speaker: Job-specific speaker configuration
+            
+        Returns:
+            Merged speaker configuration
+        """
+        merged = copy.deepcopy(base_speaker)
+        
+        # Merge top-level fields
+        for key, value in job_speaker.items():
+            if key in ["tts_params", "conservative_candidate"]:
+                # Deep merge for nested objects
+                if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                    merged[key] = {**merged[key], **value}
+                else:
+                    merged[key] = copy.deepcopy(value)
+            else:
+                # Direct override for simple fields (id, reference_audio)
+                merged[key] = value
+        
         return merged
 
     def validate_config(self, config: Dict[str, Any]) -> bool:

@@ -15,7 +15,7 @@ generation:
   num_candidates: 1
   max_retries: 1
   speakers:
-  - id: '0'
+  - id: default
     reference_audio: stefan_backes.wav
     tts_params:
       exaggeration: 0.55
