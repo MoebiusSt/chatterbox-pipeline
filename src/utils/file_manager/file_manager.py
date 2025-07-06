@@ -328,7 +328,13 @@ class FileManager:
         
         # Normalize speaker_id (default speaker aliases)
         if speaker_id in ["0", "default", "reset"]:
-            speaker_id = speakers[0].get("id", "default")  # Use first speaker as default
+            # Use explicit default_speaker from config
+            default_speaker = self.config.get("generation", {}).get("default_speaker")
+            if default_speaker:
+                speaker_id = default_speaker
+            else:
+                # Fallback to first speaker if default_speaker not configured
+                speaker_id = speakers[0].get("id", "default")
         
         # Search for speaker by ID
         speaker_config = None
@@ -338,9 +344,22 @@ class FileManager:
                 break
         
         if not speaker_config:
-            logger.warning(f"Speaker '{speaker_id}' not found, using default speaker")
-            speaker_config = speakers[0]
-            speaker_id = speaker_config.get("id", "default")
+            # Use explicit default_speaker from config
+            default_speaker = self.config.get("generation", {}).get("default_speaker")
+            if default_speaker:
+                logger.warning(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'")
+                # Find default speaker config
+                for speaker in speakers:
+                    if speaker.get("id") == default_speaker:
+                        speaker_config = speaker
+                        speaker_id = default_speaker
+                        break
+            
+            # Final fallback to first speaker
+            if not speaker_config:
+                logger.warning(f"Default speaker not found, using first speaker")
+                speaker_config = speakers[0]
+                speaker_id = speaker_config.get("id", "default")
         
         reference_audio = speaker_config.get("reference_audio")
         if not reference_audio:
@@ -390,13 +409,29 @@ class FileManager:
 
     def get_default_speaker_id(self) -> str:
         """
-        Get the ID of the default speaker (first speaker in the list).
+        Get the ID of the default speaker using explicit default_speaker key.
         
         Returns:
             Default speaker ID
         """
-        speakers = self.config.get("generation", {}).get("speakers", [])
+        generation_config = self.config.get("generation", {})
+        default_speaker = generation_config.get("default_speaker")
+        
+        if default_speaker:
+            # Verify the default_speaker exists in speakers list
+            speakers = generation_config.get("speakers", [])
+            speaker_ids = [speaker.get("id", "") for speaker in speakers]
+            
+            if default_speaker in speaker_ids:
+                return default_speaker
+            else:
+                logger.warning(f"default_speaker '{default_speaker}' not found in speakers list, falling back to first speaker")
+        
+        # Fallback to first speaker if default_speaker key is missing or invalid
+        speakers = generation_config.get("speakers", [])
         if not speakers:
             raise RuntimeError("No speakers configured")
         
-        return speakers[0].get("id", "default")
+        fallback_id = speakers[0].get("id", "default")
+        logger.debug(f"Using fallback default speaker: '{fallback_id}'")
+        return fallback_id

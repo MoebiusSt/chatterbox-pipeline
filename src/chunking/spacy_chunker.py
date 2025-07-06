@@ -64,7 +64,9 @@ class SpeakerMarkupParser:
         Returns:
             Validated/normalized speaker ID
         """
-        # Normalize special IDs (default speaker aliases)
+        # Normalize special IDs (default speaker aliases) 
+        # Note: SpaCyChunker doesn't have access to full config, so it uses the first speaker as default
+        # The actual default speaker resolution happens in ConfigManager/FileManager
         if speaker_id in ["0", "default", "reset"]:
             return available_speakers[0] if available_speakers else "default"
         
@@ -107,7 +109,7 @@ class SpaCyChunker(BaseChunker):
         
         # Speaker system components
         self.speaker_parser = SpeakerMarkupParser()
-        self.available_speakers = []  # Set externally
+        self.available_speakers: List[str] = []  # Set externally
         
         logger.info(f"SpaCy Chunker initialized with model '{model_name}' and speaker support.")
 

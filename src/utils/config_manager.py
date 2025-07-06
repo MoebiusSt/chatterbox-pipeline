@@ -393,18 +393,57 @@ class ConfigManager:
             merge_recursive(merged, job_config_copy)
         else:
             merge_recursive(merged, job_config)
+        
+        # Ensure default_speaker is valid after merging
+        self._validate_and_fix_default_speaker(merged)
 
         return merged
+
+    def _validate_and_fix_default_speaker(self, config: Dict[str, Any]) -> None:
+        """
+        Validate and fix default_speaker after merging configurations.
+        
+        Args:
+            config: Merged configuration to validate and fix
+        """
+        generation_config = config.get("generation", {})
+        speakers = generation_config.get("speakers", [])
+        default_speaker = generation_config.get("default_speaker")
+        
+        if not speakers:
+            return
+        
+        speaker_ids = [speaker.get("id", "") for speaker in speakers]
+        
+        # Check for alias speakers that may have replaced the default speaker
+        alias_speakers = [s for s in speakers if s.get("id") in ["default", "0", "reset"]]
+        
+        # If we have alias speakers, the default_speaker is still valid (represented by alias)
+        has_valid_default = (
+            default_speaker in speaker_ids or  # Direct match
+            (default_speaker and alias_speakers)  # Alias represents the default speaker
+        )
+        
+        # If default_speaker is missing or truly invalid, use first speaker
+        if not default_speaker or not has_valid_default:
+            if speakers:
+                fallback_id = speakers[0].get("id", "default")
+                generation_config["default_speaker"] = fallback_id
+                if default_speaker:
+                    logger.warning(f"Invalid default_speaker '{default_speaker}', using '{fallback_id}'")
+                else:
+                    logger.debug(f"No default_speaker specified, using '{fallback_id}'")
 
     def _merge_speakers_config(self, base_config: Dict[str, Any], job_config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Merge speakers configuration with intelligent ID-based merging.
         
         Rules:
-        1. Default speaker (position 0) can be overridden by ID or position
-        2. Named speakers are merged by ID
+        1. Speakers are merged by ID, not position
+        2. Named speakers are merged by exact ID match
         3. New speakers are appended
-        4. Missing tts_params are inherited from default_config
+        4. Missing tts_params are inherited from base config
+        5. default_speaker aliases ("default", "0", "reset") reference the configured default_speaker
         
         Args:
             base_config: Base configuration (usually from default_config.yaml)
@@ -423,10 +462,9 @@ class ConfigManager:
         
         # Build lookup maps
         base_speakers_by_id = {speaker.get("id"): speaker for speaker in base_speakers}
-        job_speakers_by_id = {speaker.get("id"): speaker for speaker in job_speakers}
         
-        # Get default speaker info
-        default_speaker_id = base_speakers[0].get("id") if base_speakers else "default"
+        # Get default speaker info from base config
+        base_default_speaker_id = self.get_default_speaker_id(merged)
         
         merged_speakers: List[Dict[str, Any]] = []
         processed_ids = set()
@@ -438,44 +476,43 @@ class ConfigManager:
             # Find base speaker to merge with
             base_speaker = None
             
-            # 1. Try exact ID match
-            if job_speaker_id in base_speakers_by_id:
+            # 1. Handle default speaker aliases - merge with default speaker but keep alias ID
+            if job_speaker_id in ["default", "0", "reset"]:
+                # Use the configured default speaker from base config for merging
+                base_speaker = base_speakers_by_id.get(base_default_speaker_id)
+                # NOTE: Do NOT mark default speaker as processed - it should remain available!
+                
+                # Create merged speaker with alias ID, but inherit from default speaker
+                if base_speaker:
+                    merged_speaker = self._merge_single_speaker(base_speaker, job_speaker)
+                    # Keep the alias ID instead of the original default speaker ID
+                    merged_speaker["id"] = job_speaker_id
+                else:
+                    merged_speaker = copy.deepcopy(job_speaker)
+                    
+                merged_speakers.append(merged_speaker)
+                continue
+            
+            # 2. Try exact ID match
+            elif job_speaker_id in base_speakers_by_id:
                 base_speaker = base_speakers_by_id[job_speaker_id]
-            
-            # 2. Handle default speaker aliases
-            elif job_speaker_id in ["default", "0", "reset"]:
-                base_speaker = base_speakers[0] if base_speakers else None
-            
-            # 3. If this is the first speaker in job config, merge with default speaker
-            elif len(merged_speakers) == 0 and base_speakers:
-                base_speaker = base_speakers[0]
+                processed_ids.add(job_speaker_id)
             
             # Merge speaker configuration
             if base_speaker:
                 merged_speaker = self._merge_single_speaker(base_speaker, job_speaker)
             else:
-                # New speaker - fill in missing fields with defaults from first base speaker
-                merged_speaker = self._merge_single_speaker(
-                    base_speakers[0] if base_speakers else {}, job_speaker
-                )
+                # New speaker - fill in missing fields with defaults from default speaker
+                default_speaker = base_speakers_by_id.get(base_default_speaker_id, {})
+                merged_speaker = self._merge_single_speaker(default_speaker, job_speaker)
             
             merged_speakers.append(merged_speaker)
-            processed_ids.add(job_speaker_id)
         
         # Add remaining base speakers that weren't overridden
         for base_speaker in base_speakers:
             base_speaker_id = base_speaker.get("id")
             if base_speaker_id not in processed_ids:
-                # Check if this was the default speaker that got overridden by position
-                # Only skip if the first job speaker used default aliases AND this is the default speaker
-                skip_default_speaker = False
-                if len(job_speakers) > 0 and base_speaker == base_speakers[0]:
-                    first_job_speaker_id = job_speakers[0].get("id")
-                    if first_job_speaker_id in ["default", "0", "reset"]:
-                        skip_default_speaker = True
-                
-                if not skip_default_speaker:
-                    merged_speakers.append(copy.deepcopy(base_speaker))
+                merged_speakers.append(copy.deepcopy(base_speaker))
         
         # Update merged config
         merged["generation"]["speakers"] = merged_speakers
@@ -555,32 +592,33 @@ class ConfigManager:
 
     def validate_speakers_config(self, config: Dict[str, Any]) -> bool:
         """
-        Validate speakers[] array configuration.
+        Validate speakers[] array configuration and default_speaker key.
         
         Returns:
             True if speakers configuration is valid
         """
         generation_config = config.get("generation", {})
         speakers = generation_config.get("speakers", [])
+        default_speaker = generation_config.get("default_speaker", "")
         
         if not speakers:
             logger.error("No speakers defined in generation.speakers")
             return False
         
-        # First speaker in the array is automatically the default speaker (any ID allowed)
-        first_speaker = speakers[0]
-        first_speaker_id = first_speaker.get("id", "")
-        logger.debug(f"Default speaker (first in list): '{first_speaker_id}'")
+        # Validate default_speaker key
+        if not default_speaker:
+            logger.error("Missing required 'default_speaker' key in generation config")
+            return False
+        
+        # Check if default_speaker ID exists in speakers list
+        speaker_ids = [speaker.get("id", "") for speaker in speakers]
+        if default_speaker not in speaker_ids:
+            logger.error(f"default_speaker '{default_speaker}' not found in speakers list: {speaker_ids}")
+            return False
+        
+        logger.debug(f"Default speaker: '{default_speaker}'")
         
         # Validate unique IDs
-        speaker_ids = []
-        for speaker in speakers:
-            speaker_id = speaker.get("id", "")
-            if not speaker_id:
-                logger.error("Speaker configuration missing 'id' field")
-                return False
-            speaker_ids.append(speaker_id)
-        
         if len(speaker_ids) != len(set(speaker_ids)):
             logger.error("Duplicate speaker IDs found")
             return False
@@ -590,6 +628,10 @@ class ConfigManager:
             speaker_id = speaker.get("id", "")
             
             # Check required fields
+            if not speaker_id:
+                logger.error("Speaker configuration missing 'id' field")
+                return False
+            
             if not speaker.get("reference_audio"):
                 logger.error(f"Speaker '{speaker_id}' missing reference_audio")
                 return False
@@ -606,7 +648,7 @@ class ConfigManager:
                     logger.error(f"Speaker '{speaker_id}' missing tts_params.{param}")
                     return False
         
-        logger.debug(f"✅ Validated {len(speakers)} speakers: {[s.get('id') for s in speakers]}")
+        logger.debug(f"✅ Validated {len(speakers)} speakers: {speaker_ids}")
         return True
 
     def get_speaker_config(self, config: Dict[str, Any], speaker_id: str) -> Dict[str, Any]:
@@ -625,17 +667,25 @@ class ConfigManager:
         if not speakers:
             raise RuntimeError("No speakers configured")
         
-        # Normalize speaker_id (Default-Speaker-IDs)
+        # Normalize speaker_id (default speaker aliases)
         if speaker_id in ["0", "default", "reset"]:
-            speaker_id = speakers[0].get("id", "default")  # Use first speaker as default
+            speaker_id = self.get_default_speaker_id(config)
         
         # Search for speaker by ID
         for speaker in speakers:
             if speaker.get("id") == speaker_id:
                 return speaker
         
-        # Fallback to first speaker (default)
-        logger.warning(f"Speaker '{speaker_id}' not found, falling back to default speaker")
+        # Fallback to default speaker
+        default_speaker_id = self.get_default_speaker_id(config)
+        logger.warning(f"Speaker '{speaker_id}' not found, falling back to default speaker '{default_speaker_id}'")
+        
+        for speaker in speakers:
+            if speaker.get("id") == default_speaker_id:
+                return speaker
+        
+        # Final fallback to first speaker (should not happen if config is valid)
+        logger.error(f"Default speaker '{default_speaker_id}' not found, using first speaker")
         return speakers[0]
 
     def merge_speaker_params(self, base_config: Dict[str, Any], speaker_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -682,7 +732,7 @@ class ConfigManager:
 
     def get_default_speaker_id(self, config: Dict[str, Any]) -> str:
         """
-        Get the ID of the default speaker (first speaker in list).
+        Get the ID of the default speaker using explicit default_speaker key.
         
         Args:
             config: Configuration dictionary
@@ -690,11 +740,27 @@ class ConfigManager:
         Returns:
             Default speaker ID
         """
-        speakers = config.get("generation", {}).get("speakers", [])
+        generation_config = config.get("generation", {})
+        default_speaker = generation_config.get("default_speaker")
+        
+        if default_speaker:
+            # Verify the default_speaker exists in speakers list
+            speakers = generation_config.get("speakers", [])
+            speaker_ids = [speaker.get("id", "") for speaker in speakers]
+            
+            if default_speaker in speaker_ids:
+                return default_speaker
+            else:
+                logger.warning(f"default_speaker '{default_speaker}' not found in speakers list, falling back to first speaker")
+        
+        # Fallback to first speaker if default_speaker key is missing or invalid
+        speakers = generation_config.get("speakers", [])
         if not speakers:
             raise RuntimeError("No speakers configured")
         
-        return speakers[0].get("id", "default")
+        fallback_id = speakers[0].get("id", "default")
+        logger.debug(f"Using fallback default speaker: '{fallback_id}'")
+        return fallback_id
 
     def create_task_config(
         self, config: Dict[str, Any], timestamp: Optional[str] = None

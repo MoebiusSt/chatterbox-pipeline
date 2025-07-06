@@ -627,9 +627,21 @@ class TTSGenerator:
                 break
         
         if not speaker_config:
-            logger.warning(f"Speaker '{speaker_id}' not found, using first speaker")
-            speaker_config = self.speakers_config[0] if self.speakers_config else {}
-            speaker_id = speaker_config.get("id", "default")
+            # Try to use explicit default_speaker from config
+            default_speaker = self.config.get("generation", {}).get("default_speaker")
+            if default_speaker and self.speakers_config:
+                logger.warning(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'")
+                for speaker in self.speakers_config:
+                    if speaker.get("id") == default_speaker:
+                        speaker_config = speaker
+                        speaker_id = default_speaker
+                        break
+            
+            # Final fallback to first speaker
+            if not speaker_config:
+                logger.warning(f"Default speaker not found, using first speaker")
+                speaker_config = self.speakers_config[0] if self.speakers_config else {}
+                speaker_id = speaker_config.get("id", "default")
         
         # Load new reference_audio
         reference_audio = speaker_config.get("reference_audio")
@@ -721,9 +733,17 @@ class TTSGenerator:
             if speaker.get("id") == speaker_id:
                 return speaker
         
-        # Fallback to first speaker
+        # Fallback to default speaker
+        default_speaker = self.config.get("generation", {}).get("default_speaker")
+        if default_speaker and self.speakers_config:
+            logger.debug(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'")
+            for speaker in self.speakers_config:
+                if speaker.get("id") == default_speaker:
+                    return speaker
+        
+        # Final fallback to first speaker
         if self.speakers_config:
-            logger.debug(f"Speaker '{speaker_id}' not found, using first speaker")
+            logger.debug(f"Default speaker not found, using first speaker")
             return self.speakers_config[0]
         
         return {}

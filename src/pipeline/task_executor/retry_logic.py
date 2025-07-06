@@ -149,9 +149,17 @@ class RetryLogic:
             if speaker.get("id") == speaker_id:
                 return speaker.get("conservative_candidate", {})
         
-        # Fallback to first speaker (default)
+        # Fallback to explicit default speaker
+        default_speaker = generation_config.get("default_speaker")
+        if default_speaker and speakers:
+            logger.debug(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}' for conservative config")
+            for speaker in speakers:
+                if speaker.get("id") == default_speaker:
+                    return speaker.get("conservative_candidate", {})
+        
+        # Final fallback to first speaker
         if speakers:
-            logger.debug(f"Speaker '{speaker_id}' not found, using default speaker for conservative config")
+            logger.debug(f"Default speaker not found, using first speaker for conservative config")
             return speakers[0].get("conservative_candidate", {})
         
         # Legacy fallback: check if conservative_candidate exists at generation level
