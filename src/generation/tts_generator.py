@@ -90,7 +90,7 @@ class TTSGenerator:
             exaggeration: Voice exaggeration parameter (0.0-1.0)
             cfg_weight: Classifier-free guidance weight
             temperature: Sampling temperature for diversity
-            reference_audio_path: Path to reference audio (required for conditionals)
+            reference_audio_path: Path to reference audio (only used if no conditionals loaded)
             **kwargs: Additional arguments passed to the TTS model
 
         Returns:
@@ -104,15 +104,19 @@ class TTSGenerator:
         if self.model is None:
             logger.warning("🚨 No model loaded - generating silence")
             return torch.zeros(48000, device=self.device)
-            
-        if not reference_audio_path:
-            logger.error("🚨 reference_audio_path is required for model conditionals")
-            return torch.zeros(48000, device=self.device)
 
         logger.debug(f"Starting TTS generation")
 
-        # Prepare conditionals if needed
-        self.prepare_conditionals(reference_audio_path)
+        # Only prepare conditionals if none are loaded yet
+        # This prevents overwriting speaker-specific conditionals
+        if not hasattr(self.model, 'conds') or self.model.conds is None:
+            if not reference_audio_path:
+                logger.error("🚨 No conditionals loaded and no reference_audio_path provided")
+                return torch.zeros(48000, device=self.device)
+            logger.debug("No conditionals loaded - preparing from reference_audio_path")
+            self.prepare_conditionals(reference_audio_path)
+        else:
+            logger.debug("Using existing conditionals (speaker-specific)")
         
         # Suppress PyTorch and Transformers warnings during model generation
         with warnings.catch_warnings():
@@ -153,7 +157,6 @@ class TTSGenerator:
         audio = audio.to(self.device)
 
         logger.debug(f"Generated audio with shape: {audio.shape}")
-
         return audio
 
     def generate_candidates(
@@ -635,7 +638,14 @@ class TTSGenerator:
                 audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
                 logger.info(f"🎭 Switching to speaker '{speaker_id}' with voice: {audio_path.name}")
                 self.prepare_conditionals(str(audio_path))
-                self.current_speaker_id = speaker_id
+                
+                # Verify conditionals are loaded
+                if hasattr(self.model, 'conds') and self.model.conds is not None:
+                    logger.debug(f"✅ Conditionals successfully loaded for speaker '{speaker_id}'")
+                    self.current_speaker_id = speaker_id
+                else:
+                    logger.error(f"❌ Failed to load conditionals for speaker '{speaker_id}'")
+                    
             except Exception as e:
                 logger.error(f"Failed to switch to speaker '{speaker_id}': {e}")
         else:

@@ -98,12 +98,37 @@ class CandidateManager:
         # Extract generation parameters from config
         generation_config = self.config.get("generation", {})
 
-        # Generate candidates using the existing method
-        result = self.generate_candidates_for_chunk(
-            chunk=text_chunk,
-            tts_generator=self.tts_generator,
-            generation_params=generation_config,
-        )
+        # Check if chunk has speaker information for speaker-aware generation
+        if hasattr(text_chunk, 'speaker_id') and text_chunk.speaker_id:
+            logger.info(f"🎭 Using speaker-aware generation for speaker '{text_chunk.speaker_id}' in chunk {chunk_index + 1}")
+            
+            # Generate candidates using speaker-aware method
+            config_manager = getattr(self, 'file_manager', None)
+            
+            candidates = self.tts_generator.generate_candidates_with_speaker(
+                text=text_chunk.text,
+                speaker_id=text_chunk.speaker_id,
+                num_candidates=self.max_candidates,
+                config_manager=config_manager,
+            )
+            
+            # Create a mock result object for backward compatibility
+            from .batch_processor import GenerationResult
+            result = GenerationResult(
+                chunk=text_chunk,
+                candidates=candidates,
+                selected_candidate=candidates[0] if candidates else None,
+                generation_attempts=1,
+                success=len(candidates) > 0,
+            )
+        else:
+            # Legacy generation using the existing method
+            logger.info(f"🔧 Using legacy generation (no speaker information) for chunk {chunk_index + 1}")
+            result = self.generate_candidates_for_chunk(
+                chunk=text_chunk,
+                tts_generator=self.tts_generator,
+                generation_params=generation_config,
+            )
 
         # Save candidates to disk
         if result.candidates and self.save_candidates:
@@ -147,18 +172,39 @@ class CandidateManager:
         # Convert 1-based candidate indices to 0-based for TTSGenerator
         zero_based_indices = [idx - 1 for idx in candidate_indices]
 
-        # Generate ONLY the specific candidates using the new method
-        specific_candidates = self.tts_generator.generate_specific_candidates(
-            text=text_chunk.text,
-            candidate_indices=zero_based_indices,
-            exaggeration=tts_params.get("exaggeration", 0.5),
-            cfg_weight=tts_params.get("cfg_weight", 0.4),
-            temperature=tts_params.get("temperature", 0.8),
-            conservative_config=conservative_config,
-            total_candidates=total_candidates,
-            tts_params=tts_params,
-            reference_audio_path=reference_audio_path,
-        )
+        # Check if chunk has speaker information for speaker-aware generation
+        if hasattr(text_chunk, 'speaker_id') and text_chunk.speaker_id:
+            logger.info(f"🎭 Using speaker-aware generation for speaker '{text_chunk.speaker_id}'")
+            
+            # Use speaker-specific generation
+            config_manager = getattr(self, 'file_manager', None)
+            
+            # Generate ONLY the specific candidates using speaker-aware method
+            specific_candidates = self.tts_generator.generate_candidates_with_speaker(
+                text=text_chunk.text,
+                speaker_id=text_chunk.speaker_id,
+                num_candidates=len(candidate_indices),
+                config_manager=config_manager,
+            )
+            
+            # Map the generated candidates to the correct indices
+            for i, candidate in enumerate(specific_candidates):
+                if i < len(zero_based_indices):
+                    candidate.candidate_idx = zero_based_indices[i]
+        else:
+            # Legacy generation without speaker system
+            logger.info(f"🔧 Using legacy generation (no speaker information)")
+            specific_candidates = self.tts_generator.generate_specific_candidates(
+                text=text_chunk.text,
+                candidate_indices=zero_based_indices,
+                exaggeration=tts_params.get("exaggeration", 0.5),
+                cfg_weight=tts_params.get("cfg_weight", 0.4),
+                temperature=tts_params.get("temperature", 0.8),
+                conservative_config=conservative_config,
+                total_candidates=total_candidates,
+                tts_params=tts_params,
+                reference_audio_path=reference_audio_path,
+            )
 
         # Save the specific candidates using FileManager structure (chunk_XXX/candidate_YY.wav)
         saved_candidates = []

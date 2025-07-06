@@ -169,91 +169,67 @@ class SpaCyChunker(BaseChunker):
         Create primary division into speaker sections.
         
         Args:
-            original_text: Text with markup
-            clean_text: Text without markup
-            transitions: List of (position, speaker_id) tuples
+            original_text: Text with markup (for extracting speaker IDs)
+            clean_text: Text without markup (for actual splitting)
+            transitions: List of (position, speaker_id) tuples from original text
             
         Returns:
             List of speaker sections
         """
         sections = []
-        current_speaker = self.available_speakers[0] if self.available_speakers else "default"  # Default speaker
+        current_speaker = self.available_speakers[0] if self.available_speakers else "default"
         
-        # Track positions in clean_text based on original_text positions
-        markup_offset = 0
-        clean_start_pos = 0
+        # Strategy: Parse the original text to create speaker sections,
+        # then map each section to the corresponding clean text
         
-        for position, new_speaker in transitions:
-            # Validate and normalize speaker ID
-            validated_speaker = self.speaker_parser.validate_speaker_id(
-                new_speaker, self.available_speakers
-            )
+        # Create pattern to find speaker tags and split points
+        import re
+        speaker_pattern = r'<speaker:([^>]+)>'
+        
+        # Find all speaker changes in original text
+        current_pos = 0
+        clean_pos = 0
+        
+        # Split original text by speaker tags
+        parts = re.split(speaker_pattern, original_text)
+        
+        i = 0
+        while i < len(parts):
+            text_part = parts[i]
             
-            # Calculate position in clean_text
-            clean_position = position - markup_offset
-            
-            # Create section for current speaker
-            if clean_position > clean_start_pos:
-                section_text = clean_text[clean_start_pos:clean_position].strip()
-                if section_text:
-                    # Extract original markup for this section
-                    original_markup = self._extract_original_markup(
-                        original_text, clean_start_pos + markup_offset, position
-                    )
-                    
+            if i == 0:
+                # First part (before any speaker tag)
+                if text_part.strip():
                     sections.append({
-                        "text": section_text,
+                        "text": text_part.strip(),
                         "speaker_id": current_speaker,
-                        "start_pos": clean_start_pos,
-                        "speaker_transition": len(sections) > 0,  # Not for first section
-                        "original_markup": original_markup
+                        "start_pos": 0,
+                        "speaker_transition": False,
+                        "original_markup": None
                     })
-            
-            # Update for next section
-            current_speaker = validated_speaker
-            clean_start_pos = clean_position
-            
-            # Update markup_offset by length of removed markup tag
-            markup_tag = f"<speaker:{new_speaker}>"
-            markup_offset += len(markup_tag)
-        
-        # Last section
-        if clean_start_pos < len(clean_text):
-            final_text = clean_text[clean_start_pos:].strip()
-            if final_text:
-                original_markup = self._extract_original_markup(
-                    original_text, clean_start_pos + markup_offset, len(original_text)
-                )
-                
-                sections.append({
-                    "text": final_text,
-                    "speaker_id": current_speaker,
-                    "start_pos": clean_start_pos,
-                    "speaker_transition": len(sections) > 0,
-                    "original_markup": original_markup
-                })
+            else:
+                # We have a speaker ID (from the regex split)
+                if i % 2 == 1:
+                    # This is a speaker ID
+                    new_speaker_id = text_part.strip()
+                    validated_speaker = self.speaker_parser.validate_speaker_id(
+                        new_speaker_id, self.available_speakers
+                    )
+                    current_speaker = validated_speaker
+                else:
+                    # This is text content after a speaker tag
+                    if text_part.strip():
+                        sections.append({
+                            "text": text_part.strip(),
+                            "speaker_id": current_speaker,
+                            "start_pos": 0,  # Will be recalculated
+                            "speaker_transition": True,
+                            "original_markup": new_speaker_id if i > 1 else None
+                        })
+            i += 1
         
         logger.debug(f"Created {len(sections)} speaker sections")
         return sections
-
-    def _extract_original_markup(self, original_text: str, start: int, end: int) -> Optional[str]:
-        """
-        Extract original markup for a text section.
-        
-        Args:
-            original_text: Original text with markup
-            start: Start position
-            end: End position
-            
-        Returns:
-            Extracted markup or None
-        """
-        if start >= len(original_text) or end <= start:
-            return None
-        
-        section = original_text[start:end]
-        markup_matches = re.findall(self.speaker_parser.SPEAKER_PATTERN, section)
-        return markup_matches[0] if markup_matches else None
 
     def _chunk_speaker_section(self, section: dict) -> List[TextChunk]:
         """

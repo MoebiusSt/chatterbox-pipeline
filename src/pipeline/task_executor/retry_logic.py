@@ -27,11 +27,13 @@ class RetryLogic:
         retry_candidates = []
         try:
             generation_config = self.config["generation"]
-            conservative_config = generation_config.get("conservative_candidate", {})
+            
+            # Get speaker-specific conservative config
+            conservative_config = self._get_conservative_config_for_chunk(chunk, generation_config)
 
             if not conservative_config.get("enabled", False):
                 logger.warning(
-                    "Conservative candidate not enabled, using default values for retries"
+                    f"⚠️ Conservative candidate not enabled for speaker '{getattr(chunk, 'speaker_id', 'unknown')}', using default values for retries"
                 )
                 base_exaggeration = 0.45
                 base_cfg_weight = 0.4
@@ -124,3 +126,40 @@ class RetryLogic:
         except Exception as e:
             logger.error(f"Error in retry candidate generation: {e}")
             return []
+
+    def _get_conservative_config_for_chunk(self, chunk: TextChunk, generation_config: dict) -> dict:
+        """
+        Get conservative candidate configuration for a specific chunk's speaker.
+        
+        Args:
+            chunk: TextChunk with speaker information
+            generation_config: Generation configuration
+            
+        Returns:
+            Conservative candidate configuration dict
+        """
+        # Get speaker ID from chunk, fallback to default
+        speaker_id = getattr(chunk, 'speaker_id', 'default')
+        
+        # Look for speaker-specific config
+        speakers = generation_config.get("speakers", [])
+        
+        # Find speaker configuration
+        for speaker in speakers:
+            if speaker.get("id") == speaker_id:
+                return speaker.get("conservative_candidate", {})
+        
+        # Fallback to first speaker (default)
+        if speakers:
+            logger.debug(f"Speaker '{speaker_id}' not found, using default speaker for conservative config")
+            return speakers[0].get("conservative_candidate", {})
+        
+        # Legacy fallback: check if conservative_candidate exists at generation level
+        legacy_config = generation_config.get("conservative_candidate", {})
+        if legacy_config:
+            logger.debug("Using legacy conservative_candidate configuration")
+            return legacy_config
+        
+        # No conservative configuration found
+        logger.warning(f"No conservative_candidate configuration found for speaker '{speaker_id}'")
+        return {}

@@ -26,6 +26,15 @@ class PreprocessingHandler:
         try:
             logger.info("Starting preprocessing stage")
 
+            # Set available speakers in chunker for speaker-aware chunking
+            try:
+                available_speakers = self.file_manager.get_all_speaker_ids()
+                if hasattr(self.chunker, 'set_available_speakers'):
+                    self.chunker.set_available_speakers(available_speakers)
+                    logger.debug(f"Set available speakers in chunker: {available_speakers}")
+            except Exception as e:
+                logger.debug(f"Could not set speakers in chunker (not critical): {e}")
+
             # Early validation of input text existence
             if not self.file_manager.check_input_text_exists():
                 logger.error("❌ Input text validation failed")

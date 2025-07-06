@@ -98,7 +98,7 @@ class TaskExecutor:
         if self._tts_generator is None:
             device = self._detect_device()
             self._tts_generator = TTSGenerator(
-                config=self.config["generation"], device=device, seed=12345
+                config=self.config, device=device, seed=12345
             )
             logger.debug("TTSGenerator initialized with automatic model loading")
         return self._tts_generator
