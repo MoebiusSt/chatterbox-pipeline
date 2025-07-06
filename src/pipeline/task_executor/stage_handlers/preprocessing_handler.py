@@ -52,8 +52,7 @@ class PreprocessingHandler:
                 logger.debug(f"Loaded input text: {len(input_text)} characters")
             except FileNotFoundError as e:
                 logger.error(f"❌ Input text file not found: {e}")
-                logger.error("⚠️  The preprocessing stage cannot proceed without input text.")
-                logger.error("📂 Please ensure the input text file exists in the correct location.")
+                logger.error("⚠️  preprocessing cannot proceed.Please ensure the input text file exists in the correct location.")
                 return False
             except Exception as e:
                 logger.error(f"❌ Failed to load input text: {e}")

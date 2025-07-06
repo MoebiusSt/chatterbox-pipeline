@@ -130,18 +130,18 @@ an     - Run all tasks + force new final audio
 c      - Cancel
 ```
 
-## Implementierte Features
+## Implemented features
 
 ### ✅ Phase 1: Chunking-Modul
-- **SpaCyChunker**: Linguistic sentence segmentation with configurable length specifications
+- **SpaCyChunker**: Sentence segmentation with configurable length specifications
 - **ChunkValidator**: Validation of chunk lengths and sentence boundaries
-- **TextChunk**: Data model with metadata (position, paragraph breaks, token estimation)
+- **TextChunk**: Data model with metadata (position, paragraph breaks)
 
 ### ✅ Phase 1: Generation-Modul
 - **TTSGenerator**: Wrapper for ChatterboxTTS with candidate generation
-- **Intelligent Parameter Variation**: Inverse correlation between exaggeration and other parameters for more natural candidates
+- **Intelligent Parameter Variations**: Inverse correlation between exaggeration and other parameters for more natural candidates
 - **CandidateManager**: Management of multiple candidates with retry logic
-- **AudioProcessor**: Concatenation of audio segments with intelligent pause processing
+- **AudioProcessor**: Concatenation of audio segments with discerning pause processing
 
 ### ✅ Phase 2: Validation-Modul
 - **WhisperValidator**: Speech-to-text re-validation with local Whisper integration
@@ -149,20 +149,19 @@ c      - Cancel
 - **QualityScorer**: Multi-criteria evaluation and best candidate selection (best match to input text)
 
 ### ✅ Multi-Speaker System 🎭
-- **Dynamic Speaker Switching**: `<speaker:id>` markup syntax for seamless speaker transitions
-- **Speaker-Specific Configurations**: Individual reference_audio and TTS parameters per speaker
-- **Clean Configuration Structure**: Modern YAML-based speaker system
+- **Dynamic Speaker Switching**: `<speaker:id>` markup syntax for speaker changes
+- **Speaker-Specific Configurations**: Define individual reference_audio and TTS parameters per speaker
+- **Speaker Variants**: or is it to define variants (e.g., `cori_calm`, `cori_excited`) with different TTS parameters
 - **Speaker-Aware Chunking**: Speaker transitions have highest priority in text segmentation
-- **Performance Optimized**: 600+ chunks/sec with speaker system overhead < 1%
 
 See [SPEAKER_SYSTEM.md](SPEAKER_SYSTEM.md) for detailed documentation.
 
-### ✅ Pipeline-Orchestrierung
+### ✅ Pipeline orchestration
 - YAML-based job and task configuration management
 - Complete Error handling and fallback mechanisms
 - Structured logging and progress tracking
 
-## Projektstruktur
+## Project structure
 ```
 tts_pipeline_enhanced/
 ├── config/
@@ -603,21 +602,24 @@ return MatchResult(similarity=best_score, method=best_method)
 
 #### Multi-Speaker System
 
-The TTS system supports multiple speakers with dynamic switching of voices and TTS generation paramteters. You can setup a list of speakers in default_config.yaml, or you can define new lists in any job-config.yaml file:
+The TTS system supports multiple speakers with dynamic switching of voices and TTS generation parameters. You can setup a list of speakers in default_config.yaml, or you can define new lists of speakers in any job-config.yaml file:
 
 **Speaker IDs:**
-- Arbitrary strings - For named speakers (e.g. narrator, character)
-- `default` - the first defined speaker will be the default and fallback speaker
+- Arbitrary strings for any named speakers (e.g. narrator, character)
+- The first defined speaker will be the default and fallback speaker
 
 **Markup syntax for speaker switching:**
 ```text
-Default speaker text without markup.
+Some text without markup will be read by default speaker.
 
 <speaker:narrator>
 Narrator takes over here.
 
 <speaker:character>
-Dialog from the character
+Text read by character
+
+<speaker:character-hectic>
+Text read by character with different tts_parameters.
 
 <speaker:default>
 Back to the default speaker.
