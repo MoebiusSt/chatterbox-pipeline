@@ -1,6 +1,18 @@
 # Enhanced TTS Pipeline
 
-An enhanced Text-to-Speech pipeline based on resemble-ai/chatterbox that implements intelligent SpaCy-based text chunking for longer generations, Whisper validation for best candidate selection, and a job and task pipeline to prepare JOb renderings like whole Magazine Articles, Chapters, or Books. BUT this is still a CLI. No fancy user interface here.
+An enhanced Text-to-Speech pipeline based on resemble-ai/chatterbox that implements:
+- intelligent SpaCy-based text chunking for longer generations, 
+- automatic variaten generation, 
+- automatic Whisper validation or 
+- manual candidate management for best-candidate selection, 
+- a job and task pipeline to prepare job renderings like magazine articles or books with chapters, 
+- speakers configuration and markdown-syntax for switching speakers or prosody on the fly
+- a CLI with a prompt menu system 
+- CLI arguments to execute almost all function. 
+
+Does not have:
+- a fancy user interface
+- extensive documentation or help texts
 
 ## Prerequisites
 
@@ -640,13 +652,8 @@ input:
 
 preprocessing:
   enabled: true
-  # Text normalization options
   normalize_line_endings: true    # Convert \r\n and \r to \n
   # Future preprocessing options might be added here
-  # normalize_quotes: false
-  # remove_extra_whitespace: false
-  # fix_encoding_issues: false
-  # foreign words -> to IPA -> to mock english pronunciation gibberish that will come out right.
 
 chunking:
   target_chunk_limit: 380
@@ -655,7 +662,7 @@ chunking:
   spacy_model: en_core_web_sm
 
 generation:
-  num_candidates: 1
+  num_candidates: 3
   max_retries: 1
   speakers:
     - id: default                   # Default speaker - use default or any custom name

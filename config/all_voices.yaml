@@ -19,35 +19,10 @@ chunking:
 generation:
   num_candidates: 5
   max_retries: 1
-  default_speaker: default
+  default_speaker: glen_hallstrom_1
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
   speakers:
-    - id: default                             # use any string you like
-      reference_audio: glen_hallstrom_35.wav   # file in data/input/reference_audio folder
-      tts_params:
-        # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
-        # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
-        # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
-        # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
-        exaggeration: 0.50                  # give MAX here
-        exaggeration_max_deviation: 0.30    # ramp DOWN 
-
-        cfg_weight: 0.40                     # give MIN here
-        cfg_weight_max_deviation: 0.40      # ramp UP 
-
-        temperature: 0.9                    # give MIN here
-        temperature_max_deviation: 0.2      # ramp UP 
-
-        repetition_penalty: 1.2             # Penalty for repeated output tokens (Chatterbox' default is 1.2, was 2.0 earlier) 
-        
-      # Conservative candidate parameters for most likely success. This is also fallback for retries when the generation fails.
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.5
-        temperature: 0.7
-    
     - id: annie_coleman_rothenberg_1
       reference_audio: annie_coleman_rothenberg_1.wav
       tts_params:
