@@ -16,7 +16,7 @@ import torch
 # Project root detection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-from pipeline.batch_executor import BatchExecutor
+from pipeline.batch_task_executor import BatchTaskExecutor
 from pipeline.job_manager_wrapper import JobManager
 from pipeline.task_executor import TaskExecutor
 from utils.config_manager import ConfigManager, TaskConfig
@@ -321,11 +321,11 @@ def main() -> int:
             # Batch execution
             logger.debug("Starting batch execution mode")
 
-            batch_executor = BatchExecutor(config_manager)
+            batch_task_executor = BatchTaskExecutor(config_manager)
 
             # Execute tasks
-            task_results = batch_executor.execute_batch(execution_plan.task_configs)
-            batch_result = batch_executor.get_batch_summary(task_results)
+            task_results = batch_task_executor.execute_batch(execution_plan.task_configs)
+            batch_result = batch_task_executor.get_batch_summary(task_results)
 
             # Return appropriate exit code
             return 0 if batch_result.failed_tasks == 0 else 1

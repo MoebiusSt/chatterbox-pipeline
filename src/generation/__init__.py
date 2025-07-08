@@ -4,7 +4,7 @@ Provides TTS generation, candidate management, and audio processing.
 """
 
 from .audio_processor import AudioProcessor
-from .batch_processor import BatchProcessor, GenerationResult
+from .batch_processor import BatchChunkProcessor, GenerationResult
 from .candidate_manager import CandidateManager
 from .model_cache import ChatterboxModelCache
 from .selection_strategies import SelectionStrategies
@@ -14,7 +14,7 @@ __all__ = [
     "TTSGenerator",
     "CandidateManager",
     "AudioProcessor",
-    "BatchProcessor",
+    "BatchChunkProcessor",
     "GenerationResult",
     "SelectionStrategies",
     "ChatterboxModelCache",

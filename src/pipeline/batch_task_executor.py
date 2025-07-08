@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BatchExecutor for managing multiple TTS tasks in parallel.
+BatchTaskExecutor for managing multiple TTS tasks in parallel.
 Handles batch processing with progress tracking and error management.
 """
 
@@ -34,18 +34,15 @@ class BatchResult:
             else 0.0
         )
 
-class BatchExecutor:
+class BatchTaskExecutor:
     """Executes multiple TTS tasks sequentially with progress tracking."""
 
     def __init__(self, config_manager: ConfigManager):
         """
-        Initialize BatchExecutor.
-
-        Args:
-            config_manager: Shared ConfigManager instance (avoids redundant loading)
+        Initialize BatchTaskExecutor.
         """
         self.config_manager = config_manager
-        logger.info("BatchExecutor initialized in sequential mode")
+        logger.info("BatchTaskExecutor initialized in sequential mode")
 
     def execute_batch(self, task_configs: List[TaskConfig]) -> List[TaskResult]:
         """

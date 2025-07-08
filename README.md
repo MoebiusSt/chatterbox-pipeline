@@ -210,7 +210,7 @@ tts_pipeline_enhanced/
 │   ├── main.py                    # Main pipeline script
 │   ├── pipeline/                  # Pipeline orchestration
 │   │   ├── __init__.py
-│   │   ├── batch_executor.py
+│   │   ├── batch_task_executor.py
 │   │   ├── job_manager/
 │   │   │   ├── ...
 │   │   ├── job_manager_wrapper.py

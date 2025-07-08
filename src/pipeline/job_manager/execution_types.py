@@ -46,7 +46,7 @@ class ExecutionContext:
 
 @dataclass
 class ExecutionIntent:
-    """Structured execution intent - replaces scattered UserChoice handling."""
+    """Structured UserChoice execution intent"""
 
     tasks: List[TaskConfig]
     execution_mode: str  # "single", "batch"

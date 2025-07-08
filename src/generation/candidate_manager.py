@@ -8,7 +8,7 @@ from utils.file_manager.io_handlers.candidate_io import (
     CandidateIOHandler,
 )
 
-from .batch_processor import BatchProcessor, GenerationResult
+from .batch_processor import BatchChunkProcessor, GenerationResult
 from .selection_strategies import SelectionStrategies
 from .tts_generator import TTSGenerator
 
@@ -69,7 +69,7 @@ class CandidateManager:
             self.candidates_dir = Path(candidates_dir)
 
         # Initialize components
-        self.batch_processor = BatchProcessor(max_retries=max_retries)
+        self.batch_processor = BatchChunkProcessor(max_retries=max_retries)
         self.selection_strategies = SelectionStrategies()
 
         # Initialize candidate IO handler

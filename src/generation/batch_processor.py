@@ -27,7 +27,7 @@ class GenerationResult:
         self.success = success
 
 
-class BatchProcessor:
+class BatchChunkProcessor:
     """Handles batch processing of text chunks for candidate generation."""
 
     def __init__(self, max_retries: int = 2):

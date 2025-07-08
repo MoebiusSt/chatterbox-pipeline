@@ -15,7 +15,7 @@ src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
 
 # Now import pipeline modules
-from pipeline.batch_executor import BatchExecutor
+from pipeline.batch_task_executor import BatchTaskExecutor
 from utils.config_manager import ConfigManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
@@ -40,7 +40,7 @@ def main():
         print(f"✅ Loaded config from: {default_config_path}")
 
         # Create batch executor
-        executor = BatchExecutor()
+        executor = BatchTaskExecutor()
 
         # Create task config and save it to get proper config_path
         task_config = config_manager.create_task_config(config)
