@@ -6,9 +6,9 @@ from typing import List
 
 import torch
 
+from chunking.base_chunker import TextChunk
 from generation.tts_generator import TTSGenerator
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
-from chunking.base_chunker import TextChunk
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,11 @@ class RetryLogic:
         retry_candidates = []
         try:
             generation_config = self.config["generation"]
-            
+
             # Get speaker-specific conservative config
-            conservative_config = self._get_conservative_config_for_chunk(chunk, generation_config)
+            conservative_config = self._get_conservative_config_for_chunk(
+                chunk, generation_config
+            )
 
             if not conservative_config.get("enabled", False):
                 logger.warning(
@@ -127,47 +129,55 @@ class RetryLogic:
             logger.error(f"Error in retry candidate generation: {e}")
             return []
 
-    def _get_conservative_config_for_chunk(self, chunk: TextChunk, generation_config: dict) -> dict:
+    def _get_conservative_config_for_chunk(
+        self, chunk: TextChunk, generation_config: dict
+    ) -> dict:
         """
         Get conservative candidate configuration for a specific chunk's speaker.
-        
+
         Args:
             chunk: TextChunk with speaker information
             generation_config: Generation configuration
-            
+
         Returns:
             Conservative candidate configuration dict
         """
         # Get speaker ID from chunk, fallback to default
-        speaker_id = getattr(chunk, 'speaker_id', 'default')
-        
+        speaker_id = getattr(chunk, "speaker_id", "default")
+
         # Look for speaker-specific config
         speakers = generation_config.get("speakers", [])
-        
+
         # Find speaker configuration
         for speaker in speakers:
             if speaker.get("id") == speaker_id:
                 return speaker.get("conservative_candidate", {})
-        
+
         # Fallback to explicit default speaker
         default_speaker = generation_config.get("default_speaker")
         if default_speaker and speakers:
-            logger.debug(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}' for conservative config")
+            logger.debug(
+                f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}' for conservative config"
+            )
             for speaker in speakers:
                 if speaker.get("id") == default_speaker:
                     return speaker.get("conservative_candidate", {})
-        
+
         # Final fallback to first speaker
         if speakers:
-            logger.debug(f"Default speaker not found, using first speaker for conservative config")
+            logger.debug(
+                "Default speaker not found, using first speaker for conservative config"
+            )
             return speakers[0].get("conservative_candidate", {})
-        
+
         # Legacy fallback: check if conservative_candidate exists at generation level
         legacy_config = generation_config.get("conservative_candidate", {})
         if legacy_config:
             logger.debug("Using legacy conservative_candidate configuration")
             return legacy_config
-        
+
         # No conservative configuration found
-        logger.warning(f"No conservative_candidate configuration found for speaker '{speaker_id}'")
+        logger.warning(
+            f"No conservative_candidate configuration found for speaker '{speaker_id}'"
+        )
         return {}

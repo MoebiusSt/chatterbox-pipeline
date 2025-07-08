@@ -3,11 +3,11 @@
 import logging
 from typing import Any, Dict, List
 
+from chunking.base_chunker import TextChunk
 from generation.candidate_manager import CandidateManager
 from generation.tts_generator import TTSGenerator
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
-from chunking.base_chunker import TextChunk
 
 from ..retry_logic import RetryLogic
 
@@ -48,15 +48,19 @@ class GenerationHandler:
 
             # 2. Set available speakers in chunker (if applicable)
             available_speakers = self.file_manager.get_all_speaker_ids()
-            
+
             # Try to reach the chunker via file_manager (if used)
             # This is for future chunking operations with speaker support
             try:
-                if hasattr(self.file_manager, '_chunk_handler') and hasattr(self.file_manager._chunk_handler, 'chunker'):
+                if hasattr(self.file_manager, "_chunk_handler") and hasattr(
+                    self.file_manager._chunk_handler, "chunker"
+                ):
                     chunker = self.file_manager._chunk_handler.chunker
-                    if hasattr(chunker, 'set_available_speakers'):
+                    if hasattr(chunker, "set_available_speakers"):
                         chunker.set_available_speakers(available_speakers)
-                        logger.debug(f"Set available speakers in chunker: {available_speakers}")
+                        logger.debug(
+                            f"Set available speakers in chunker: {available_speakers}"
+                        )
             except Exception as e:
                 logger.debug(f"Could not set speakers in chunker (not critical): {e}")
 
@@ -69,32 +73,48 @@ class GenerationHandler:
                         self.file_manager.get_reference_audio()
                     except FileNotFoundError as e:
                         logger.error(str(e))
-                    logger.error("⚠️  The generation stage cannot proceed without reference audio.")
+                    logger.error(
+                        "⚠️  The generation stage cannot proceed without reference audio."
+                    )
                     return False
 
                 try:
                     reference_audio_path = self.file_manager.get_reference_audio()
                     self.tts_generator.load_reference_audio(str(reference_audio_path))
-                    logger.info(f"✅ Legacy reference audio loaded: {reference_audio_path.name}")
+                    logger.info(
+                        f"✅ Legacy reference audio loaded: {reference_audio_path.name}"
+                    )
                     self.reference_audio_path = str(reference_audio_path)
                 except FileNotFoundError as e:
                     logger.error(f"❌ Reference audio file not found: {e}")
-                    logger.error("⚠️  The generation stage cannot proceed without reference audio.")
+                    logger.error(
+                        "⚠️  The generation stage cannot proceed without reference audio."
+                    )
                     return False
                 except Exception as e:
                     logger.error(f"❌ Failed to load reference audio: {e}")
-                    logger.error("⚠️  The generation stage cannot proceed without valid reference audio.")
+                    logger.error(
+                        "⚠️  The generation stage cannot proceed without valid reference audio."
+                    )
                     return False
             else:
                 # Speaker system: Initialize with default speaker
                 default_speaker_id = self.file_manager.get_default_speaker_id()
                 try:
-                    reference_audio_path = self.file_manager.get_reference_audio_for_speaker(default_speaker_id)
+                    reference_audio_path = (
+                        self.file_manager.get_reference_audio_for_speaker(
+                            default_speaker_id
+                        )
+                    )
                     self.tts_generator.load_reference_audio(str(reference_audio_path))
-                    logger.info(f"🎭 Default speaker '{default_speaker_id}' loaded: {reference_audio_path.name}")
+                    logger.info(
+                        f"🎭 Default speaker '{default_speaker_id}' loaded: {reference_audio_path.name}"
+                    )
                     self.reference_audio_path = str(reference_audio_path)
                 except Exception as e:
-                    logger.error(f"❌ Failed to load default speaker '{default_speaker_id}': {e}")
+                    logger.error(
+                        f"❌ Failed to load default speaker '{default_speaker_id}': {e}"
+                    )
                     return False
 
             total_chunks = len(chunks)
@@ -104,9 +124,11 @@ class GenerationHandler:
             # Pre-analyze chunks to determine which need generation
             chunks_to_generate = []
             complete_chunks = []
-            
+
             for chunk in chunks:
-                chunk_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                chunk_dir = (
+                    self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                )
                 existing_file_count = 0
                 if chunk_dir.exists():
                     candidate_files = list(chunk_dir.glob("candidate_*.wav"))
@@ -125,15 +147,19 @@ class GenerationHandler:
             if complete_chunks:
                 logger.info(f"📋 {len(complete_chunks)} chunks already complete:")
                 for chunk_num, file_count in complete_chunks:
-                    logger.info(f"CHUNK {chunk_num:02d}/{total_chunks} complete ({file_count}/{num_candidates} candidates)")
+                    logger.info(
+                        f"CHUNK {chunk_num:02d}/{total_chunks} complete ({file_count}/{num_candidates} candidates)"
+                    )
                 if chunks_to_generate:
                     logger.info("-" * 25)
 
             # Process chunks that need generation
             if chunks_to_generate:
-                logger.info(f"🔄 Processing {len(chunks_to_generate)} chunks requiring generation:")
+                logger.info(
+                    f"🔄 Processing {len(chunks_to_generate)} chunks requiring generation:"
+                )
                 logger.info("")
-                
+
                 for chunk, existing_file_count in chunks_to_generate:
                     chunk_num = chunk.idx + 1
                     logger.info(f"🎯 CHUNK {chunk_num}/{total_chunks}")
@@ -153,13 +179,18 @@ class GenerationHandler:
                     missing_count = num_candidates - existing_file_count
 
                     if missing_count > 0:
-                        chunk_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                        chunk_dir = (
+                            self.file_manager.candidates_dir
+                            / f"chunk_{chunk.idx+1:03d}"
+                        )
                         existing_indices = set()
                         if chunk_dir.exists():
                             candidate_files = list(chunk_dir.glob("candidate_*.wav"))
                             for candidate_file in candidate_files:
                                 try:
-                                    candidate_num = int(candidate_file.stem.split("_")[1])
+                                    candidate_num = int(
+                                        candidate_file.stem.split("_")[1]
+                                    )
                                     candidate_idx = candidate_num - 1
                                     existing_indices.add(candidate_idx)
                                 except (IndexError, ValueError):
@@ -184,7 +215,7 @@ class GenerationHandler:
                             f"✅ Successfully generated {len(new_candidates)} missing candidates"
                         )
                     else:
-                        logger.info(f"⚡ Generating candidates...")
+                        logger.info("⚡ Generating candidates...")
                         candidates = self._generate_candidates_for_chunk(chunk)
 
                         if not candidates:
@@ -224,13 +255,15 @@ class GenerationHandler:
             num_candidates = generation_config["num_candidates"]
 
             # Speaker-aware generation
-            if hasattr(chunk, 'speaker_id') and chunk.speaker_id:
+            if hasattr(chunk, "speaker_id") and chunk.speaker_id:
                 logger.debug(f"Using speaker '{chunk.speaker_id}'")
-                
+
                 # Switch to appropriate speaker if needed
-                if hasattr(chunk, 'speaker_transition') and chunk.speaker_transition:
-                    logger.info(f"🎭 Speaker transition detected to '{chunk.speaker_id}'")
-                
+                if hasattr(chunk, "speaker_transition") and chunk.speaker_transition:
+                    logger.info(
+                        f"🎭 Speaker transition detected to '{chunk.speaker_id}'"
+                    )
+
                 # Use speaker-specific generation
                 candidates = self.tts_generator.generate_candidates_with_speaker(
                     text=chunk.text,
@@ -252,7 +285,7 @@ class GenerationHandler:
                         "conservative_candidate", None
                     ),
                     tts_params=tts_params,
-                    reference_audio_path=getattr(self, 'reference_audio_path', None),
+                    reference_audio_path=getattr(self, "reference_audio_path", None),
                 )
 
             # Set chunk-specific metadata
@@ -260,8 +293,11 @@ class GenerationHandler:
                 candidate.chunk_idx = chunk.idx
                 candidate.chunk_text = chunk.text
                 # Add speaker ID to metadata
-                if hasattr(chunk, 'speaker_id'):
-                    if hasattr(candidate, 'generation_params') and candidate.generation_params:
+                if hasattr(chunk, "speaker_id"):
+                    if (
+                        hasattr(candidate, "generation_params")
+                        and candidate.generation_params
+                    ):
                         candidate.generation_params["speaker_id"] = chunk.speaker_id
 
             return candidates
@@ -274,9 +310,7 @@ class GenerationHandler:
         self, chunk: TextChunk, missing_indices: List[int]
     ) -> List[AudioCandidate]:
         """Generate specific missing candidates for a chunk."""
-        logger.info(
-            f"Generating candidates for chunk {chunk.idx+1}"
-        )
+        logger.info(f"Generating candidates for chunk {chunk.idx+1}")
         try:
             logger.debug(
                 f"starting _generate_missing_candidates(): Generating {len(missing_indices)} candidates for indices: {missing_indices}"
@@ -289,7 +323,7 @@ class GenerationHandler:
                 chunk_index=chunk.idx,
                 candidate_indices=one_based_indices,
                 output_dir=self.file_manager.task_directory,
-                reference_audio_path=getattr(self, 'reference_audio_path', None),
+                reference_audio_path=getattr(self, "reference_audio_path", None),
             )
 
             logger.debug(
@@ -312,7 +346,7 @@ class GenerationHandler:
     def _validate_speakers(self) -> bool:
         """
         Validate speaker configuration and reference_audio files.
-        
+
         Returns:
             True if all speakers are valid, False otherwise
         """
@@ -322,18 +356,24 @@ class GenerationHandler:
             if not speakers:
                 logger.error("❌ No speakers defined in configuration")
                 return False
-            
+
             # Validate reference_audio files for all speakers
             validation_results = self.file_manager.validate_speakers_reference_audio()
-            
-            failed_speakers = [speaker_id for speaker_id, valid in validation_results.items() if not valid]
+
+            failed_speakers = [
+                speaker_id
+                for speaker_id, valid in validation_results.items()
+                if not valid
+            ]
             if failed_speakers:
                 logger.error(f"❌ Speaker validation failed for: {failed_speakers}")
                 return False
-            
-            logger.info(f"✅ All {len(validation_results)} speakers validated: {list(validation_results.keys())}")
+
+            logger.info(
+                f"✅ All {len(validation_results)} speakers validated: {list(validation_results.keys())}"
+            )
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Speaker validation error: {e}")
             return False

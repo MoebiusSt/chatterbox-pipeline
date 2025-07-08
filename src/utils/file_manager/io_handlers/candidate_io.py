@@ -130,7 +130,7 @@ class CandidateIOHandler:
                             f"   Skipping candidate {candidate.candidate_idx+1} for chunk {chunk_idx+1}"
                         )
                         logger.error(
-                            f"   This candidate will be excluded from final audio assembly!"
+                            "   This candidate will be excluded from final audio assembly!"
                         )
 
                         # Remove the corrupt file and its validation data

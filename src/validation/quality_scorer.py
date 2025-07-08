@@ -4,17 +4,12 @@ Combines multiple metrics to determine the best audio candidate.
 """
 
 import logging
-import math
 
 # Use absolute imports to avoid relative import issues
-import sys
 import warnings
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
-import torch
 
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from validation.fuzzy_matcher import MatchResult
@@ -78,8 +73,6 @@ class QualityScorer:
             sample_rate: Audio sample rate for duration calculations
         """
         self.sample_rate = sample_rate
-        import logging
-
         self.logger = logging.getLogger(__name__)
 
         # Default weights for weighted average strategy
@@ -353,7 +346,7 @@ class QualityScorer:
 
         self.logger.info(
             f"Chunk_{chunk_idx + 1:02d} - "
-            f"Best candidate: {best_idx} of {len(candidates)} (score: {best_score:.3f}) "
+            f"Best candidate: {best_idx} of {len(candidates)} (score: {best_score:.3f} worst: {worst_score:.3f}) "
             f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}"
         )
 

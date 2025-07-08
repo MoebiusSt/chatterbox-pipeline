@@ -111,10 +111,14 @@ class ChunkIOHandler:
             is_paragraph_break = (
                 chunk_meta.get("is_paragraph_break", False) if chunk_meta else False
             )
-            
+
             # Speaker-System Metadaten
-            speaker_id = chunk_meta.get("speaker_id", "default") if chunk_meta else "default"
-            speaker_transition = chunk_meta.get("speaker_transition", False) if chunk_meta else False
+            speaker_id = (
+                chunk_meta.get("speaker_id", "default") if chunk_meta else "default"
+            )
+            speaker_transition = (
+                chunk_meta.get("speaker_transition", False) if chunk_meta else False
+            )
             original_markup = chunk_meta.get("original_markup") if chunk_meta else None
 
             chunk = TextChunk(

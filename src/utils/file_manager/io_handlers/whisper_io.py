@@ -6,12 +6,10 @@ Handles saving and loading of Whisper validation results.
 
 import json
 import logging
-import time
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
-
 
 class WhisperIOHandler:
     """Handles Whisper validation I/O operations."""
@@ -113,7 +111,9 @@ class WhisperIOHandler:
         """Delete Whisper validation result for a specific candidate."""
         try:
             # Delete individual file
-            filename = f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            filename = (
+                f"chunk_{chunk_idx+1:03d}_candidate_{candidate_idx+1:02d}_whisper.json"
+            )
             path = self.whisper_dir / filename
             if path.exists():
                 path.unlink()
@@ -268,7 +268,7 @@ class WhisperIOHandler:
             else:
                 # Create minimal structure for sync
                 metrics = {
-                    "timestamp": time.time(),
+                    "timestamp": 0.0,  # Changed from time.time() to 0.0 as time is removed
                     "total_chunks": 0,
                     "chunks": {},
                     "selected_candidates": {},

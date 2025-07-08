@@ -34,11 +34,11 @@ class TTSGenerator:
 
         # Use direct model access
         self.model = ChatterboxModelCache.get_model(self.device)
-        
+
         # Speaker system attributes
         self.current_speaker_id = "default"
         self.speakers_config = config.get("generation", {}).get("speakers", [])
-        
+
         logger.debug(
             f"TTSGenerator initialized on device: {self.device} with {len(self.speakers_config)} speakers"
         )
@@ -55,20 +55,20 @@ class TTSGenerator:
     def prepare_conditionals(self, wav_fpath: str):
         """
         Prepares model conditionals for voice cloning.
-        
+
         Args:
             wav_fpath: Path to reference audio file
         """
         if self.model is None:
             logger.warning("🚨 No model loaded - cannot prepare conditionals")
             return
-            
+
         logger.debug(f"🔄 Preparing conditionals for {Path(wav_fpath).name}")
-        
+
         try:
             # Direct model access - no thread safety needed
             self.model.prepare_conditionals(wav_fpath=wav_fpath)
-            logger.debug(f"✅ Conditionals prepared")
+            logger.debug("✅ Conditionals prepared")
         except Exception as e:
             logger.error(f"🚨 Error preparing conditionals: {e}")
             raise
@@ -100,24 +100,26 @@ class TTSGenerator:
         if not text or not text.strip():
             logger.warning("Empty text provided for generation")
             return torch.zeros(1000, device=self.device)
-            
+
         if self.model is None:
             logger.warning("🚨 No model loaded - generating silence")
             return torch.zeros(48000, device=self.device)
 
-        logger.debug(f"Starting TTS generation")
+        logger.debug("Starting TTS generation")
 
         # Only prepare conditionals if none are loaded yet
         # This prevents overwriting speaker-specific conditionals
-        if not hasattr(self.model, 'conds') or self.model.conds is None:
+        if not hasattr(self.model, "conds") or self.model.conds is None:
             if not reference_audio_path:
-                logger.error("🚨 No conditionals loaded and no reference_audio_path provided")
+                logger.error(
+                    "🚨 No conditionals loaded and no reference_audio_path provided"
+                )
                 return torch.zeros(48000, device=self.device)
             logger.debug("No conditionals loaded - preparing from reference_audio_path")
             self.prepare_conditionals(reference_audio_path)
         else:
             logger.debug("Using existing conditionals (speaker-specific)")
-        
+
         # Suppress PyTorch and Transformers warnings during model generation
         with warnings.catch_warnings():
             warnings.filterwarnings(
@@ -140,8 +142,10 @@ class TTSGenerator:
                 "ignore", message=".*attn_implementation.*", category=FutureWarning
             )
 
-            logger.debug(f"Generating audio for text (len={len(text)}): '{text[:50]}...'")
-            
+            logger.debug(
+                f"Generating audio for text (len={len(text)}): '{text[:50]}...'"
+            )
+
             # Generate audio using the ChatterboxTTS model directly
             audio = self.model.generate(
                 text,
@@ -243,10 +247,20 @@ class TTSGenerator:
                 # Debug: Log tts_params before extracting additional_params
                 logger.info(f"🔍 tts_params for candidate 1: {tts_params}")
                 # Extract additional TTS parameters from tts_params
-                additional_params = {k: v for k, v in tts_params.items() 
-                                   if k not in ["exaggeration", "cfg_weight", "temperature", 
-                                               "exaggeration_max_deviation", "cfg_weight_max_deviation", "temperature_max_deviation"]}
-                
+                additional_params = {
+                    k: v
+                    for k, v in tts_params.items()
+                    if k
+                    not in [
+                        "exaggeration",
+                        "cfg_weight",
+                        "temperature",
+                        "exaggeration_max_deviation",
+                        "cfg_weight_max_deviation",
+                        "temperature_max_deviation",
+                    ]
+                }
+
                 generation_params = {
                     "exaggeration": var_exaggeration,
                     "cfg_weight": var_cfg_weight,
@@ -360,13 +374,25 @@ class TTSGenerator:
                     candidate_type = "EXPRESSIVE"
 
                 # Debug: Log tts_params before extracting additional_params
-                logger.info(f"CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}")
+                logger.info(
+                    f"CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}"
+                )
 
                 # Extract additional TTS parameters from tts_params
-                additional_params = {k: v for k, v in tts_params.items() 
-                                   if k not in ["exaggeration", "cfg_weight", "temperature", 
-                                               "exaggeration_max_deviation", "cfg_weight_max_deviation", "temperature_max_deviation"]}
-                
+                additional_params = {
+                    k: v
+                    for k, v in tts_params.items()
+                    if k
+                    not in [
+                        "exaggeration",
+                        "cfg_weight",
+                        "temperature",
+                        "exaggeration_max_deviation",
+                        "cfg_weight_max_deviation",
+                        "temperature_max_deviation",
+                    ]
+                }
+
                 generation_params = {
                     "exaggeration": var_exaggeration,
                     "cfg_weight": var_cfg_weight,
@@ -490,7 +516,9 @@ class TTSGenerator:
                 torch.manual_seed(candidate_seed)
 
                 # Check if this should be a conservative candidate (always last)
-                is_conservative = is_conservative_enabled and (i + 1) == total_candidates
+                is_conservative = (
+                    is_conservative_enabled and (i + 1) == total_candidates
+                )
 
                 if is_conservative:
                     # Use conservative parameters
@@ -498,7 +526,9 @@ class TTSGenerator:
                         f"Applying conservative parameters for candidate {i+1}"
                     )
                     if conservative_config is None:
-                        raise RuntimeError("Conservative config is None but conservative mode is enabled")
+                        raise RuntimeError(
+                            "Conservative config is None but conservative mode is enabled"
+                        )
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
@@ -528,10 +558,20 @@ class TTSGenerator:
                     candidate_type = "EXPRESSIVE"
 
                 # Extract additional TTS parameters
-                additional_params = {k: v for k, v in tts_params.items() 
-                                   if k not in ["exaggeration", "cfg_weight", "temperature", 
-                                               "exaggeration_max_deviation", "cfg_weight_max_deviation", "temperature_max_deviation"]}
-                
+                additional_params = {
+                    k: v
+                    for k, v in tts_params.items()
+                    if k
+                    not in [
+                        "exaggeration",
+                        "cfg_weight",
+                        "temperature",
+                        "exaggeration_max_deviation",
+                        "cfg_weight_max_deviation",
+                        "temperature_max_deviation",
+                    ]
+                }
+
                 generation_params = {
                     "exaggeration": var_exaggeration,
                     "cfg_weight": var_cfg_weight,
@@ -575,15 +615,13 @@ class TTSGenerator:
                 )
                 continue
 
-        logger.debug(
-            f"Successfully generated {len(candidates)} specific candidates"
-        )
+        logger.debug(f"Successfully generated {len(candidates)} specific candidates")
         return candidates
 
     def load_reference_audio(self, wav_fpath: str):
         """
         Load and prepare reference audio for voice cloning.
-        
+
         Args:
             wav_fpath: Path to reference audio file
         """
@@ -592,13 +630,13 @@ class TTSGenerator:
     def get_current_params(self) -> Dict[str, Any]:
         """
         Get current TTS generation parameters.
-        
+
         Returns:
             Dictionary of current generation parameters
         """
         generation_config = self.config.get("generation", {})
         tts_params = generation_config.get("tts_params", {})
-        
+
         return {
             "device": self.device,
             "seed": self.seed,
@@ -610,7 +648,7 @@ class TTSGenerator:
     def switch_speaker(self, speaker_id: str, config_manager=None):
         """
         Switch to different speaker with new reference_audio.
-        
+
         Args:
             speaker_id: Target speaker ID
             config_manager: Optional ConfigManager for file access
@@ -618,50 +656,60 @@ class TTSGenerator:
         if self.current_speaker_id == speaker_id:
             logger.debug(f"Speaker '{speaker_id}' already active, skipping switch")
             return
-        
+
         # Get speaker configuration
         speaker_config = None
         for speaker in self.speakers_config:
             if speaker.get("id") == speaker_id:
                 speaker_config = speaker
                 break
-        
+
         if not speaker_config:
             # Try to use explicit default_speaker from config
             default_speaker = self.config.get("generation", {}).get("default_speaker")
             if default_speaker and self.speakers_config:
-                logger.warning(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'")
+                logger.warning(
+                    f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'"
+                )
                 for speaker in self.speakers_config:
                     if speaker.get("id") == default_speaker:
                         speaker_config = speaker
                         speaker_id = default_speaker
                         break
-            
+
             # Final fallback to first speaker
             if not speaker_config:
-                logger.warning(f"Default speaker not found, using first speaker")
+                logger.warning("Default speaker not found, using first speaker")
                 speaker_config = self.speakers_config[0] if self.speakers_config else {}
                 speaker_id = speaker_config.get("id", "default")
-        
+
         # Load new reference_audio
         reference_audio = speaker_config.get("reference_audio")
         if reference_audio and config_manager:
             try:
                 audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
-                logger.info(f"🎭 Switching to speaker '{speaker_id}' with voice: {audio_path.name}")
+                logger.info(
+                    f"🎭 Switching to speaker '{speaker_id}' with voice: {audio_path.name}"
+                )
                 self.prepare_conditionals(str(audio_path))
-                
+
                 # Verify conditionals are loaded
-                if hasattr(self.model, 'conds') and self.model.conds is not None:
-                    logger.debug(f"✅ Conditionals successfully loaded for speaker '{speaker_id}'")
+                if hasattr(self.model, "conds") and self.model.conds is not None:
+                    logger.debug(
+                        f"✅ Conditionals successfully loaded for speaker '{speaker_id}'"
+                    )
                     self.current_speaker_id = speaker_id
                 else:
-                    logger.error(f"❌ Failed to load conditionals for speaker '{speaker_id}'")
-                    
+                    logger.error(
+                        f"❌ Failed to load conditionals for speaker '{speaker_id}'"
+                    )
+
             except Exception as e:
                 logger.error(f"Failed to switch to speaker '{speaker_id}': {e}")
         else:
-            logger.warning(f"No reference_audio or config_manager for speaker '{speaker_id}'")
+            logger.warning(
+                f"No reference_audio or config_manager for speaker '{speaker_id}'"
+            )
 
     def generate_candidates_with_speaker(
         self,
@@ -669,30 +717,30 @@ class TTSGenerator:
         speaker_id: str = "default",
         num_candidates: int = 3,
         config_manager=None,
-        **kwargs
+        **kwargs,
     ) -> List[AudioCandidate]:
         """
         Generate candidates with specific speaker.
-        
+
         Args:
             text: Text for generation
             speaker_id: ID of speaker to use
             num_candidates: Number of candidates
             config_manager: ConfigManager for file access
             **kwargs: Additional parameters
-            
+
         Returns:
             List of AudioCandidate objects
         """
-        
+
         # 1. Switch to speaker
         self.switch_speaker(speaker_id, config_manager)
-        
+
         # 2. Get speaker-specific parameters
         speaker_config = self._get_speaker_config(speaker_id)
         tts_params = speaker_config.get("tts_params", {})
         conservative_config = speaker_config.get("conservative_candidate", {})
-        
+
         # 3. Get reference_audio for this speaker
         reference_audio_path = None
         if config_manager:
@@ -700,8 +748,10 @@ class TTSGenerator:
                 audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
                 reference_audio_path = str(audio_path)
             except Exception as e:
-                logger.error(f"Could not get reference audio for speaker '{speaker_id}': {e}")
-        
+                logger.error(
+                    f"Could not get reference audio for speaker '{speaker_id}': {e}"
+                )
+
         # 4. Generate with speaker parameters
         candidates = self.generate_candidates(
             text=text,
@@ -709,41 +759,43 @@ class TTSGenerator:
             tts_params=tts_params,
             conservative_config=conservative_config,
             reference_audio_path=reference_audio_path,
-            **kwargs
+            **kwargs,
         )
-        
+
         # 5. Set speaker ID in candidate metadata
         for candidate in candidates:
-            if hasattr(candidate, 'generation_params'):
+            if hasattr(candidate, "generation_params"):
                 candidate.generation_params["speaker_id"] = speaker_id
-        
+
         return candidates
 
     def _get_speaker_config(self, speaker_id: str) -> Dict[str, Any]:
         """
         Get configuration for specific speaker.
-        
+
         Args:
             speaker_id: Speaker ID
-            
+
         Returns:
             Speaker configuration or default speaker
         """
         for speaker in self.speakers_config:
             if speaker.get("id") == speaker_id:
                 return speaker
-        
+
         # Fallback to default speaker
         default_speaker = self.config.get("generation", {}).get("default_speaker")
         if default_speaker and self.speakers_config:
-            logger.debug(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'")
+            logger.debug(
+                f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'"
+            )
             for speaker in self.speakers_config:
                 if speaker.get("id") == default_speaker:
                     return speaker
-        
+
         # Final fallback to first speaker
         if self.speakers_config:
-            logger.debug(f"Default speaker not found, using first speaker")
+            logger.debug("Default speaker not found, using first speaker")
             return self.speakers_config[0]
-        
+
         return {}

@@ -43,7 +43,7 @@ class TaskState:
     candidate_editor_available: bool = False
     missing_candidates: List[int] = None
     task_status_message: str = ""
-    
+
     def __post_init__(self):
         """Initialize mutable default values."""
         if self.missing_candidates is None:
@@ -187,12 +187,12 @@ class StateAnalyzer:
         if not has_metrics:
             missing_components.append("metrics")
 
-                # Check final audio
+            # Check final audio
         final_audio = self.final_audio_handler.get_final_audio()
         has_final_audio = final_audio is not None
         if not has_final_audio:
             missing_components.append("final_audio")
-            
+
         # Determine completion stage - moved before candidate selection logic
         if not has_input:
             completion_stage = CompletionStage.NOT_STARTED
@@ -206,35 +206,38 @@ class StateAnalyzer:
             completion_stage = CompletionStage.ASSEMBLY
         else:
             completion_stage = CompletionStage.COMPLETE
-            
+
         # Check candidate selection data (new)
         has_candidate_selection = False
         candidate_editor_available = False
         missing_candidates_list = []
-        
+
         if has_metrics:
             metrics = self.metrics_handler.get_metrics()
             selected_candidates = metrics.get("selected_candidates", {})
             has_candidate_selection = len(selected_candidates) > 0
-            
+
             # Check if all chunks have candidate selections
             for chunk_idx in range(len(chunks)):
                 chunk_key = str(chunk_idx)
                 if chunk_key not in selected_candidates:
                     missing_candidates_list.append(chunk_idx)
-            
+
             # Editor is available if we have metrics and complete candidate data
             candidate_editor_available = (
-                has_metrics and
-                has_candidate_selection and
-                len(missing_candidates_list) == 0 and
-                completion_stage in [CompletionStage.ASSEMBLY, CompletionStage.COMPLETE]
+                has_metrics
+                and has_candidate_selection
+                and len(missing_candidates_list) == 0
+                and completion_stage
+                in [CompletionStage.ASSEMBLY, CompletionStage.COMPLETE]
             )
-        
+
         # Generate task status message
         task_status_message = self._generate_task_status_message(
-            completion_stage, has_final_audio, has_candidate_selection,
-            len(missing_candidates_list) > 0
+            completion_stage,
+            has_final_audio,
+            has_candidate_selection,
+            len(missing_candidates_list) > 0,
         )
 
         return TaskState(
@@ -255,11 +258,11 @@ class StateAnalyzer:
         )
 
     def _generate_task_status_message(
-        self, 
-        completion_stage: CompletionStage, 
-        has_final_audio: bool, 
+        self,
+        completion_stage: CompletionStage,
+        has_final_audio: bool,
         has_candidate_selection: bool,
-        has_missing_candidates: bool
+        has_missing_candidates: bool,
     ) -> str:
         """Generate human-readable task status message."""
         if completion_stage == CompletionStage.COMPLETE and has_final_audio:
@@ -271,7 +274,11 @@ class StateAnalyzer:
                 return "Task is complete with final audio available."
         elif completion_stage == CompletionStage.ASSEMBLY:
             return "Task is ready for final assembly."
-        elif completion_stage in [CompletionStage.VALIDATION, CompletionStage.GENERATION, CompletionStage.PREPROCESSING]:
+        elif completion_stage in [
+            CompletionStage.VALIDATION,
+            CompletionStage.GENERATION,
+            CompletionStage.PREPROCESSING,
+        ]:
             return "Task is incomplete and needs to finish."
         else:
             return "Task has not been started."

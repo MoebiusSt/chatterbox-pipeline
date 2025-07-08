@@ -94,27 +94,29 @@ class UserInteraction:
             # Store the selected task index (convert to 0-based)
             self.selected_task_index = int(choice) - 1
             return UserChoice.SPECIFIC
-        
+
         print("Invalid choice, defaulting to latest task")
         return UserChoice.LATEST
-    
+
     def confirm_rerender_action(self, action_description: str) -> Optional[bool]:
         """
         Show safety prompt for re-render actions that will delete existing audio chunks.
-        
+
         Args:
             action_description: Description of the action being confirmed
-            
+
         Returns:
             True if user confirms, None if user cancels
         """
         print(f"\n⚠️  WARNING: {action_description}")
-        print("This will DELETE (!) ALL audio chunks and final audio files from pre-existing runs!")
+        print(
+            "This will DELETE (!) ALL audio chunks and final audio files from pre-existing runs!"
+        )
         print("Are you sure? (y = YES, RE-RENDER | c = CANCEL)")
-        
+
         while True:
             choice = input("\n> ").strip().lower()
-            
+
             if choice in ["y", "yes"]:
                 return True
             elif choice in ["c", "cancel"]:
@@ -122,15 +124,17 @@ class UserInteraction:
             else:
                 print("Please enter 'y' for yes or 'c' to cancel")
 
-    def show_task_options_with_state(self, task: TaskConfig, task_state: TaskState, is_latest: bool = True) -> UserChoice:
+    def show_task_options_with_state(
+        self, task: TaskConfig, task_state: TaskState, is_latest: bool = True
+    ) -> UserChoice:
         """
         Show task options with state information - the enhanced second prompt.
-        
+
         Args:
             task: Selected TaskConfig
             task_state: TaskState analysis
             is_latest: Whether this is the latest task or a specifically selected one
-            
+
         Returns:
             UserChoice for the action to take
         """
@@ -140,31 +144,35 @@ class UserInteraction:
             display_time = dt.strftime("%d.%m.%Y %H:%M")
         except ValueError:
             display_time = task.timestamp
-            
+
         task_type = "latest task" if is_latest else "task"
-        
+
         def show_menu():
             print(f"\nSelected {task_type}: {task.job_name} - {display_time}")
             print(f"\nTask state: {task_state.task_status_message}")
             print()
-            
+
             print("What to do with this task?")
             print("[Enter] - Run task, fill gaps, CREATE (or overwrite) final audio")
             print("s       - Run task, fill gaps, KEEP (skip) final audio")
-            print("r       - Run task, RE-RENDER ALL candidates, create new final audio")
-            
+            print(
+                "r       - Run task, RE-RENDER ALL candidates, create new final audio"
+            )
+
             if task_state.candidate_editor_available:
                 print("e       - Edit completed task (choose different candidates)")
             else:
-                print("N/A     - Edit completed task (not available - task incomplete or no candidate data)")
-                
+                print(
+                    "N/A     - Edit completed task (not available - task incomplete or no candidate data)"
+                )
+
             print("c       - Return")
-        
+
         show_menu()
-        
+
         while True:
             choice = input("\n> ").strip().lower()
-            
+
             if choice == "":
                 return UserChoice.LATEST_FILL_GAPS
             elif choice == "s":
@@ -181,39 +189,45 @@ class UserInteraction:
                 if task_state.candidate_editor_available:
                     return UserChoice.EDIT
                 else:
-                    print("Edit option not available - task incomplete or no candidate data")
+                    print(
+                        "Edit option not available - task incomplete or no candidate data"
+                    )
             elif choice == "c":
                 return UserChoice.RETURN
             else:
                 print("Invalid choice. Please try again.")
-                
+
     def show_all_tasks_options(self, tasks: List[TaskConfig]) -> UserChoice:
         """
         Show options for all tasks - the new third menu.
-        
+
         Args:
             tasks: List of all available TaskConfigs
-            
+
         Returns:
             UserChoice for the action to take on all tasks
         """
         job_name = tasks[0].job_name if tasks else "Unknown"
-        
+
         def show_menu():
             print(f"\nOptions for ALL tasks in job '{job_name}' ({len(tasks)} tasks):")
             print()
-            
+
             print("What to do with ALL tasks?")
-            print("[Enter] - Run tasks, fill gaps, CREATE (or overwrite) final audio-files")
+            print(
+                "[Enter] - Run tasks, fill gaps, CREATE (or overwrite) final audio-files"
+            )
             print("s       - Run tasks, fill gaps, KEEP (skip) final audio-files")
-            print("r       - Run tasks, RE-RENDER ALL candidates, create new final audio-files")
+            print(
+                "r       - Run tasks, RE-RENDER ALL candidates, create new final audio-files"
+            )
             print("c       - Return")
-        
+
         show_menu()
-        
+
         while True:
             choice = input("\n> ").strip().lower()
-            
+
             if choice == "":
                 return UserChoice.ALL_FILL_GAPS
             elif choice == "s":
@@ -238,13 +252,13 @@ class UserInteraction:
             display_time = dt.strftime("%d.%m.%Y %H:%M")
         except ValueError:
             display_time = task.timestamp
-            
+
         task_type = "latest task" if is_latest else "task"
-        
+
         return {
             "job_name": task.job_name,
             "run_label": task.run_label,
             "display_time": display_time,
             "timestamp": task.timestamp,
-            "task_type": task_type
+            "task_type": task_type,
         }

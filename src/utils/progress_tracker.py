@@ -148,11 +148,11 @@ class ValidationProgressTracker(ProgressTracker):
             logger.debug("=" * 80)
 
             if current_text:
-                logger.debug(f"ORIGINAL:")
+                logger.debug("ORIGINAL:")
                 logger.debug(f"{current_text}")
 
             if transcribed_text:
-                logger.debug(f"WHISPER RESULT:")
+                logger.debug("WHISPER RESULT:")
                 logger.debug(f"{transcribed_text}")
 
         if not success:

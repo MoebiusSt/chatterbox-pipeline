@@ -21,11 +21,10 @@ from .io_handlers import (
 
 # Re-export classes for backward compatibility
 from .io_handlers.candidate_io import AudioCandidate
-from .state_analyzer import CompletionStage, StateAnalyzer, TaskState
+from .state_analyzer import StateAnalyzer, TaskState
 from .validation_helpers import ValidationHelpers
 
 logger = logging.getLogger(__name__)
-
 
 class FileManager:
     """
@@ -161,14 +160,16 @@ class FileManager:
                 available_files = [f.name for f in self.input_texts_dir.glob("*.txt")]
                 # Also include other common text file extensions
                 for ext in ["*.md", "*.rtf"]:
-                    available_files.extend([f.name for f in self.input_texts_dir.glob(ext)])
-            
+                    available_files.extend(
+                        [f.name for f in self.input_texts_dir.glob(ext)]
+                    )
+
             error_msg = f"Input text file not found: {text_path}"
             if available_files:
                 error_msg += f"\n📂 Available text files: {', '.join(available_files)}"
             else:
                 error_msg += f"\n📂 Input texts dir: {self.input_texts_dir} (empty or doesn't exist)"
-            
+
             raise FileNotFoundError(error_msg)
 
         with open(text_path, "r", encoding="utf-8") as f:
@@ -195,14 +196,16 @@ class FileManager:
             # Try to provide helpful information about available files
             available_files = []
             if self.reference_audio_dir.exists():
-                available_files = [f.name for f in self.reference_audio_dir.glob("*.wav")]
-            
+                available_files = [
+                    f.name for f in self.reference_audio_dir.glob("*.wav")
+                ]
+
             error_msg = f"Reference audio file not found: {audio_path}"
             if available_files:
                 error_msg += f"\n📂 Available reference audio files: {', '.join(available_files)}"
             else:
                 error_msg += f"\n📂 Reference audio dir: {self.reference_audio_dir} (empty or doesn't exist)"
-            
+
             raise FileNotFoundError(error_msg)
 
         return audio_path
@@ -308,13 +311,13 @@ class FileManager:
     def get_reference_audio_for_speaker(self, speaker_id: str) -> Path:
         """
         Get reference_audio for specific speaker.
-        
+
         Args:
             speaker_id: Speaker ID
-            
+
         Returns:
             Path to reference_audio file
-            
+
         Raises:
             ValueError: When no reference_audio is defined for speaker
             FileNotFoundError: When the audio file does not exist
@@ -322,10 +325,10 @@ class FileManager:
         # Get speaker configuration via ConfigManager if available
         # Fallback: Search directly in config
         speakers = self.config.get("generation", {}).get("speakers", [])
-        
+
         if not speakers:
             raise RuntimeError("No speakers configured")
-        
+
         # Normalize speaker_id (default speaker aliases)
         if speaker_id in ["0", "default", "reset"]:
             # Use explicit default_speaker from config
@@ -335,51 +338,53 @@ class FileManager:
             else:
                 # Fallback to first speaker if default_speaker not configured
                 speaker_id = speakers[0].get("id", "default")
-        
+
         # Search for speaker by ID
         speaker_config = None
         for speaker in speakers:
             if speaker.get("id") == speaker_id:
                 speaker_config = speaker
                 break
-        
+
         if not speaker_config:
             # Use explicit default_speaker from config
             default_speaker = self.config.get("generation", {}).get("default_speaker")
             if default_speaker:
-                logger.warning(f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'")
+                logger.warning(
+                    f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'"
+                )
                 # Find default speaker config
                 for speaker in speakers:
                     if speaker.get("id") == default_speaker:
                         speaker_config = speaker
                         speaker_id = default_speaker
                         break
-            
+
             # Final fallback to first speaker
             if not speaker_config:
-                logger.warning(f"Default speaker not found, using first speaker")
+                logger.warning("Default speaker not found, using first speaker")
                 speaker_config = speakers[0]
                 speaker_id = speaker_config.get("id", "default")
-        
+
         reference_audio = speaker_config.get("reference_audio")
         if not reference_audio:
             raise ValueError(f"No reference_audio defined for speaker '{speaker_id}'")
-        
+
         audio_path = self.reference_audio_dir / reference_audio
-        
+
         if not audio_path.exists():
             available_files = [f.name for f in self.reference_audio_dir.glob("*.wav")]
             raise FileNotFoundError(
                 f"Reference audio not found: {audio_path}\n"
                 f"Available files: {available_files}"
             )
-        
+
         return audio_path
 
     def get_all_speaker_ids(self) -> List[str]:
         """
         Get all available speaker IDs.
-        
+
         Returns:
             List of all speaker IDs
         """
@@ -389,13 +394,13 @@ class FileManager:
     def validate_speakers_reference_audio(self) -> Dict[str, bool]:
         """
         Validate reference_audio for all speakers.
-        
+
         Returns:
             Dictionary with speaker ID -> validation successful
         """
         validation_results = {}
         speakers = self.config.get("generation", {}).get("speakers", [])
-        
+
         for speaker in speakers:
             speaker_id = speaker.get("id", "unknown")
             try:
@@ -404,34 +409,36 @@ class FileManager:
             except (FileNotFoundError, ValueError) as e:
                 logger.error(f"Speaker '{speaker_id}' validation failed: {e}")
                 validation_results[speaker_id] = False
-        
+
         return validation_results
 
     def get_default_speaker_id(self) -> str:
         """
         Get the ID of the default speaker using explicit default_speaker key.
-        
+
         Returns:
             Default speaker ID
         """
         generation_config = self.config.get("generation", {})
         default_speaker = generation_config.get("default_speaker")
-        
+
         if default_speaker:
             # Verify the default_speaker exists in speakers list
             speakers = generation_config.get("speakers", [])
             speaker_ids = [speaker.get("id", "") for speaker in speakers]
-            
+
             if default_speaker in speaker_ids:
                 return default_speaker
             else:
-                logger.warning(f"default_speaker '{default_speaker}' not found in speakers list, falling back to first speaker")
-        
+                logger.warning(
+                    f"default_speaker '{default_speaker}' not found in speakers list, falling back to first speaker"
+                )
+
         # Fallback to first speaker if default_speaker key is missing or invalid
         speakers = generation_config.get("speakers", [])
         if not speakers:
             raise RuntimeError("No speakers configured")
-        
+
         fallback_id = speakers[0].get("id", "default")
         logger.debug(f"Using fallback default speaker: '{fallback_id}'")
         return fallback_id

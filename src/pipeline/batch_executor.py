@@ -7,15 +7,13 @@ Handles batch processing with progress tracking and error management.
 import logging
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List
 
-from pipeline.task_executor import CompletionStage, TaskExecutor, TaskResult
 from utils.config_manager import ConfigManager, TaskConfig
+from .task_executor import TaskExecutor, TaskResult
 from utils.file_manager.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class BatchResult:
@@ -35,7 +33,6 @@ class BatchResult:
             if self.total_tasks > 0
             else 0.0
         )
-
 
 class BatchExecutor:
     """Executes multiple TTS tasks sequentially with progress tracking."""
@@ -74,8 +71,10 @@ class BatchExecutor:
         # Execute tasks sequentially
         for i, task_config in enumerate(task_configs, 1):
             if total_tasks > 1:
-                logger.info(f"▶️  Executing task {i}/{total_tasks}: {task_config.job_name}:{task_config.task_name}")
-            
+                logger.info(
+                    f"▶️  Executing task {i}/{total_tasks}: {task_config.job_name}:{task_config.task_name}"
+                )
+
             result = self._execute_single_task(task_config)
             results.append(result)
 
@@ -117,10 +116,16 @@ class BatchExecutor:
             loaded_config = task_config.preloaded_config
         else:
             logger.debug(f"⚙️ Loading config: {task_config.config_path}")
-            loaded_config = self.config_manager.load_cascading_config(task_config.config_path)
+            loaded_config = self.config_manager.load_cascading_config(
+                task_config.config_path
+            )
 
         # Create file manager with preloaded config and shared ConfigManager
-        file_manager = FileManager(task_config, preloaded_config=loaded_config, config_manager=self.config_manager)
+        file_manager = FileManager(
+            task_config,
+            preloaded_config=loaded_config,
+            config_manager=self.config_manager,
+        )
 
         # Create task executor with preloaded config (avoiding redundant loading)
         task_executor = TaskExecutor(file_manager, task_config, config=loaded_config)

@@ -73,7 +73,7 @@ def main():
     project_root = Path(__file__).resolve().parents[1]
     config_path = project_root / "config" / "default_config.yaml"
 
-    logger.info(f"🧪 MOCK TTS PIPELINE TEST")
+    logger.info("🧪 MOCK TTS PIPELINE TEST")
     logger.info(f"Project root: {project_root}")
 
     # Load configuration
@@ -233,9 +233,9 @@ def main():
         pipeline_end_time = time.time()
         total_pipeline_time = pipeline_end_time - pipeline_start_time
 
-        logger.info(f"{'='*60}")
-        logger.info(f"🎭 MOCK TTS PIPELINE COMPLETED")
-        logger.info(f"{'='*60}")
+        logger.info("="*60)
+        logger.info("🎭 MOCK TTS PIPELINE COMPLETED")
+        logger.info("="*60)
         logger.info(
             f"Start time: {datetime.fromtimestamp(pipeline_start_time).strftime('%H:%M:%S')}"
         )
@@ -247,8 +247,8 @@ def main():
             f"Generated {duration:.2f} seconds of mock audio from {len(input_text)} characters of text"
         )
         logger.info(f"- Mock output saved to: {output_path}")
-        logger.info(f"✅ Mock pipeline test successful - ready for CI/CD integration")
-        logger.info(f"{'='*60}")
+        logger.info("✅ Mock pipeline test successful - ready for CI/CD integration")
+        logger.info("="*60)
 
         return True
     else:

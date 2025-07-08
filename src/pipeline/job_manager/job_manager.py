@@ -112,7 +112,9 @@ class JobManager:
         logger.info(f"Found {len(task_configs)} total job configs")
         return task_configs
 
-    def find_existing_tasks(self, job_name: str, run_label: Optional[str] = None) -> List[TaskConfig]:
+    def find_existing_tasks(
+        self, job_name: str, run_label: Optional[str] = None
+    ) -> List[TaskConfig]:
         return self.config_manager.find_existing_tasks(job_name, run_label)
 
     def create_new_task(self, job_config: Dict[str, Any]) -> TaskConfig:

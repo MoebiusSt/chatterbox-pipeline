@@ -237,28 +237,6 @@ def create_silence(
     return torch.zeros(1, num_samples)
 
 
-def normalize_audio(audio: torch.Tensor, target_peak: float = 0.9) -> torch.Tensor:
-    """
-    Normalize audio to target peak amplitude.
-
-    Args:
-        audio: Audio tensor to normalize
-        target_peak: Target peak amplitude (0.0 to 1.0)
-
-    Returns:
-        Normalized audio tensor
-    """
-    # Find current peak
-    current_peak = audio.abs().max()
-
-    if current_peak > 0:
-        # Calculate normalization factor
-        norm_factor = target_peak / current_peak
-        audio = audio * norm_factor
-
-    return audio
-
-
 def detect_silence(
     audio: torch.Tensor,
     threshold: float = 0.01,

@@ -33,13 +33,13 @@ class SelectionStrategies:
 
         elif selection_strategy == "first":
             selected = candidates[0]
-            logger.debug(f"Selected first candidate")
+            logger.debug("Selected first candidate")
 
         elif selection_strategy == "random":
             import random
 
             selected = random.choice(candidates)
-            logger.debug(f"Selected random candidate")
+            logger.debug("Selected random candidate")
 
         else:
             logger.warning(

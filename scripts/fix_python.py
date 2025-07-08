@@ -5,11 +5,10 @@ Runs myPy, Black, isort, and other code quality checks with interactive options.
 """
 
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 
 class PythonCodeFixer:

@@ -4,12 +4,8 @@ Integration tests for the TTS pipeline using mock audio generation.
 Suitable for CI/CD environments without heavy TTS model dependencies.
 """
 
-import sys
-from pathlib import Path
-
 import pytest
 import torch
-import yaml
 
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
@@ -19,7 +15,6 @@ from utils.progress_tracker import ProgressTracker
 # Import statements - use PYTHONPATH=$(pwd)/src when running this script
 
 
-
 class TestPipelineIntegration:
     """Integration tests for the TTS pipeline using mock components."""
 
@@ -27,7 +22,7 @@ class TestPipelineIntegration:
     def sample_text(self):
         """Sample text for testing."""
         return """
-        This is the first paragraph with multiple sentences. It should be processed correctly by the SpaCy chunker. 
+        This is the first paragraph with multiple sentences. It should be processed correctly by the SpaCy chunker.
         The chunker should respect sentence boundaries.
 
 

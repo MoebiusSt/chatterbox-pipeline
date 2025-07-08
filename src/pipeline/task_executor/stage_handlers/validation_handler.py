@@ -4,9 +4,9 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
+from chunking.base_chunker import TextChunk
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
-from chunking.base_chunker import TextChunk
 from validation.quality_scorer import QualityScorer
 from validation.whisper_validator import ValidationResult, WhisperValidator
 
@@ -402,8 +402,8 @@ class ValidationHandler:
 
                 # Log results
                 if candidate_scores:
-                    min_score = min(candidate_scores)
-                    max_score = max(candidate_scores)
+                    # min_score = min(candidate_scores)  # Calculated but not used
+                    # max_score = max(candidate_scores)  # Calculated but not used
                     best_candidate_display = (
                         best_candidate_idx + 1 if best_candidate_idx is not None else 0
                     )
@@ -435,7 +435,7 @@ class ValidationHandler:
                     )
 
                 # Type-safe dictionary access
-                chunks_dict = metrics["chunks"] 
+                chunks_dict = metrics["chunks"]
                 selected_candidates_dict = metrics["selected_candidates"]
                 chunks_dict[chunk.idx] = chunk_metrics
                 selected_candidates_dict[chunk.idx] = best_candidate_idx
@@ -446,19 +446,23 @@ class ValidationHandler:
                 )
                 if candidates_list:
                     selected_candidates_dict = metrics["selected_candidates"]
-                    selected_candidates_dict[chunk.idx] = candidates_list[0].candidate_idx
+                    selected_candidates_dict[chunk.idx] = candidates_list[
+                        0
+                    ].candidate_idx
 
         return metrics
 
-    def execute_selective_validation(self, chunks_to_validate: Optional[List[int]] = None) -> bool:
+    def execute_selective_validation(
+        self, chunks_to_validate: Optional[List[int]] = None
+    ) -> bool:
         """
         Execute validation only for specific chunks (for gap-filling scenarios).
         Preserves existing selected_candidates and only adds/updates new validation data.
-        
+
         Args:
             chunks_to_validate: List of chunk indices to validate (0-based).
                               If None, determines automatically based on missing validation data.
-        
+
         Returns:
             True if validation successful, False otherwise
         """
@@ -476,17 +480,19 @@ class ValidationHandler:
                 # Auto-determine based on missing validation data (legacy behavior)
                 chunks_to_validate = []
                 existing_metrics = self.file_manager.get_metrics()
-                existing_chunks = existing_metrics.get("chunks", {}) if existing_metrics else {}
-                
+                existing_chunks = (
+                    existing_metrics.get("chunks", {}) if existing_metrics else {}
+                )
+
                 for chunk in chunks:
                     chunk_candidates = all_candidates.get(chunk.idx, [])
                     if not chunk_candidates:
                         continue
-                    
+
                     chunk_key = str(chunk.idx)
                     existing_chunk_data = existing_chunks.get(chunk_key, {})
                     existing_candidate_data = existing_chunk_data.get("candidates", {})
-                    
+
                     # Check if any candidates are missing validation data
                     needs_validation = False
                     for candidate in chunk_candidates:
@@ -494,32 +500,45 @@ class ValidationHandler:
                         if candidate_key not in existing_candidate_data:
                             needs_validation = True
                             break
-                        
+
                         # Also check if validation data exists but is incomplete
                         candidate_data = existing_candidate_data[candidate_key]
-                        if not all(key in candidate_data for key in ["transcription", "similarity_score", "overall_quality_score"]):
+                        if not all(
+                            key in candidate_data
+                            for key in [
+                                "transcription",
+                                "similarity_score",
+                                "overall_quality_score",
+                            ]
+                        ):
                             needs_validation = True
                             break
-                    
+
                     if needs_validation:
                         chunks_to_validate.append(chunk.idx)
             else:
                 # Use explicitly provided chunk indices for gap-filling - NO AUTO-DETECTION
-                logger.info(f"📋 Using provided chunk indices for gap-filling validation: {[idx+1 for idx in chunks_to_validate]}")
+                logger.info(
+                    f"📋 Using provided chunk indices for gap-filling validation: {[idx+1 for idx in chunks_to_validate]}"
+                )
 
             if not chunks_to_validate:
-                logger.info("✅ No chunks require validation - all validation data is complete")
+                logger.info(
+                    "✅ No chunks require validation - all validation data is complete"
+                )
                 return True
 
-            logger.info(f"🚦 SELECTIVE VALIDATION: Processing {len(chunks_to_validate)} chunks: {[idx+1 for idx in chunks_to_validate]}")
+            logger.info(
+                f"🚦 SELECTIVE VALIDATION: Processing {len(chunks_to_validate)} chunks: {[idx+1 for idx in chunks_to_validate]}"
+            )
 
             validation_results = {}
-            
+
             for chunk_idx in chunks_to_validate:
                 if chunk_idx >= len(chunks):
                     logger.warning(f"Invalid chunk index {chunk_idx}, skipping")
                     continue
-                    
+
                 chunk = chunks[chunk_idx]
                 chunk_candidates = all_candidates.get(chunk.idx, [])
                 if not chunk_candidates:
@@ -622,7 +641,9 @@ class ValidationHandler:
                     return False
 
             # Update enhanced metrics selectively (preserve existing selected_candidates)
-            if not self._update_enhanced_metrics_selectively(chunks, all_candidates, validation_results):
+            if not self._update_enhanced_metrics_selectively(
+                chunks, all_candidates, validation_results
+            ):
                 logger.error("Failed to update validation metrics selectively")
                 return False
 
@@ -647,14 +668,14 @@ class ValidationHandler:
         try:
             # Create chunk data for validated chunks only
             new_chunk_data = {}
-            
+
             for chunk_idx, chunk_validation in validation_results.items():
                 if chunk_idx >= len(all_chunks):
                     continue
-                    
+
                 chunk = all_chunks[chunk_idx]
                 chunk_candidates = all_candidates.get(chunk.idx, [])
-                
+
                 if not chunk_validation or not chunk_candidates:
                     continue
 
@@ -712,7 +733,9 @@ class ValidationHandler:
 
                         chunk_metrics["candidates"][candidate.candidate_idx] = {
                             "transcription": result_dict.get("transcription", ""),
-                            "similarity_score": result_dict.get("similarity_score", 0.0),
+                            "similarity_score": result_dict.get(
+                                "similarity_score", 0.0
+                            ),
                             "validation_score": result_dict.get("quality_score", 0.0),
                             "overall_quality_score": candidate_score,
                             "quality_details": result_dict.get("quality_details", {}),
@@ -724,7 +747,9 @@ class ValidationHandler:
                         min_score = min(candidate_scores)
                         max_score = max(candidate_scores)
                         best_candidate_display = (
-                            best_candidate_idx + 1 if best_candidate_idx is not None else 0
+                            best_candidate_idx + 1
+                            if best_candidate_idx is not None
+                            else 0
                         )
 
                         # Get TTS parameters from best candidate
@@ -737,7 +762,10 @@ class ValidationHandler:
                                 ),
                                 None,
                             )
-                            if best_candidate_obj and best_candidate_obj.generation_params:
+                            if (
+                                best_candidate_obj
+                                and best_candidate_obj.generation_params
+                            ):
                                 best_params = best_candidate_obj.generation_params
                                 exaggeration = best_params.get("exaggeration", 0.0)
                                 cfg_weight = best_params.get("cfg_weight", 0.0)
@@ -761,7 +789,11 @@ class ValidationHandler:
                     )
                     if candidates_list:
                         chunk_metrics = {
-                            "chunk_text": chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text,
+                            "chunk_text": (
+                                chunk.text[:100] + "..."
+                                if len(chunk.text) > 100
+                                else chunk.text
+                            ),
                             "candidates": {},
                             "best_candidate": candidates_list[0].candidate_idx,
                             "best_score": 0.0,
@@ -772,7 +804,7 @@ class ValidationHandler:
             return self.file_manager._metrics_handler.update_metrics_selectively(
                 new_chunk_data, preserve_selected_candidates=True
             )
-            
+
         except Exception as e:
             logger.error(f"Failed to update enhanced metrics selectively: {e}")
             return False

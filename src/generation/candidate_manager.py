@@ -1,14 +1,12 @@
 import logging
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import torchaudio
-
 from chunking.base_chunker import TextChunk
-from utils.file_manager.io_handlers.candidate_io import AudioCandidate
-from utils.file_manager.io_handlers.candidate_io import CandidateIOHandler
+from utils.file_manager.io_handlers.candidate_io import (
+    AudioCandidate,
+    CandidateIOHandler,
+)
 
 from .batch_processor import BatchProcessor, GenerationResult
 from .selection_strategies import SelectionStrategies
@@ -99,21 +97,24 @@ class CandidateManager:
         generation_config = self.config.get("generation", {})
 
         # Check if chunk has speaker information for speaker-aware generation
-        if hasattr(text_chunk, 'speaker_id') and text_chunk.speaker_id:
-            logger.info(f"🎭 Using speaker '{text_chunk.speaker_id}' in chunk {chunk_index + 1}")
-            
+        if hasattr(text_chunk, "speaker_id") and text_chunk.speaker_id:
+            logger.info(
+                f"🎭 Using speaker '{text_chunk.speaker_id}' in chunk {chunk_index + 1}"
+            )
+
             # Generate candidates using speaker-aware method
-            config_manager = getattr(self, 'file_manager', None)
-            
+            config_manager = getattr(self, "file_manager", None)
+
             candidates = self.tts_generator.generate_candidates_with_speaker(
                 text=text_chunk.text,
                 speaker_id=text_chunk.speaker_id,
                 num_candidates=self.max_candidates,
                 config_manager=config_manager,
             )
-            
+
             # Create a mock result object for backward compatibility
             from .batch_processor import GenerationResult
+
             result = GenerationResult(
                 chunk=text_chunk,
                 candidates=candidates,
@@ -123,7 +124,9 @@ class CandidateManager:
             )
         else:
             # Legacy generation using the existing method
-            logger.info(f"🔧 Using legacy generation (no speaker information) for chunk {chunk_index + 1}")
+            logger.info(
+                f"🔧 Using legacy generation (no speaker information) for chunk {chunk_index + 1}"
+            )
             result = self.generate_candidates_for_chunk(
                 chunk=text_chunk,
                 tts_generator=self.tts_generator,
@@ -173,12 +176,12 @@ class CandidateManager:
         zero_based_indices = [idx - 1 for idx in candidate_indices]
 
         # Check if chunk has speaker information
-        if hasattr(text_chunk, 'speaker_id') and text_chunk.speaker_id:
+        if hasattr(text_chunk, "speaker_id") and text_chunk.speaker_id:
             logger.info(f"🎭 Using speaker for speaker '{text_chunk.speaker_id}'")
-            
+
             # Use speaker-specific generation
-            config_manager = getattr(self, 'file_manager', None)
-            
+            config_manager = getattr(self, "file_manager", None)
+
             # Generate ONLY the specific candidates using speaker-aware method
             specific_candidates = self.tts_generator.generate_candidates_with_speaker(
                 text=text_chunk.text,
@@ -186,14 +189,14 @@ class CandidateManager:
                 num_candidates=len(candidate_indices),
                 config_manager=config_manager,
             )
-            
+
             # Map the generated candidates to the correct indices
             for i, candidate in enumerate(specific_candidates):
                 if i < len(zero_based_indices):
                     candidate.candidate_idx = zero_based_indices[i]
         else:
             # Legacy generation without speaker system
-            logger.info(f"🔧 Using legacy generation (no speaker information)")
+            logger.info("🔧 Using legacy generation (no speaker information)")
             specific_candidates = self.tts_generator.generate_specific_candidates(
                 text=text_chunk.text,
                 candidate_indices=zero_based_indices,
@@ -277,7 +280,9 @@ class CandidateManager:
         try:
             # Extract only TTS-relevant parameters from generation_params
             tts_params = generation_params.get("tts_params", {})
-            conservative_config_for_call = generation_params.get("conservative_candidate", None)
+            conservative_config_for_call = generation_params.get(
+                "conservative_candidate", None
+            )
 
             # Generate normal candidates with correct parameter passing
             normal_candidates = tts_generator.generate_candidates(
@@ -307,7 +312,7 @@ class CandidateManager:
             logger.error(f"Normal generation failed: {e}")
 
         # Store normal candidates for validation check
-        normal_candidates_for_validation = all_candidates.copy()
+        # normal_candidates_for_validation = all_candidates.copy()
 
         # NOTE: Conservative retry logic is now handled in main.py after validation
         # This allows for smarter retry decisions based on validation results

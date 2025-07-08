@@ -18,7 +18,6 @@ cd tts_pipeline_enhanced
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
-python scripts/download_models.py
 ```
 
 ### 2. Prepare the development environment
@@ -26,7 +25,7 @@ python scripts/download_models.py
 # Create virtual environment (REQUIRED)
 python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
-# venv\Scripts\activate   # Windows
+venv\Scripts\activate   # Windows
 
 
 # Install development dependencies

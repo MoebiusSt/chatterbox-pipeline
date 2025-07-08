@@ -20,9 +20,9 @@ class TextChunk:
     idx: int = 0
 
     # Speaker-System Extensions
-    speaker_id: str = "default"                # Current speaker
-    speaker_transition: bool = False           # Chunk starts with speaker transition
-    original_markup: Optional[str] = None      # Original markup for debugging
+    speaker_id: str = "default"  # Current speaker
+    speaker_transition: bool = False  # Chunk starts with speaker transition
+    original_markup: Optional[str] = None  # Original markup for debugging
 
 
 class BaseChunker(ABC):

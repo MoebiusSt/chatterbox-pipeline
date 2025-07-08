@@ -4,14 +4,9 @@ Handles saving transcriptions and validation data to disk.
 """
 
 import logging
-import sys
+
 from pathlib import Path
 from typing import List, Optional, Union
-
-from utils.file_manager.io_handlers.candidate_io import AudioCandidate
-
-# Use absolute import pattern like existing modules
-
 
 
 class TranscriptionIO:
@@ -85,7 +80,7 @@ class TranscriptionIO:
                 else:
                     params_str = "N/A"
 
-                content = f"=== WHISPER TRANSCRIPTION ===\n"
+                content = "=== WHISPER TRANSCRIPTION ===\n"
                 content += f"Chunk: {chunk_index:03d}\n"
                 content += f"Candidate: {candidate_idx:02d}\n"
                 content += f"Whisper Score: {whisper_score:.3f}\n"

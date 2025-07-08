@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import spacy
-from spacy.tokens import Doc, Span
+from spacy.tokens import Span
 
 from .base_chunker import BaseChunker, TextChunk
 
@@ -16,21 +16,21 @@ logger = logging.getLogger(__name__)
 class SpeakerMarkupParser:
     """
     Parser for speaker markup in text.
-    
+
     Supports markup syntax:
     - <speaker:id> switches to speaker with corresponding ID
     - <speaker:0> or <speaker:reset> returns to default speaker
     """
-    
-    SPEAKER_PATTERN = r'<speaker:([^>]+)>'
-    
+
+    SPEAKER_PATTERN = r"<speaker:([^>]+)>"
+
     def parse_speaker_transitions(self, text: str) -> List[Tuple[int, str]]:
         """
         Parse speaker transitions and return (position, speaker_id) tuples.
-        
+
         Args:
             text: Text with speaker markup
-            
+
         Returns:
             List of (position, speaker_id) tuples
         """
@@ -40,41 +40,45 @@ class SpeakerMarkupParser:
             speaker_id = match.group(1).strip()
             transitions.append((position, speaker_id))
         return transitions
-    
+
     def remove_markup(self, text: str) -> str:
         """
         Remove speaker markup tags from text.
-        
+
         Args:
             text: Text with speaker markup
-            
+
         Returns:
             Text without markup tags
         """
-        return re.sub(self.SPEAKER_PATTERN, '', text)
-    
-    def validate_speaker_id(self, speaker_id: str, available_speakers: List[str]) -> str:
+        return re.sub(self.SPEAKER_PATTERN, "", text)
+
+    def validate_speaker_id(
+        self, speaker_id: str, available_speakers: List[str]
+    ) -> str:
         """
         Validate and normalize speaker ID.
-        
+
         Args:
             speaker_id: Speaker ID to validate
             available_speakers: List of available speaker IDs
-            
+
         Returns:
             Validated/normalized speaker ID
         """
-        # Normalize special IDs (default speaker aliases) 
+        # Normalize special IDs (default speaker aliases)
         # Note: SpaCyChunker doesn't have access to full config, so it uses the first speaker as default
         # The actual default speaker resolution happens in ConfigManager/FileManager
         if speaker_id in ["0", "default", "reset"]:
             return available_speakers[0] if available_speakers else "default"
-        
+
         # Check if speaker is available
         if speaker_id in available_speakers:
             return speaker_id
-            
-        logger.warning(f"Unknown speaker '{speaker_id}', falling back to default speaker")
+
+        logger.warning(
+            f"Unknown speaker '{speaker_id}', falling back to default speaker"
+        )
         return available_speakers[0] if available_speakers else "default"
 
 
@@ -101,22 +105,29 @@ class SpaCyChunker(BaseChunker):
             try:
                 import subprocess
                 import sys
-                subprocess.check_call([sys.executable, "-m", "spacy", "download", model_name])
+
+                subprocess.check_call(
+                    [sys.executable, "-m", "spacy", "download", model_name]
+                )
                 self.nlp = spacy.load(model_name)
             except (subprocess.CalledProcessError, ImportError) as e:
                 logger.error(f"Failed to download spacy model '{model_name}': {e}")
-                raise RuntimeError(f"SpaCy model '{model_name}' not available and download failed")
-        
+                raise RuntimeError(
+                    f"SpaCy model '{model_name}' not available and download failed"
+                )
+
         # Speaker system components
         self.speaker_parser = SpeakerMarkupParser()
         self.available_speakers: List[str] = []  # Set externally
-        
-        logger.info(f"SpaCy Chunker initialized with model '{model_name}' and speaker support.")
+
+        logger.info(
+            f"SpaCy Chunker initialized with model '{model_name}' and speaker support."
+        )
 
     def set_available_speakers(self, speakers: List[str]):
         """
         Set available speaker IDs for validation.
-        
+
         Args:
             speakers: List of available speaker IDs
         """
@@ -133,7 +144,7 @@ class SpaCyChunker(BaseChunker):
 
         # 1. Parse speaker transitions
         transitions = self.speaker_parser.parse_speaker_transitions(text)
-        
+
         if transitions:
             logger.debug(f"Found {len(transitions)} speaker transitions")
             # Use speaker-aware chunking
@@ -142,73 +153,78 @@ class SpaCyChunker(BaseChunker):
             # Use traditional chunking without speaker support
             return self._chunk_text_traditional(text)
 
-    def _chunk_text_with_speakers(self, text: str, transitions: List[Tuple[int, str]]) -> List[TextChunk]:
+    def _chunk_text_with_speakers(
+        self, text: str, transitions: List[Tuple[int, str]]
+    ) -> List[TextChunk]:
         """
         Chunking with speaker support - speaker changes have highest priority.
-        
+
         Args:
             text: Complete text with markup
             transitions: List of (position, speaker_id) tuples
-            
+
         Returns:
             List of TextChunk objects with speaker information
         """
         # 1. Create primary splits at speaker changes
         clean_text = self.speaker_parser.remove_markup(text)
         primary_splits = self._create_speaker_splits(text, clean_text, transitions)
-        
+
         # 2. Apply normal chunking logic to each speaker section
         all_chunks = []
         for speaker_section in primary_splits:
             section_chunks = self._chunk_speaker_section(speaker_section)
             all_chunks.extend(section_chunks)
-        
+
         # 3. Post-processing and indexing
         return self._finalize_chunks(all_chunks)
 
-    def _create_speaker_splits(self, original_text: str, clean_text: str, transitions: List[Tuple[int, str]]) -> List[dict]:
+    def _create_speaker_splits(
+        self, original_text: str, clean_text: str, transitions: List[Tuple[int, str]]
+    ) -> List[dict]:
         """
         Create primary division into speaker sections.
-        
+
         Args:
             original_text: Text with markup (for extracting speaker IDs)
             clean_text: Text without markup (for actual splitting)
             transitions: List of (position, speaker_id) tuples from original text
-            
+
         Returns:
             List of speaker sections
         """
         sections = []
-        current_speaker = self.available_speakers[0] if self.available_speakers else "default"
-        
+        current_speaker = (
+            self.available_speakers[0] if self.available_speakers else "default"
+        )
+
         # Strategy: Parse the original text to create speaker sections,
         # then map each section to the corresponding clean text
-        
+
         # Create pattern to find speaker tags and split points
         import re
-        speaker_pattern = r'<speaker:([^>]+)>'
-        
-        # Find all speaker changes in original text
-        current_pos = 0
-        clean_pos = 0
-        
+
+        speaker_pattern = r"<speaker:([^>]+)>"
+
         # Split original text by speaker tags
         parts = re.split(speaker_pattern, original_text)
-        
+
         i = 0
         while i < len(parts):
             text_part = parts[i]
-            
+
             if i == 0:
                 # First part (before any speaker tag)
                 if text_part.strip():
-                    sections.append({
-                        "text": text_part.lstrip(),
-                        "speaker_id": current_speaker,
-                        "start_pos": 0,
-                        "speaker_transition": False,
-                        "original_markup": None
-                    })
+                    sections.append(
+                        {
+                            "text": text_part.lstrip(),
+                            "speaker_id": current_speaker,
+                            "start_pos": 0,
+                            "speaker_transition": False,
+                            "original_markup": None,
+                        }
+                    )
             else:
                 # We have a speaker ID (from the regex split)
                 if i % 2 == 1:
@@ -221,31 +237,33 @@ class SpaCyChunker(BaseChunker):
                 else:
                     # This is text content after a speaker tag
                     if text_part.strip():
-                        sections.append({
-                            "text": text_part.lstrip(),
-                            "speaker_id": current_speaker,
-                            "start_pos": 0,  # Will be recalculated
-                            "speaker_transition": True,
-                            "original_markup": new_speaker_id if i > 1 else None
-                        })
+                        sections.append(
+                            {
+                                "text": text_part.lstrip(),
+                                "speaker_id": current_speaker,
+                                "start_pos": 0,  # Will be recalculated
+                                "speaker_transition": True,
+                                "original_markup": new_speaker_id if i > 1 else None,
+                            }
+                        )
             i += 1
-        
+
         logger.debug(f"Created {len(sections)} speaker sections")
         return sections
 
     def _chunk_speaker_section(self, section: dict) -> List[TextChunk]:
         """
         Normal chunking logic for individual speaker section.
-        
+
         Args:
             section: Speaker section with text, speaker_id, etc.
-            
+
         Returns:
             List of TextChunk objects
         """
         # Use traditional chunking for the speaker section
         base_chunks = self._chunk_text_traditional(section["text"])
-        
+
         # Enhance with speaker information
         enhanced_chunks = []
         for i, chunk in enumerate(base_chunks):
@@ -259,36 +277,36 @@ class SpaCyChunker(BaseChunker):
                 idx=chunk.idx,
                 speaker_id=section["speaker_id"],
                 speaker_transition=(i == 0 and section["speaker_transition"]),
-                original_markup=section["original_markup"] if i == 0 else None
+                original_markup=section["original_markup"] if i == 0 else None,
             )
             enhanced_chunks.append(enhanced_chunk)
-        
+
         return enhanced_chunks
 
     def _finalize_chunks(self, chunks: List[TextChunk]) -> List[TextChunk]:
         """
         Post-processing and indexing of chunks.
-        
+
         Args:
             chunks: List of TextChunk objects
-            
+
         Returns:
             Finalized list of TextChunk objects
         """
         # Set correct indices
         for i, chunk in enumerate(chunks):
             chunk.idx = i
-        
+
         logger.debug(f"Finalized {len(chunks)} chunks with speaker information")
         return chunks
 
     def _chunk_text_traditional(self, text: str) -> List[TextChunk]:
         """
         Original chunking logic without speaker support.
-        
+
         Args:
             text: Text to chunk
-            
+
         Returns:
             List of TextChunk objects
         """
@@ -322,7 +340,7 @@ class SpaCyChunker(BaseChunker):
                 if current_chunk_len == 0 and sent_len > self.max_limit:
                     logger.warning(
                         f"Very long sentence ({sent_len} chars) exceeds max_limit ({self.max_limit}). "
-                        f"Attempting fallback splitting..."
+                        "Attempting fallback splitting..."
                     )
 
                     # Try to split at secondary delimiters to avoid breaking Whisper context window
@@ -332,18 +350,22 @@ class SpaCyChunker(BaseChunker):
 
                     if len(split_chunks) == 2:
                         logger.info(
-                            f"✅ Successfully split long sentence into 2 parts using fallback delimiters"
+                            "✅ Successfully split long sentence into 2 parts using fallback delimiters"
                         )
 
                         # Add the first split chunk immediately as a complete chunk
-                        first_part = split_chunks[0].lstrip()  # Only strip leading whitespace
+                        first_part = split_chunks[
+                            0
+                        ].lstrip()  # Only strip leading whitespace
                         chunks.append(
                             TextChunk(
                                 text=first_part,
                                 start_pos=sent.start_char,  # Approximate
                                 end_pos=sent.start_char
                                 + len(first_part),  # Approximate
-                                has_paragraph_break=self._ends_with_paragraph_break(first_part),
+                                has_paragraph_break=self._ends_with_paragraph_break(
+                                    first_part
+                                ),
                                 estimated_tokens=self._estimate_token_length(
                                     first_part
                                 ),
@@ -352,7 +374,9 @@ class SpaCyChunker(BaseChunker):
                         )
 
                         # Add the second split chunk immediately as a complete chunk too
-                        second_part = split_chunks[1].lstrip()  # Only strip leading whitespace
+                        second_part = split_chunks[
+                            1
+                        ].lstrip()  # Only strip leading whitespace
                         if second_part.strip():  # Check if chunk has content
                             chunks.append(
                                 TextChunk(
@@ -360,7 +384,9 @@ class SpaCyChunker(BaseChunker):
                                     start_pos=sent.start_char
                                     + len(first_part),  # Approximate
                                     end_pos=sent.end_char,  # Approximate
-                                    has_paragraph_break=self._ends_with_paragraph_break(second_part),
+                                    has_paragraph_break=self._ends_with_paragraph_break(
+                                        second_part
+                                    ),
                                     estimated_tokens=self._estimate_token_length(
                                         second_part
                                     ),
@@ -403,7 +429,7 @@ class SpaCyChunker(BaseChunker):
                 # The text for the chunk is re-sliced from the original doc
                 # We preserve whitespace to keep paragraph breaks for detection
                 final_chunk_text = doc.text[start_char:end_char]
-                
+
                 # Only strip leading whitespace, preserve trailing for paragraph break detection
                 final_chunk_text = final_chunk_text.lstrip()
 
@@ -412,7 +438,9 @@ class SpaCyChunker(BaseChunker):
                         text=final_chunk_text,
                         start_pos=start_char,
                         end_pos=end_char,
-                        has_paragraph_break=self._ends_with_paragraph_break(final_chunk_text),
+                        has_paragraph_break=self._ends_with_paragraph_break(
+                            final_chunk_text
+                        ),
                         estimated_tokens=self._estimate_token_length(final_chunk_text),
                         is_fallback_split=False,  # Regular chunks are not fallback splits
                     )
@@ -430,26 +458,26 @@ class SpaCyChunker(BaseChunker):
     def _ends_with_paragraph_break(self, text: str) -> bool:
         """
         Check if a text chunk ends with a paragraph break.
-        
+
         This determines whether a longer pause should be inserted AFTER this chunk
         during audio assembly.
-        
+
         Args:
             text: The text to check
-            
+
         Returns:
             True if the chunk ends with a paragraph break (indicating a paragraph pause should follow)
         """
         if not text:
             return False
-            
+
         # Remove trailing whitespace except newlines to check the actual end pattern
         # We want to preserve trailing newlines for paragraph break detection
-        text_for_check = text.rstrip(' \t\r')
-        
+        text_for_check = text.rstrip(" \t\r")
+
         # Check if text ends with double newline (paragraph break)
         # This indicates that after this chunk, a paragraph pause should be inserted
-        return text_for_check.endswith('\n\n')
+        return text_for_check.endswith("\n\n")
 
     def _find_optimal_split_point(self, sentences: List[Span]) -> int:
         """
@@ -505,7 +533,8 @@ class SpaCyChunker(BaseChunker):
                 if (
                     len(first_part) <= max_limit
                     and len(second_part) <= max_limit
-                    and len(first_part.strip()) > 0  # Check content without affecting whitespace
+                    and len(first_part.strip())
+                    > 0  # Check content without affecting whitespace
                     and len(second_part.strip()) > 0
                 ):
 
@@ -521,7 +550,9 @@ class SpaCyChunker(BaseChunker):
         # If we found a good split point, use it
         if best_split_pos is not None:
             first_part = text[:best_split_pos].lstrip()  # Only strip leading whitespace
-            second_part = text[best_split_pos:].lstrip()  # Only strip leading whitespace
+            second_part = text[
+                best_split_pos:
+            ].lstrip()  # Only strip leading whitespace
             logger.info(
                 f"✅ Split using '{best_delimiter}' near middle: {len(first_part)} + {len(second_part)} chars"
             )
@@ -529,7 +560,7 @@ class SpaCyChunker(BaseChunker):
 
         # If no good splits found, return original text as single chunk
         logger.warning(
-            f"❌ No suitable split point found near middle with secondary delimiters"
+            "❌ No suitable split point found near middle with secondary delimiters"
         )
         return [text]
 

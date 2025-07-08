@@ -3,20 +3,12 @@ Fuzzy text matching module for comparing transcriptions with original text.
 Implements multiple similarity algorithms for robust text comparison.
 """
 
-import logging
 import re
+
 from dataclasses import dataclass
-from difflib import SequenceMatcher
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
-try:
-    from fuzzywuzzy import fuzz
-
-    FUZZYWUZZY_AVAILABLE = True
-except ImportError:
-    FUZZYWUZZY_AVAILABLE = False
-    logging.warning("fuzzywuzzy not available - using fallback similarity methods")
-
+from fuzzywuzzy import fuzz
 
 @dataclass
 class MatchResult:
@@ -28,7 +20,6 @@ class MatchResult:
     compared_text: str
     method: str
     details: dict
-
 
 class FuzzyMatcher:
     """
@@ -195,70 +186,38 @@ class FuzzyMatcher:
 
     def _ratio_similarity(self, text1: str, text2: str) -> Tuple[float, dict]:
         """Calculate ratio-based similarity."""
-        if FUZZYWUZZY_AVAILABLE:
-            score = fuzz.ratio(text1, text2) / 100.0
-            return score, {"method": "fuzzywuzzy_ratio"}
-        else:
-            # Fallback to sequence matcher
-            matcher = SequenceMatcher(None, text1, text2)
-            score = matcher.ratio()
-            return score, {"method": "sequence_matcher_fallback"}
+        score = fuzz.ratio(text1, text2) / 100.0
+        return score, {"method": "fuzzywuzzy_ratio"}
 
     def _partial_similarity(self, text1: str, text2: str) -> Tuple[float, dict]:
         """Calculate partial string similarity (good for different lengths)."""
-        if FUZZYWUZZY_AVAILABLE:
-            score = fuzz.partial_ratio(text1, text2) / 100.0
-            return score, {"method": "fuzzywuzzy_partial_ratio"}
-        else:
-            # Fallback: find longest common substring ratio
-            longer = text1 if len(text1) > len(text2) else text2
-            shorter = text2 if len(text1) > len(text2) else text1
+        # Fallback: find longest common substring ratio
+        longer = text1 if len(text1) > len(text2) else text2
+        shorter = text2 if len(text1) > len(text2) else text1
 
-            if not shorter:
-                return 0.0, {"method": "partial_fallback", "reason": "empty_shorter"}
+        if not shorter:
+            return 0.0, {"method": "partial_fallback", "reason": "empty_shorter"}
 
-            # Find best substring match
-            best_ratio = 0.0
-            for i in range(len(longer) - len(shorter) + 1):
-                substring = longer[i : i + len(shorter)]
-                ratio = SequenceMatcher(None, shorter, substring).ratio()
-                best_ratio = max(best_ratio, ratio)
+        # Find best substring match
+        best_ratio = 0.0
+        for i in range(len(longer) - len(shorter) + 1):
+            substring = longer[i : i + len(shorter)]
+            ratio = fuzz.ratio(shorter, substring) / 100.0
+            best_ratio = max(best_ratio, ratio)
 
-            return best_ratio, {"method": "partial_fallback"}
+        return best_ratio, {"method": "partial_fallback"}
 
     def _token_similarity(self, text1: str, text2: str) -> Tuple[float, dict]:
         """Calculate token-based similarity."""
-        if FUZZYWUZZY_AVAILABLE:
-            # Use both token_sort_ratio and token_set_ratio, take the higher
-            sort_score = fuzz.token_sort_ratio(text1, text2) / 100.0
-            set_score = fuzz.token_set_ratio(text1, text2) / 100.0
-            score = max(sort_score, set_score)
-            return score, {
-                "method": "fuzzywuzzy_token",
-                "sort_score": sort_score,
-                "set_score": set_score,
-            }
-        else:
-            # Fallback: Jaccard similarity
-            tokens1 = set(text1.split())
-            tokens2 = set(text2.split())
-
-            if not tokens1 and not tokens2:
-                return 1.0, {"method": "token_fallback", "reason": "both_empty"}
-            if not tokens1 or not tokens2:
-                return 0.0, {"method": "token_fallback", "reason": "one_empty"}
-
-            intersection = tokens1.intersection(tokens2)
-            union = tokens1.union(tokens2)
-
-            score = len(intersection) / len(union)
-            return score, {
-                "method": "token_fallback",
-                "intersection_size": len(intersection),
-                "union_size": len(union),
-            }
-
-
+        # Use both token_sort_ratio and token_set_ratio, take the higher
+        sort_score = fuzz.token_sort_ratio(text1, text2) / 100.0
+        set_score = fuzz.token_set_ratio(text1, text2) / 100.0
+        score = max(sort_score, set_score)
+        return score, {
+            "method": "fuzzywuzzy_token",
+            "sort_score": sort_score,
+            "set_score": set_score,
+        }
 
     def calculate_similarity(self, text1: str, text2: str) -> float:
         """

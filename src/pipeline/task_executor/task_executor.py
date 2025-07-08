@@ -44,7 +44,12 @@ class TaskResult:
 class TaskExecutor:
     """Unified task executor with separated stage handlers."""
 
-    def __init__(self, file_manager: FileManager, task_config: TaskConfig, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        file_manager: FileManager,
+        task_config: TaskConfig,
+        config: Optional[Dict[str, Any]] = None,
+    ):
         self.file_manager = file_manager
         self.task_config = task_config
 
@@ -54,13 +59,13 @@ class TaskExecutor:
         else:
             cm = ConfigManager(task_config.config_path.parent.parent.parent.parent)
             self.config = cm.load_cascading_config(task_config.config_path)
-            
+
         # Ensure file_manager has the config
-        if not hasattr(file_manager, 'config') or file_manager.config is None:
+        if not hasattr(file_manager, "config") or file_manager.config is None:
             file_manager.config = self.config
-            
+
         # Also ensure the state analyzer has the correct config
-        if hasattr(file_manager, '_state_analyzer') and file_manager._state_analyzer:
+        if hasattr(file_manager, "_state_analyzer") and file_manager._state_analyzer:
             file_manager._state_analyzer.config = self.config
 
         # Initialize progress tracking
@@ -193,7 +198,9 @@ class TaskExecutor:
 
             # Check if we need to delete all candidates and start fresh
             if self.task_config.rerender_all:
-                logger.info("🔄 Re-rendering all candidates from scratch - deleting existing candidates and validation data")
+                logger.info(
+                    "🔄 Re-rendering all candidates from scratch - deleting existing candidates and validation data"
+                )
                 self._delete_all_candidates_and_validation()
 
             # Analyze current state
@@ -292,22 +299,31 @@ class TaskExecutor:
     def _execute_stages_from_state(self, task_state: TaskState) -> bool:
         """Execute the pipeline stages based on the current task state."""
         # Check if this is a gap-filling scenario (unified detection)
-        has_missing_candidates = any("candidates_chunk" in comp for comp in task_state.missing_components)
-        has_missing_whisper = any("whisper_chunk" in comp for comp in task_state.missing_components)
-        has_existing_metrics = bool(self.file_manager.get_metrics())
-        
-        is_gap_filling = (
-            has_existing_metrics and 
-            (has_missing_candidates or has_missing_whisper) and
-            self.task_config.force_final_generation
+        has_missing_candidates = any(
+            "candidates_chunk" in comp for comp in task_state.missing_components
         )
-        
-        if task_state.completion_stage == CompletionStage.COMPLETE and not is_gap_filling:
+        has_missing_whisper = any(
+            "whisper_chunk" in comp for comp in task_state.missing_components
+        )
+        has_existing_metrics = bool(self.file_manager.get_metrics())
+
+        is_gap_filling = (
+            has_existing_metrics
+            and (has_missing_candidates or has_missing_whisper)
+            and self.task_config.force_final_generation
+        )
+
+        if (
+            task_state.completion_stage == CompletionStage.COMPLETE
+            and not is_gap_filling
+        ):
             logger.info("Task already complete")
             return True
-        
+
         if is_gap_filling:
-            logger.info("🔄 Gap-filling mode detected - regenerating missing components")
+            logger.info(
+                "🔄 Gap-filling mode detected - regenerating missing components"
+            )
             # Determine which chunks need validation in gap-filling mode
             missing_chunk_indices = []
             for comp in task_state.missing_components:
@@ -317,8 +333,10 @@ class TaskExecutor:
                         chunk_idx = int(comp.split("_")[-1])
                         missing_chunk_indices.append(chunk_idx)
                     except (ValueError, IndexError):
-                        logger.warning(f"Could not extract chunk index from component: {comp}")
-        
+                        logger.warning(
+                            f"Could not extract chunk index from component: {comp}"
+                        )
+
         # Execute stages in order based on what's missing
         if task_state.completion_stage in [
             CompletionStage.NOT_STARTED,
@@ -327,25 +345,35 @@ class TaskExecutor:
             if not self.preprocessing_handler.execute_preprocessing():
                 return False
 
-        if (task_state.completion_stage in [
-            CompletionStage.NOT_STARTED,
-            CompletionStage.PREPROCESSING,
-            CompletionStage.GENERATION,
-        ]) or is_gap_filling:  # Also run generation for gap-filling
+        if (
+            task_state.completion_stage
+            in [
+                CompletionStage.NOT_STARTED,
+                CompletionStage.PREPROCESSING,
+                CompletionStage.GENERATION,
+            ]
+        ) or is_gap_filling:  # Also run generation for gap-filling
             if not self.generation_handler.execute_generation():
                 return False
 
-        if (task_state.completion_stage in [
-            CompletionStage.NOT_STARTED,
-            CompletionStage.PREPROCESSING,
-            CompletionStage.GENERATION,
-            CompletionStage.VALIDATION,
-        ]) or is_gap_filling:  # Also run validation for gap-filling
-            
+        if (
+            task_state.completion_stage
+            in [
+                CompletionStage.NOT_STARTED,
+                CompletionStage.PREPROCESSING,
+                CompletionStage.GENERATION,
+                CompletionStage.VALIDATION,
+            ]
+        ) or is_gap_filling:  # Also run validation for gap-filling
+
             if is_gap_filling:
                 # Use selective validation to preserve existing selected_candidates
-                logger.info("🔧 Gap-filling detected: Using selective validation to preserve user candidate selections")
-                if not self.validation_handler.execute_selective_validation(chunks_to_validate=missing_chunk_indices):
+                logger.info(
+                    "🔧 Gap-filling detected: Using selective validation to preserve user candidate selections"
+                )
+                if not self.validation_handler.execute_selective_validation(
+                    chunks_to_validate=missing_chunk_indices
+                ):
                     return False
             else:
                 # Use full validation for initial runs or when no existing metrics
@@ -358,7 +386,10 @@ class TaskExecutor:
             CompletionStage.GENERATION,
             CompletionStage.VALIDATION,
             CompletionStage.ASSEMBLY,
-        ] or (task_state.completion_stage == CompletionStage.COMPLETE and self.task_config.force_final_generation):
+        ] or (
+            task_state.completion_stage == CompletionStage.COMPLETE
+            and self.task_config.force_final_generation
+        ):
             # Execute assembly if needed or if forcing final audio regeneration
             if not self.assembly_handler.execute_assembly():
                 return False
@@ -368,7 +399,7 @@ class TaskExecutor:
     def _delete_all_candidates_and_validation(self) -> None:
         """Delete all candidate audio files and validation data to start fresh."""
         import shutil
-        
+
         try:
             # Delete candidates directory
             candidates_dir = self.file_manager.candidates_dir
@@ -376,20 +407,20 @@ class TaskExecutor:
                 logger.info(f"Deleting candidates directory: {candidates_dir}")
                 shutil.rmtree(candidates_dir)
                 candidates_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Delete whisper directory (validation outputs)
             whisper_dir = self.file_manager.whisper_dir
             if whisper_dir.exists():
                 logger.info(f"Deleting whisper directory: {whisper_dir}")
                 shutil.rmtree(whisper_dir)
                 whisper_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Delete enhanced_metrics.json to start fresh with validation
             metrics_file = self.file_manager.task_directory / "enhanced_metrics.json"
             if metrics_file.exists():
                 logger.info(f"Deleting metrics file: {metrics_file}")
                 metrics_file.unlink()
-            
+
             # Delete final audio to ensure it gets regenerated
             final_dir = self.file_manager.final_dir
             if final_dir.exists():
@@ -397,14 +428,16 @@ class TaskExecutor:
                 for final_file in final_files:
                     logger.info(f"Deleting final audio: {final_file}")
                     final_file.unlink()
-                
+
                 metadata_files = list(final_dir.glob("*_final_metadata.json"))
                 for metadata_file in metadata_files:
                     logger.info(f"Deleting final metadata: {metadata_file}")
                     metadata_file.unlink()
-            
-            logger.info("✅ All candidate and validation data deleted - ready for fresh re-rendering")
-            
+
+            logger.info(
+                "✅ All candidate and validation data deleted - ready for fresh re-rendering"
+            )
+
         except Exception as e:
             logger.error(f"Error deleting candidate and validation data: {e}")
             raise

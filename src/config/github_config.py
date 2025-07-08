@@ -49,7 +49,7 @@ def check_ci_status(commit_sha: str) -> dict:
     }
 
     # Get workflow runs
-    url = f"https://api.github.com/repos/MoebiusSt/tts_pipeline_enhanced/actions/runs"
+    url = "https://api.github.com/repos/MoebiusSt/tts_pipeline_enhanced/actions/runs"
     response = requests.get(url, headers=headers)
     response.raise_for_status()
 

@@ -47,12 +47,12 @@ class TextPreprocessor:
         processed_text_path = output_dir / f"{text_base_name}_processed.txt"
 
         # Step 1: Copy original input text to job directory
-        logger.info(f"📝 Copying input text to job directory...")
+        logger.info("📝 Copying input text to job directory...")
         shutil.copy2(input_text_path, input_copy_path)
         logger.info(f"✅ Input text copied to: {input_copy_path.name}")
 
         # Step 2: Load and process the text
-        logger.info(f"🔄 Processing text...")
+        logger.info("🔄 Processing text...")
 
         with open(input_text_path, "r", encoding="utf-8") as f:
             original_text = f.read()
@@ -87,7 +87,7 @@ class TextPreprocessor:
             original_length = len(processed_text)
             processed_text = processed_text.replace("\r\n", "\n").replace("\r", "\n")
             if len(processed_text) != original_length:
-                logger.info(f"✅ Normalized line endings")
+                logger.info("✅ Normalized line endings")
 
         # Future preprocessing options can be added here:
         # - Quote normalization
@@ -155,7 +155,7 @@ class TextPreprocessor:
                 with open(run_config_path, "r") as f:
                     run_config = yaml.safe_load(f)
                 preprocessing_config = run_config.get("preprocessing", self.config)
-                logger.info(f"📄 Loaded preprocessing config from run configuration")
+                logger.info("📄 Loaded preprocessing config from run configuration")
             except Exception as e:
                 logger.warning(f"⚠️ Could not load run config, using default: {e}")
 

@@ -4,10 +4,9 @@ Transcribes generated audio and compares against original text.
 """
 
 import logging
-import sys
+
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import List, Optional
 
 import torch
@@ -19,7 +18,6 @@ from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from .quality_calculator import QualityCalculator
 from .transcription_io import TranscriptionIO
 
-
 @dataclass
 class ValidationResult:
     """Result of audio validation process."""
@@ -30,7 +28,6 @@ class ValidationResult:
     quality_score: float
     validation_time: float
     error_message: Optional[str] = None
-
 
 class WhisperValidator:
     """
@@ -72,7 +69,7 @@ class WhisperValidator:
                 f"Loading Whisper model '{self.model_size}' on device '{self.device}'..."
             )
             self.model = whisper.load_model(self.model_size, device=self.device)
-            self.logger.debug(f"Whisper model loaded successfully")
+            self.logger.debug("Whisper model loaded successfully")
         except Exception as e:
             self.logger.error(f"Failed to load Whisper model: {e}")
             raise

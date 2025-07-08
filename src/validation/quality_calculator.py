@@ -4,16 +4,13 @@ Handles similarity scoring and overall quality assessment.
 """
 
 import logging
-import sys
-from pathlib import Path
+
 from typing import TYPE_CHECKING
 
 # Use absolute import pattern like existing modules
 
-
 if TYPE_CHECKING:
     from utils.file_manager.io_handlers.candidate_io import AudioCandidate
-
 
 class QualityCalculator:
     """Calculates quality metrics for audio validation."""

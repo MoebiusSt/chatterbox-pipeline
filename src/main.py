@@ -9,7 +9,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import torch
 
@@ -17,7 +17,6 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 from pipeline.batch_executor import BatchExecutor
-from pipeline.job_manager.types import ExecutionPlan
 from pipeline.job_manager_wrapper import JobManager
 from pipeline.task_executor import TaskExecutor
 from utils.config_manager import ConfigManager, TaskConfig
@@ -82,7 +81,12 @@ Usage Examples:
     )
 
     # Job selection arguments
-    parser.add_argument("--job", "-j", type=str, help="Job name or pattern to execute (supports wildcards: testjob*, test?job, testjob[12])")
+    parser.add_argument(
+        "--job",
+        "-j",
+        type=str,
+        help="Job name or pattern to execute (supports wildcards: testjob*, test?job, testjob[12])",
+    )
     parser.add_argument(
         "config_files", nargs="*", type=Path, help="Configuration file(s) to process"
     )
@@ -145,10 +149,10 @@ def resolve_config_files(args: argparse.Namespace, project_root: Path) -> List[P
 
     if args.config_files:
         original_count = len(args.config_files)
-        
+
         for config_file in args.config_files:
             resolved_path = None
-            
+
             # Handle relative paths
             if not config_file.is_absolute():
                 # Try relative to current directory first
@@ -168,12 +172,12 @@ def resolve_config_files(args: argparse.Namespace, project_root: Path) -> List[P
                     raise FileNotFoundError(
                         f"Configuration file not found: {config_file}"
                     )
-            
+
             # Add only if not already seen (silent deduplication)
             if resolved_path not in seen_paths:
                 config_files.append(resolved_path)
                 seen_paths.add(resolved_path)
-        
+
         # Silent log of deduplication if duplicates were found
         if len(config_files) < original_count:
             duplicates_removed = original_count - len(config_files)
@@ -186,18 +190,20 @@ def confirm_cli_rerender_action(task_configs: List[TaskConfig]) -> bool:
     """
     CLI safety confirmation for --rerender-all flag.
     Shows affected task directories and asks for user confirmation.
-    
+
     Args:
         task_configs: List of TaskConfig objects that will be affected
-        
+
     Returns:
         True if user confirms, False if cancelled
     """
-    
+
     print("\n⚠️  WARNING: RE-RENDER ALL CANDIDATES (CLI Mode)")
-    print("This will DELETE (!) ALL audio chunks and final audio files from the following task directories:")
+    print(
+        "This will DELETE (!) ALL audio chunks and final audio files from the following task directories:"
+    )
     print()
-    
+
     # List all affected task directories
     for i, task in enumerate(task_configs, 1):
         # Format task display similar to MenuOrchestrator
@@ -206,18 +212,18 @@ def confirm_cli_rerender_action(task_configs: List[TaskConfig]) -> bool:
             display_time = dt.strftime("%d.%m.%Y %H:%M")
         except ValueError:
             display_time = task.timestamp
-            
+
         run_label_display = task.run_label if task.run_label else "no-label"
         print(f"  {i}. Job: {task.job_name} ({run_label_display}) - {display_time}")
         print(f"     Directory: {task.base_output_dir}")
-        
+
     print()
     print("Are you sure you want to proceed? This action cannot be undone!")
     print("(y = YES, PROCEED | c = CANCEL)")
-    
+
     while True:
         choice = input("\n> ").strip().lower()
-        
+
         if choice in ["y", "yes"]:
             return True
         elif choice in ["c", "cancel", ""]:  # Include empty input as cancel
@@ -232,21 +238,28 @@ def main() -> int:
     try:
         # Parse arguments
         args = parse_arguments()
-        
+
         # Handle CLI-Menu help request
-        if hasattr(args, 'cli_menu_help') and args.cli_menu_help:
+        if hasattr(args, "cli_menu_help") and args.cli_menu_help:
             from pipeline.job_manager.cli_mapper import CLIMapper
+
             cli_mapper = CLIMapper()
             print(cli_mapper.get_cli_help_text())
             return 0
-        
+
         # Validate CLI arguments for problematic combinations
         if args.job and args.config_files:
-            logger.error("❌ Invalid combination of arguments! You cannot specify --job {string} and config-files at the same time.")
+            logger.error(
+                "❌ Invalid combination of arguments! You cannot specify --job {string} and config-files at the same time."
+            )
             logger.info(" Use EITHER:")
-            logger.info(f"   python {sys.argv[0]} --job  \"{args.job}\" --mode {args.mode or 'new'}")
-            logger.info(f" OR:")
-            logger.info(f"   python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)} --mode {args.mode or 'new'}")
+            logger.info(
+                f"   python {sys.argv[0]} --job  \"{args.job}\" --mode {args.mode or 'new'}"
+            )
+            logger.info(" OR:")
+            logger.info(
+                f"   python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)} --mode {args.mode or 'new'}"
+            )
             return 1
 
         # Update verbose mode based on arguments
@@ -271,7 +284,7 @@ def main() -> int:
         logger.info("=" * 50)
 
         # Detect device
-        device = detect_device() if args.device == "auto" else args.device
+        detect_device() if args.device == "auto" else args.device
 
         # Initialize core components
         project_root = PROJECT_ROOT
@@ -329,13 +342,21 @@ def main() -> int:
                 loaded_config = task_config.preloaded_config
             else:
                 logger.debug(f"⚙️ Loading config: {task_config.config_path}")
-                loaded_config = config_manager.load_cascading_config(task_config.config_path)
+                loaded_config = config_manager.load_cascading_config(
+                    task_config.config_path
+                )
 
             # Create file manager with preloaded config and shared ConfigManager
-            file_manager = FileManager(task_config, preloaded_config=loaded_config, config_manager=config_manager)
+            file_manager = FileManager(
+                task_config,
+                preloaded_config=loaded_config,
+                config_manager=config_manager,
+            )
 
             # Create and execute task with preloaded config (avoiding redundant loading)
-            task_executor = TaskExecutor(file_manager, task_config, config=loaded_config)
+            task_executor = TaskExecutor(
+                file_manager, task_config, config=loaded_config
+            )
 
             result = task_executor.execute_task()
 
@@ -352,8 +373,12 @@ def main() -> int:
                 # Format duration as HH:MM:SS or MM:SS
                 hours, remainder = divmod(int(total_seconds), 3600)
                 minutes, seconds = divmod(remainder, 60)
-                
-                formatted_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours > 0 else f"{minutes:02d}:{seconds:02d}"
+
+                formatted_time = (
+                    f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    if hours > 0
+                    else f"{minutes:02d}:{seconds:02d}"
+                )
                 logger.info(f"⏳ Execution time: {formatted_time}")
                 logger.info(f"Final stage: {result.completion_stage.value}")
 

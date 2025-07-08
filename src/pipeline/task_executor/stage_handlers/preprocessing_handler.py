@@ -28,9 +28,11 @@ class PreprocessingHandler:
             # Set available speakers in chunker for speaker-aware chunking
             try:
                 available_speakers = self.file_manager.get_all_speaker_ids()
-                if hasattr(self.chunker, 'set_available_speakers'):
+                if hasattr(self.chunker, "set_available_speakers"):
                     self.chunker.set_available_speakers(available_speakers)
-                    logger.debug(f"Set available speakers in chunker: {available_speakers}")
+                    logger.debug(
+                        f"Set available speakers in chunker: {available_speakers}"
+                    )
             except Exception as e:
                 logger.debug(f"Could not set speakers in chunker (not critical): {e}")
 
@@ -42,7 +44,9 @@ class PreprocessingHandler:
                     self.file_manager.get_input_text()
                 except FileNotFoundError as e:
                     logger.error(str(e))
-                logger.error("⚠️  The preprocessing stage cannot proceed without input text.")
+                logger.error(
+                    "⚠️  The preprocessing stage cannot proceed without input text."
+                )
                 return False
 
             # Load input text with graceful error handling
@@ -51,11 +55,15 @@ class PreprocessingHandler:
                 logger.debug(f"Loaded input text: {len(input_text)} characters")
             except FileNotFoundError as e:
                 logger.error(f"❌ Input text file not found: {e}")
-                logger.error("⚠️  preprocessing cannot proceed.Please ensure the input text file exists in the correct location.")
+                logger.error(
+                    "⚠️  preprocessing cannot proceed.Please ensure the input text file exists in the correct location."
+                )
                 return False
             except Exception as e:
                 logger.error(f"❌ Failed to load input text: {e}")
-                logger.error("⚠️  The preprocessing stage cannot proceed without valid input text.")
+                logger.error(
+                    "⚠️  The preprocessing stage cannot proceed without valid input text."
+                )
                 return False
 
             # Chunk text

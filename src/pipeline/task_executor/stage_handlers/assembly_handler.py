@@ -1,23 +1,19 @@
 """Assembly stage handler."""
 
 import logging
-from pathlib import Path
 from typing import Any, Dict, List
 
 import torch
 
-from utils.config_manager import TaskConfig
 from utils.file_manager.file_manager import FileManager
-from chunking.base_chunker import TextChunk
 
 logger = logging.getLogger(__name__)
-
 
 class AssemblyHandler:
     """Handles assembly stage (audio concatenation and post-processing)."""
 
     def __init__(
-        self, file_manager: FileManager, config: Dict[str, Any], task_config: TaskConfig
+        self, file_manager: FileManager, config: Dict[str, Any], task_config: Dict[str, Any]
     ):
         self.file_manager = file_manager
         self.config = config
@@ -66,7 +62,9 @@ class AssemblyHandler:
                     ...
                 return processed_audio
             """
-            logger.info("Skipping post-processing (not implemented). Put your post processing code here.")
+            logger.info(
+                "Skipping post-processing (not implemented). Put your post processing code here."
+            )
 
             # Create metadata
             sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
