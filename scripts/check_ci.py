@@ -4,7 +4,6 @@ Check CI status for commits.
 """
 
 import argparse
-import json
 import os
 import re
 import sys

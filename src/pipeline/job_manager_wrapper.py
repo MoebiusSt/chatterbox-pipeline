@@ -15,7 +15,6 @@ from .job_manager.types import (
     ExecutionStrategy,
     UserChoice,
 )
-from .job_manager.user_interaction import UserInteraction
 from utils.config_manager import TaskConfig
 
 logger = logging.getLogger(__name__)
@@ -34,8 +33,6 @@ class JobManager:
         # Initialize components
         self.core_manager = CoreJobManager(config_manager)
         self.execution_planner = ExecutionPlanner(self.core_manager, config_manager)
-        self.user_interaction = UserInteraction(config_manager)
-        # self.config_validator = ConfigValidator(self.core_manager, config_manager) # Removed as per edit hint
 
     # Delegate to core manager
     def find_existing_tasks(
@@ -60,10 +57,6 @@ class JobManager:
     ) -> tuple[Dict[str, ExecutionStrategy], Optional[ExecutionStrategy]]:
         return self.core_manager.parse_mode_argument(mode_arg)
 
-    # Delegate to user interaction
-    def prompt_user_selection(self, tasks: List[TaskConfig]) -> UserChoice:
-        return self.user_interaction.prompt_user_selection(tasks)
-
     # Delegate to execution planner
     def resolve_execution_plan(
         self, args: Any, config_files: Optional[List[Path]] = None
@@ -76,9 +69,9 @@ class JobManager:
     # Delegate to config validator
     def validate_execution_plan(self, plan: ExecutionPlan) -> bool:
         # return self.config_validator.validate_execution_plan(plan) # Removed as per edit hint
-        return True # Placeholder, as ConfigValidator is removed
+        return True  # Placeholder, as ConfigValidator is removed
 
     def _validate_mixed_configurations(self, task_configs: List[TaskConfig]) -> bool:
         """Validate that mixed task configurations are compatible."""
         # return self.config_validator._validate_mixed_configurations(task_configs) # Removed as per edit hint
-        return True # Placeholder, as ConfigValidator is removed
+        return True  # Placeholder, as ConfigValidator is removed

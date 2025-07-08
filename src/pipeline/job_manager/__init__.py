@@ -9,7 +9,6 @@ from .config_validator import ConfigValidator
 from .execution_planner import ExecutionPlanner
 from .job_manager import JobManager
 from .types import ExecutionPlan, ExecutionStrategy, UserChoice
-from .user_interaction import UserInteraction
 
 # Export components
 __all__ = [
@@ -17,7 +16,6 @@ __all__ = [
     "ExecutionPlanner",
     "ExecutionPlan",
     "ExecutionStrategy",
-    "UserInteraction",
     "UserChoice",
     "ConfigValidator",
 ]

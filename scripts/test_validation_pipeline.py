@@ -309,8 +309,8 @@ def main():
     success = audio_processor.save_audio(final_audio, str(output_path))
 
     if success:
-        logger.info(f"✅ Validation pipeline test completed successfully!")
-        logger.info(f"📊 Results Summary:")
+        logger.info("✅ Validation pipeline test completed successfully!")
+        logger.info("📊 Results Summary:")
         logger.info(f"   - Processed {len(chunks)} text chunks")
         logger.info(
             f"   - Generated {sum(len(candidates) for candidates in candidates_by_chunk)} total candidates"
@@ -320,7 +320,7 @@ def main():
             f"   - Average quality score: {sum(score.overall_score for score in best_scores) / len(best_scores):.3f}"
         )
         logger.info(f"   - Output saved to: {output_path}")
-        logger.info(f"   - This demonstrates successful Phase 2 implementation!")
+        logger.info("   - This demonstrates successful Phase 2 implementation!")
         return True
     else:
         logger.error("❌ Failed to save output audio")

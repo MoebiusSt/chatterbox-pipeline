@@ -69,6 +69,8 @@ isort --check-only src/ scripts/
 Use **flake8** for code quality checking:
 ```bash
 flake8 src/ scripts/
+flake8 src/ --select=E999,F821,F401,F541,F841 --statistics --count
+flake8 src/ --statistics --count --ignore=E501,W503,E226,E302
 ```
 
 ### Type Hints
