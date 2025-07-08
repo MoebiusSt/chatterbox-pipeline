@@ -360,20 +360,52 @@ class GenerationHandler:
             # Validate reference_audio files for all speakers
             validation_results = self.file_manager.validate_speakers_reference_audio()
 
-            failed_speakers = [
-                speaker_id
-                for speaker_id, valid in validation_results.items()
-                if not valid
-            ]
-            if failed_speakers:
-                logger.error(f"❌ Speaker validation failed for: {failed_speakers}")
+            if not validation_results["valid"]:
+                # Create detailed error message
+                failed_speakers = validation_results["failed_speakers"]
+                missing_files = validation_results["missing_files"]
+                available_files = validation_results["available_files"]
+                configured_speakers = validation_results["configured_speakers"]
+
+                logger.info("="*60)
+                logger.error("❌ SPEAKER VALIDATION FAILED")
+                logger.info("="*60)
+                logger.info(f"Failed speakers: {len(failed_speakers)}")
+                logger.error("")
+                
+                # List each failed speaker with its missing file
+                for speaker_id in failed_speakers:
+                    missing_file = missing_files.get(speaker_id, "unknown")
+                    logger.error(f"   • Speaker '{speaker_id}' → Missing file: {missing_file}")
+                
+                logger.error("")
+                logger.error(f"📂 Available reference audio files ({len(available_files)}):")
+                if available_files:
+                    for i, file in enumerate(sorted(available_files), 1):
+                        logger.info(f"   {i:2d}. {file}")
+                else:
+                    logger.error("   (No .wav files found in reference_audio directory)")
+                
+                logger.error("")
+                logger.error(f"⚙️  Configured speakers ({len(configured_speakers)}):")
+                for i, speaker_id in enumerate(configured_speakers, 1):
+                    status = "✅" if speaker_id not in failed_speakers else "❌"
+                    logger.info(f"   {i:2d}. {speaker_id} {status}")
+                
+                logger.error("")
+                logger.error("💡 To fix this issue:")
+                logger.error("   1. Restore the missing reference audio files to data/input/reference_audio/")
+                logger.error("   2. Or update the speaker configurations to use available files")
+                logger.error("   3. Or remove the invalid speakers from your configuration")
+                logger.error("="*60)
+                
                 return False
 
             logger.info(
-                f"✅ All {len(validation_results)} speakers validated: {list(validation_results.keys())}"
+                f"✅ All {len(validation_results['configured_speakers'])} speakers validated: {validation_results['configured_speakers']}"
             )
             return True
 
         except Exception as e:
-            logger.error(f"❌ Speaker validation error: {e}")
+            logger.error(f"Speaker validation error: {e}")
             return False

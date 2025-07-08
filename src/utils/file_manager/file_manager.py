@@ -391,26 +391,59 @@ class FileManager:
         speakers = self.config.get("generation", {}).get("speakers", [])
         return [speaker.get("id", "default") for speaker in speakers]
 
-    def validate_speakers_reference_audio(self) -> Dict[str, bool]:
+    def validate_speakers_reference_audio(self) -> Dict[str, Any]:
         """
         Validate reference_audio for all speakers.
 
         Returns:
-            Dictionary with speaker ID -> validation successful
+            Dictionary with detailed validation results:
+            {
+                "valid": bool,
+                "failed_speakers": List[str],
+                "missing_files": Dict[str, str],  # speaker_id -> missing_file_path
+                "available_files": List[str],
+                "configured_speakers": List[str],
+                "details": Dict[str, Dict[str, Any]]  # speaker_id -> {success: bool, error: str|None}
+            }
         """
         validation_results = {}
+        failed_speakers = []
+        missing_files = {}
+        error_details = {}
+        
         speakers = self.config.get("generation", {}).get("speakers", [])
+        configured_speakers = [speaker.get("id", "unknown") for speaker in speakers]
+        
+        # Get available files in reference_audio directory
+        available_files = []
+        if self.reference_audio_dir.exists():
+            available_files = [f.name for f in self.reference_audio_dir.glob("*.wav")]
 
         for speaker in speakers:
             speaker_id = speaker.get("id", "unknown")
             try:
                 self.get_reference_audio_for_speaker(speaker_id)
                 validation_results[speaker_id] = True
+                error_details[speaker_id] = {"success": True, "error": None}
             except (FileNotFoundError, ValueError) as e:
-                logger.error(f"Speaker '{speaker_id}' validation failed: {e}")
                 validation_results[speaker_id] = False
+                failed_speakers.append(speaker_id)
+                error_details[speaker_id] = {"success": False, "error": str(e)}
+                
+                # Extract the missing file path from the error message
+                if isinstance(e, FileNotFoundError):
+                    # Extract the filename from the error message
+                    reference_audio = speaker.get("reference_audio", "unknown")
+                    missing_files[speaker_id] = reference_audio
 
-        return validation_results
+        return {
+            "valid": len(failed_speakers) == 0,
+            "failed_speakers": failed_speakers,
+            "missing_files": missing_files,
+            "available_files": available_files,
+            "configured_speakers": configured_speakers,
+            "details": error_details
+        }
 
     def get_default_speaker_id(self) -> str:
         """
