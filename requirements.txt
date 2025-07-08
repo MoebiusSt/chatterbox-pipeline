@@ -5,3 +5,4 @@ openai-whisper>=20231117       # Speech-to-text validation
 chatterbox-tts>=0.1.2          # TTS Generation - Updated to latest version with min_p parameters
 fuzzywuzzy>=0.18.0             # Fuzzy text matching
 pyyaml>=6.0                    # Configuration management
+perth                          # Required for ChatterboxTTS model loading

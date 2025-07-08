@@ -3,12 +3,12 @@
 An enhanced Text-to-Speech pipeline based on resemble-ai/chatterbox that implements:
 - intelligent SpaCy-based text chunking for longer generations, 
 - automatic variaten generation, 
-- automatic Whisper validation or 
-- manual candidate management for best-candidate selection, 
+- automatic Whisper validation for best-candidate selection, 
+- manual picking of best candidate in simple manager
 - a job and task pipeline to prepare job renderings like magazine articles or books with chapters, 
-- speakers configuration and markdown-syntax for switching speakers or prosody on the fly
+- speakers configuration and markdown-syntax for switching speakers or prosody params on the fly
 - a CLI with a prompt menu system 
-- CLI arguments to execute almost all function. 
+- CLI arguments to execute almost all those functions. 
 
 Does not have:
 - a fancy user interface
@@ -18,7 +18,7 @@ Does not have:
 
 - **Python 3.9+** (recommended: Python 3.10+)
 - **Git** for cloning the repository
-- **CUDA** (optional, for GPU-accelerated Whisper inference)
+- **CUDA** (optional, for GPU-accelerated TTS generation and Whisper validation)
 
 ## Quick Start
 
@@ -50,11 +50,10 @@ pip install -r requirements.txt
 # Download SpaCy model
 python -m spacy download en_core_web_sm
 
-# Additional dependencies for full functionality
-pip install librosa perth safetensors huggingface_hub transformers einops
-pip install openai-whisper fuzzywuzzy
-
+# Install all dependencies
 pip install -r requirements.txt
+
+# Optional: Development dependencies (for contributors)
 pip install -r dev-requirements.txt
 ```
 
