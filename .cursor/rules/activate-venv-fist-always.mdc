@@ -1,6 +1,7 @@
 ---
-description: 
+description: Check venv
 globs: 
 alwaysApply: true
 ---
 Always run "source venv/bin/activate" first, if this is your first command or tool-call in a chat.
+Check if venv ist activated before you run any git commands.

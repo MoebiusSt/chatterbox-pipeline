@@ -1,0 +1,69 @@
+---
+description: Prevent agent terminals from getting stuck
+alwaysApply: false
+---
+PowerShell Script Management Directive
+
+## Core Principle
+Prevent terminal sessions from hanging by using scripts for problematic commands.
+
+## When to Use Scripts
+
+**CREATE SCRIPTS FOR:**
+- Git operations (avoid pager hangs: `git log`, `git branch -a`, `git diff`)
+- Complex multi-step operations (>3 commands)
+- Repetitive maintenance tasks
+- Commands that might prompt for input
+- Database operations with multiple steps
+
+**USE DIRECT COMMANDS FOR:**
+- Simple file operations (`ls`, `cat`, `mkdir`, `rm`)
+- Single Python script execution
+- Basic text processing
+- One-time exploratory commands
+
+## Script Requirements
+
+### Location & Structure
+```
+scripts/agent/
+├── git/           # Git operations
+├── maintenance/   # Cleanup, backup tasks
+├── setup/         # Environment setup
+└── README.md     # Documentation
+```
+
+### Script Standards (Bash/PowerShell)
+```bash
+#!/bin/bash
+# Description: Brief purpose
+# Version: 1.0
+# Usage: ./script.sh [params]
+
+set -euo pipefail  # Error handling
+
+# Use --no-pager for git commands
+git --no-pager status
+```
+
+### Essential Practices
+1. **Error Handling**: `set -euo pipefail` (bash) or `$ErrorActionPreference = "Stop"` (PowerShell)
+2. **No Pagers**: Use `--no-pager` or `| cat` for commands that might page
+3. **Documentation**: Header with purpose and usage
+4. **Safe Execution**: Run from project root with `source venv/bin/activate`
+
+## Quick Decision Guide
+- **Might hang terminal?** → Script
+- **More than 3 steps?** → Script  
+- **Simple single command?** → Direct execution
+- **Git with potential pager?** → Script
+
+## Examples
+```bash
+# DON'T: Direct git command that might hang
+git branch -a
+
+# DO: Use script or safe flag
+git --no-pager branch -a
+# OR: ./scripts/agent/git/list-branches.sh
+```

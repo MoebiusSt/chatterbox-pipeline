@@ -1,0 +1,6 @@
+---
+description: consisten language
+globs:
+alwaysApply: false
+---
+Antworte immer auf Deutsch aber schreiben Code and Kommentare, Docstrings, und Dokumentaiton immer in English.

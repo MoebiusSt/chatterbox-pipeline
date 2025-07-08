@@ -3,7 +3,7 @@ description:
 globs: 
 alwaysApply: true
 ---
-Finde nach Änderungen der Codebasis bitte proaktiv Programm-Inkonsistenzen. Reagiere nicht erst zur Runtime, sondern verfolge und verstehe die Code-Architektur und alle Abhängigkeiten im vorhinein. Nach Refactoring alle Referenzen durchdenken und überprüfen. Code-Verfolgung von A bis Z:
+Finde nach Änderungen der Codebasis bitte proaktiv Programm-Inkonsistenzen. Reagiere nicht erst zur Runtime, warte nicht erst auf meinen Test des Programms, sondern verfolge und verstehe die Code-Architektur und Abhängigkeiten im vorhinein. Nach Refactoring durchdenke und überprüfe bitte alle Referenzen.
 Datenstruktur-Änderungen → Alle Konsumenten finden
 API-Breaking Changes → Vollständige Impact-Analyse
 Systematische Suche → grep, find für vollständige Abdeckung

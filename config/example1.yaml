@@ -1,17 +1,31 @@
 job:
-  name: test
-  run-label: annie_coleman_rothenberg_1
+  name: redefining_default_speaker
+  run-label: peter_yearsley_alt
 
 input:
   text_file: test_short.txt # file name in texts folder
 
 generation:
   num_candidates: 3
-  max_retries: 2
+  max_retries: 1
+  default_speaker: peter_yearsley_1
   
-  # Speaker system - Speaker 0 is the default speaker
+  # overirding some parameters for speaker peter_yearsley_1
   speakers:
-    - id: default
-      reference_audio: annie_coleman_rothenberg_1.wav # file name in reference_audio folder
+    - id: peter_yearsley_1
+      reference_audio: peter_yearsley_1.wav # file name in reference_audio folder
+      tts_params:
+        exaggeration: 0.55
+        exaggeration_max_deviation: 0.25
+        cfg_weight: 0.3
+        cfg_weight_max_deviation: 0.3
+        temperature: 0.95
+        temperature_max_deviation: 0.3
+        repetition_penalty: 1.2
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.4
+        cfg_weight: 0.5
+        temperature: 0.75
 
 # All other settings will be inherited from default_config.yaml

@@ -12,13 +12,13 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Add project root to Python path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+# or use PYTHONPATH=$(pwd)/src when running this script
+
 import requests
 
-from config.github_config import check_ci_status
-
-# Import statements - use PYTHONPATH=$(pwd)/src when running this script
-
-
+from src.config.github_config import check_ci_status
 
 def extract_error_details(log_text: str) -> str:
     """Extract relevant error messages and code references from log text."""
