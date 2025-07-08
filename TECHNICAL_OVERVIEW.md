@@ -39,11 +39,16 @@ JobManager:
     - resolve_execution_plan() → ExecutionPlan
     - prompt_user_selection() → UserChoice
 
-TaskExecutor:
+TaskOrchestrator:
     - execute_task() → TaskResult
     - detect_state() → TaskState
     - analyze_gaps() → GapAnalysis
     - force_final_regeneration() → bool
+
+TaskExecutor:
+    - execute_task() → TaskResult  # Individual task execution
+    - process_chunks() → ChunkResults
+    - validate_candidates() → ValidationResults
 ```
 
 ### 2. Text Pre-Processing (`src/preprocessing/`)
@@ -140,10 +145,10 @@ chunking:
 3. **State Tracking**: Monitor job progress, track task states
 4. **Recovery**: Automatic gap detection and task resumption
 
-### Task Execution
+### Task Orchestration
 1. **State Detection**: Analyze existing output files
 2. **Gap Analysis**: Identify missing or failed tasks
-3. **Execution**: Run tasks in correct order with proper dependencies
+3. **Orchestration**: Run tasks in correct order via TaskOrchestrator
 4. **Validation**: Verify task completion and output quality
 
 ## Common Issues & Solutions
@@ -179,10 +184,11 @@ data/output/{job_name}/
 
 ### Important Files
 ```
-src/main.py                    # Main pipeline orchestration
-src/pipeline/job_manager.py    # Job management
-src/pipeline/task_executor.py  # Task execution
-config/default_config.yaml     # Default configuration
+src/main.py                      # Main pipeline orchestration
+src/pipeline/job_manager.py      # Job management
+src/pipeline/task_orchestrator.py # Task orchestration
+src/pipeline/task_executor.py    # Individual task execution
+config/default_config.yaml       # Default configuration
 ```
 
 ### Debug Commands
@@ -204,12 +210,12 @@ def main() -> bool:
     job_manager = JobManager()
     job = job_manager.load_job(job_name)
     
-    # Phase 2: Task Execution
-    task_executor = TaskExecutor(job)
+    # Phase 2: Task Orchestration
+    task_orchestrator = TaskOrchestrator(job)
     for task in job.tasks:
-        result = task_executor.execute_task(task)
+        result = task_orchestrator.execute_task(task)
         if not result.success:
-            task_executor.handle_failure(task, result)
+            task_orchestrator.handle_failure(task, result)
     
     return job.is_complete()
 ```

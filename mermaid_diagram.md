@@ -76,9 +76,9 @@ graph TD
     ASSEMBLE --> SAVE_FINAL[save_final_audio]
     SAVE_FINAL --> TASK_COMPLETE
     
-    %% Batch Processing
-    BATCH_TASKS --> BATCH_TASK_EXECUTOR[Batch Task Executor]
-    BATCH_TASK_EXECUTOR --> TASK_QUEUE[Task Queue Processing]
+    %% Multiple Tasks Processing
+    BATCH_TASKS --> TASK_ORCHESTRATOR[Task Orchestrator]
+    TASK_ORCHESTRATOR --> TASK_QUEUE[Task Queue Processing]
     TASK_QUEUE --> TASK_EXECUTOR
     TASK_EXECUTOR --> BATCH_NEXT{More Tasks<br/>in Queue?}
     BATCH_NEXT -->|Yes| TASK_QUEUE
@@ -117,5 +117,5 @@ graph TD
     class ARG_TYPE,IS_TASK,EXISTING_TASKS,GAP_RESULT,BATCH_NEXT decisionPoint
     class CRUD_STORAGE,SAVE_CHUNKS,SAVE_CANDIDATES,SAVE_WHISPER,SAVE_METRICS,SAVE_FINAL crudOps
     class TASK_COMPLETE,END,BATCH_COMPLETE completePoint
-    class BATCH_TASKS,BATCH_TASK_EXECUTOR,TASK_QUEUE batchFlow
+    class BATCH_TASKS,TASK_ORCHESTRATOR,TASK_QUEUE batchFlow
 `

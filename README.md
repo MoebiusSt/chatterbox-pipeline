@@ -210,7 +210,7 @@ tts_pipeline_enhanced/
 │   ├── main.py                    # Main pipeline script
 │   ├── pipeline/                  # Pipeline orchestration
 │   │   ├── __init__.py
-│   │   ├── batch_task_executor.py
+│   │   ├── task_orchestrator.py
 │   │   ├── job_manager/
 │   │   │   ├── ...
 │   │   ├── job_manager_wrapper.py
@@ -296,7 +296,7 @@ This linear task process is wrapped by a job/task manager that orchestrates exec
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│                    Task Executor                        │
+│                  Task Orchestrator                      │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐  │
 │  │Task Config  │    │Task State   │    │Task Queue   │  │
 │  └─────────────┘    └─────────────┘    └─────────────┘  │
@@ -313,8 +313,8 @@ This linear task process is wrapped by a job/task manager that orchestrates exec
 - Jobs simply group taks by name and filefolder, nothing more
 - Used to coordinate execution of multiple jobs
 
-#### Task Executor
-- Executes tasks within a job sequentially
+#### Task Orchestrator
+- Orchestrates task execution within a job sequentially
 - Automatic state detection and missing file (gap) analysis
 - Intelligent recovery from errors or interrupted tasks (no need to re-generate tons of text that are already done.)
 

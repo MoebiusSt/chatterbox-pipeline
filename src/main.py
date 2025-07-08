@@ -16,9 +16,8 @@ import torch
 # Project root detection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-from pipeline.batch_task_executor import BatchTaskExecutor
 from pipeline.job_manager_wrapper import JobManager
-from pipeline.task_executor import TaskExecutor
+from pipeline.task_orchestrator import TaskOrchestrator
 from utils.config_manager import ConfigManager, TaskConfig
 from utils.file_manager.file_manager import FileManager
 from utils.logging_config import LoggingConfigurator
@@ -313,88 +312,12 @@ def main() -> int:
                 logger.info("❌ Operation cancelled by user")
                 return 0
 
-        # Execute tasks
-        if (
-            execution_plan.execution_mode == "batch"
-            or len(execution_plan.task_configs) > 1
-        ):
-            # Batch execution
-            logger.debug("Starting batch execution mode")
-
-            batch_task_executor = BatchTaskExecutor(config_manager)
-
-            # Execute tasks
-            task_results = batch_task_executor.execute_batch(execution_plan.task_configs)
-            batch_result = batch_task_executor.get_batch_summary(task_results)
-
-            # Return appropriate exit code
-            return 0 if batch_result.failed_tasks == 0 else 1
-
-        else:
-            # Single task execution
-            logger.debug("▶️  Starting single task execution mode")
-
-            task_config = execution_plan.task_configs[0]
-
-            # Use preloaded config if available, otherwise load from ConfigManager
-            if task_config.preloaded_config:
-                logger.debug("⚙️ Using preloaded config (avoiding redundant loading)")
-                loaded_config = task_config.preloaded_config
-            else:
-                logger.debug(f"⚙️ Loading config: {task_config.config_path}")
-                loaded_config = config_manager.load_cascading_config(
-                    task_config.config_path
-                )
-
-            # Create file manager with preloaded config and shared ConfigManager
-            file_manager = FileManager(
-                task_config,
-                preloaded_config=loaded_config,
-                config_manager=config_manager,
-            )
-
-            # Create and execute task with preloaded config (avoiding redundant loading)
-            task_executor = TaskExecutor(
-                file_manager, task_config, config=loaded_config
-            )
-
-            result = task_executor.execute_task()
-
-            # Report results
-            if result.success:
-                logger.info("=" * 50)
-                logger.info("TASK COMPLETED SUCCESSFULLY")
-                logger.info("=" * 50)
-                logger.info(f"Job: {result.task_config.job_name}")
-                logger.info(f"📊 Task: {result.task_config.task_name}")
-                if result.task_config.run_label:
-                    logger.info(f"Label: {result.task_config.run_label}")
-                total_seconds = result.execution_time
-                # Format duration as HH:MM:SS or MM:SS
-                hours, remainder = divmod(int(total_seconds), 3600)
-                minutes, seconds = divmod(remainder, 60)
-
-                formatted_time = (
-                    f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                    if hours > 0
-                    else f"{minutes:02d}:{seconds:02d}"
-                )
-                logger.info(f"⏳ Execution time: {formatted_time}")
-                logger.info(f"Final stage: {result.completion_stage.value}")
-
-                if result.final_audio_path:
-                    logger.info(f"📁 Final audio: {result.final_audio_path}")
-
-                return 0
-            else:
-                logger.error("=" * 50)
-                logger.error("❌ TASK EXECUTION FAILED")
-                logger.error("=" * 50)
-                logger.error(f"Job: {result.task_config.job_name}")
-                logger.error(f"Error: {result.error_message}")
-                logger.error(f"Stage reached: {result.completion_stage.value}")
-
-                return 1
+        # Execute tasks using task orchestrator
+        orchestrator = TaskOrchestrator(config_manager)
+        results = orchestrator.execute_tasks(execution_plan.task_configs)
+        
+        # Return appropriate exit code
+        return orchestrator.get_exit_code(results)
 
     except KeyboardInterrupt:
         logger.info("\nExecution interrupted by user")
