@@ -1,0 +1,40 @@
+job:
+  name: odyssey
+  run-label: 2001
+
+input:
+  text_file: hal9000.txt # file name in texts folder
+
+generation:
+  num_candidates: 4
+  max_retries: 1
+  default_speaker: dave
+  
+  # overirding some parameters for speaker peter_yearsley_1
+  speakers:
+    - id: dave
+      reference_audio: space_apollo1.wav # file name in reference_audio folder
+      tts_params:
+        exaggeration: 0.5
+        exaggeration_max_deviation: 0.15
+        cfg_weight: 0.5
+        cfg_weight_max_deviation: 0.2
+        temperature: 0.95
+        temperature_max_deviation: 0.2
+        repetition_penalty: 3
+      conservative_candidate:
+        enabled: false
+    - id: hal
+      reference_audio: space_apollo2.wav # file name in reference_audio folder
+      tts_params:
+        exaggeration: 0.6
+        exaggeration_max_deviation: 0.20
+        cfg_weight: 0.40
+        cfg_weight_max_deviation: 0.2
+        temperature: 0.95
+        temperature_max_deviation: 0.2
+        repetition_penalty: 1.5
+      conservative_candidate:
+        enabled: false
+
+# All other settings will be inherited from default_config.yaml

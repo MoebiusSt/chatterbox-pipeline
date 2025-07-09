@@ -158,9 +158,9 @@ class GenerationHandler:
                 logger.info(
                     f"🔄 Processing {len(chunks_to_generate)} chunks requiring generation:"
                 )
-                logger.info("")
 
                 for chunk, existing_file_count in chunks_to_generate:
+                    logger.info("")
                     chunk_num = chunk.idx + 1
                     logger.info(f"🎯 CHUNK {chunk_num}/{total_chunks}")
                     logger.debug(f"Text length: {len(chunk.text)} characters")

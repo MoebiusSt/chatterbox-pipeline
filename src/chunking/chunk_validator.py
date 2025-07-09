@@ -39,13 +39,13 @@ class ChunkValidator:
         chunk_len = len(chunk.text)
         if chunk_len > self.max_limit:
             logger.warning(
-                f"Chunk exceeds max length ({chunk_len}/{self.max_limit}): '{chunk.text[:80]}...'"
+                f"Chunk exceeds max length ({chunk_len}/{self.max_limit}): '{chunk.text.strip()[:80]}...'"
             )
             return False
         # Min length check is less critical, can be a warning.
         if chunk_len < self.min_length:
             logger.info(
-                f"Chunk is shorter than min length ({chunk_len}/{self.min_length}): '{chunk.text[:80]}...'"
+                f"Chunk is shorter than min length ({chunk_len}/{self.min_length}): '{chunk.text.strip()[:80]}...'"
             )
         return True
 

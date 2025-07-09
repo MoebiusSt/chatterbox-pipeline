@@ -47,8 +47,10 @@ class TaskOrchestrator:
                 status = "✅ SUCCESS" if result.success else "❌ FAILED"
                 logger.info(f"{status}: {task_config.job_name}:{task_config.task_name}")
         
-        # Detailed batch summary for multiple tasks
-        if total_tasks > 1:
+        # Show appropriate summary based on number of tasks
+        if total_tasks == 1:
+            self._log_single_task_summary(results[0])
+        else:
             self._log_batch_summary(results)
         
         return results
@@ -76,6 +78,36 @@ class TaskOrchestrator:
         # Execute task
         return task_executor.execute_task()
     
+    def _format_execution_time(self, seconds: float) -> str:
+        """Format execution time as HH:MM:SS or MM:SS."""
+        hours, remainder = divmod(int(seconds), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        
+        return (
+            f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            if hours > 0
+            else f"{minutes:02d}:{seconds:02d}"
+        )
+    
+    def _log_summary_header(self, title: str) -> None:
+        logger.info("=" * 50)
+        logger.info(f"📊 {title}")
+    
+    def _log_single_task_summary(self, result: TaskResult):
+        """Log single task summary with execution time."""
+        formatted_time = self._format_execution_time(result.execution_time)
+        status = "✅ SUCCESS" if result.success else "❌ FAILED"
+        
+        self._log_summary_header("TASK EXECUTION SUMMARY")
+        logger.info(f"  Status: {status}")
+        logger.info(f"  Task: {result.task_config.job_name}:{result.task_config.task_name}")
+        logger.info(f"  Execution time: {formatted_time}")
+        if result.final_audio_path:
+            logger.info(f"  Final audio: {result.final_audio_path}")
+        if result.error_message:
+            logger.info(f"  Error: {result.error_message}")
+        logger.info("=" * 50)
+    
     def _log_batch_summary(self, results: List[TaskResult]):
         """Log detailed batch summary with success rate and formatted time."""
         total_tasks = len(results)
@@ -83,18 +115,9 @@ class TaskOrchestrator:
         failed_tasks = total_tasks - successful_tasks
         total_time = sum(r.execution_time for r in results)
         
-        # Format total time as HH:MM:SS or MM:SS
-        hours, remainder = divmod(int(total_time), 3600)
-        minutes, seconds = divmod(remainder, 60)
+        formatted_time = self._format_execution_time(total_time)
         
-        formatted_time = (
-            f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            if hours > 0
-            else f"{minutes:02d}:{seconds:02d}"
-        )
-        
-        logger.info("=" * 50)
-        logger.info("📊 BATCH EXECUTION SUMMARY")
+        self._log_summary_header("BATCH EXECUTION SUMMARY")
         logger.info(f"  Total tasks: {total_tasks}")
         logger.info(f"  Successful: {successful_tasks}")
         logger.info(f"  Failed: {failed_tasks}")
