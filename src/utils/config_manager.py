@@ -687,7 +687,7 @@ class ConfigManager:
 
             # Validate tts_params structure
             tts_params = speaker.get("tts_params", {})
-            required_tts_params = ["exaggeration", "cfg_weight", "temperature"]
+            required_tts_params = ["exaggeration", "cfg_weight", "temperature", "min_p", "top_p"]
             for param in required_tts_params:
                 if param not in tts_params:
                     logger.error(f"Speaker '{speaker_id}' missing tts_params.{param}")

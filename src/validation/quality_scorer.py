@@ -342,12 +342,14 @@ class QualityScorer:
         exaggeration = best_params.get("exaggeration", 0.0)
         cfg_weight = best_params.get("cfg_weight", 0.0)
         temperature = best_params.get("temperature", 0.0)
+        min_p = best_params.get("min_p", 0.05)
+        top_p = best_params.get("top_p", 0.95)
         best_idx = best_candidate.candidate_idx + 1  # Display as 1-based
 
         self.logger.info(
             f"Chunk_{chunk_idx + 1:02d} - "
             f"Best candidate: {best_idx} of {len(candidates)} (score: {best_score:.3f} worst: {worst_score:.3f}) "
-            f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}"
+            f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}, min_p: {min_p:.2f}, top_p: {top_p:.2f}"
         )
 
         return scored_candidates

@@ -1,170 +1,85 @@
-USe "https://github.com/stlohrey/chatterbox-finetuning/"
-for Finetuning the model to German
+Kontext: Wir werkeln an "longer-text-example_tts3.py". Es verwendet Chatterbox TTS zur Sprachsynthese und benutzt als TTS-Modell ein Pretrained Model. Es wird von HuggingFace Hub als Quelle heruntergeladen (Repository: ResembleAI/chatterbox):
 
-python finetune_t3.py \
---output_dir ./checkpoints/chatterbox_finetuned_yodas \
---model_name_or_path ResembleAI/chatterbox \
---dataset_name MrDragonFox/DE_Emilia_Yodas_680h \
---train_split_name train \
---eval_split_size 0.0002 \
---num_train_epochs 1 \
---per_device_train_batch_size 4 \
---gradient_accumulation_steps 2 \
---learning_rate 5e-5 \
---warmup_steps 100 \
---logging_steps 10 \
---eval_strategy steps \
---eval_steps 2000 \
---save_strategy steps \
---save_steps 4000 \
---save_total_limit 4 \
---fp16 True \
---report_to tensorboard \
---dataloader_num_workers 8 \
---do_train --do_eval \
---dataloader_pin_memory False \
---eval_on_start True \
---label_names labels_speech \
---text_column_name text_scribe
+Methode ungefär so: 
 
-============================================================
-🎯 FINE-TUNING PARAMETER ANALYSIS
-============================================================
-📝 PARAMETER MEANINGS:
-  🎯 Target: Fine-tune ResembleAI/chatterbox for German
-  📊 Dataset: MrDragonFox/DE_Emilia_Yodas_680h (German speech dataset)
-  🏋️ Training: 1 epoch, batch size 4
-  📈 Learning rate: 5e-05
-  💾 Output: ./checkpoints/chatterbox_finetuned_yodas
+'''
+in 'chatterbox.tts'
+try:
+      # Use "eager" attention implementation to silence the warning
+      model = ChatterboxTTS.from_pretrained(
+      device=device, attn_implementation="eager"
+      )
+except TypeError:
+      # Older library version – ignore kwarg and log info
+      logger.debug(
+      "ChatterboxTTS.from_pretrained() does not accept attn_implementation – falling back without it"
+      )
+      model = ChatterboxTTS.from_pretrained(device=device)
 
-🔍 WHAT THIS LIKELY DOES:
-  1. ✅ Loads the original English ChatterboxTTS model
-  2. ✅ Uses German speech dataset for fine-tuning
-  3. ✅ Trains the model to understand German text input
-  4. ✅ Saves fine-tuned model to checkpoint directory
-  5. ✅ Creates a NEW model that can handle German text
+Das große Model wird nicht im site-packages Verzeichnis gespeichert, sondern im HuggingFace Cache in unserem Home-Verzeichnis:
+~/.cache/huggingface/hub/models--ResembleAI--chatterbox/
+Chatterbox's Standart-Model ist ausschließlich auf Englische Aussprache trainiert.
 
-🚀 IMPACT ON OUR PROJECT:
-  ✅ Would NOT break our existing project
-  ✅ Creates a separate fine-tuned model
-  ✅ Can be used alongside the original model
-  ✅ Would need to be loaded as a custom model path
+Idee: Es gibt ein deutsches Modell auf Huggingface von "SebastianBodza/Kartoffelbox-v0.1" für Chatterbox, trainiert auf Deutsche Aussprache. 
+Kartoffelbox gibt als Beispiel zur Verwendung an:
 
-🏗️ FINE-TUNING (External)
-   - Run the fine-tuning script with German dataset
-   - This creates a new model in checkpoint directory
-   - Takes several hours/days depending on dataset size
+import torch
+import soundfile as sf
+from chatterbox.tts import ChatterboxTTS
+from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
 
-2. 🔧 PROJECT MODIFICATION (Our Work)
-   - Modify ChatterboxModelCache to support custom model paths
-   - Add configuration option for model path
-   - Add language detection/switching logic
-   - Update TTSGenerator to handle language-specific models
+MODEL_REPO = "SebastianBodza/Kartoffelbox-v0.1" 
+T3_CHECKPOINT_FILE = "t3_kartoffelbox.safetensors"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
-3. 📝 CONFIGURATION CHANGES
-   - Add model_path option to speakers config
-   - Add language parameter to generation config
-   - Support for multiple model instances
+model = ChatterboxTTS.from_pretrained(device=device)
 
-============================================================
-⚙️ POTENTIAL CONFIG CHANGES
-============================================================
-📄 CONFIG EXAMPLE:
+print("Downloading and applying German patch...")
+checkpoint_path = hf_hub_download(repo_id=MODEL_REPO, filename=T3_CHECKPOINT_FILE)
 
-# Example configuration for fine-tuned German model
-generation:
-  default_model_path: "ResembleAI/chatterbox"  # Original English model
-  
-  speakers:
-    - id: german_speaker
-      reference_audio: german_voice.wav
-      model_path: "./checkpoints/chatterbox_finetuned_yodas"  # Fine-tuned German model
-      language: "de"
-      tts_params:
-        exaggeration: 0.5
-        cfg_weight: 0.3
-        temperature: 0.8
-        
-    - id: english_speaker  
-      reference_audio: english_voice.wav
-      model_path: "ResembleAI/chatterbox"  # Original English model
-      language: "en"
-      tts_params:
-        exaggeration: 0.6
-        cfg_weight: 0.4
-        temperature: 0.9
-    
+t3_state = load_file(checkpoint_path, device="cpu") 
 
-🔍 KEY POINTS:
-  - Multiple models can coexist
-  - Each speaker can use different model
-  - Language parameter for automatic detection
-  - Original functionality preserved
+model.t3.load_state_dict(t3_state)
+print("Patch applied successfully.")
+'''
+
+und dann könnte man wie gehabt mit Chatterbox Audio generieren, in Deutsch:
+IN seinem Beispiel also ganz ähnlich und übertragbar auf uns:
+'''
+text = "Tief im verwunschenen Wald, wo die Bäume uralte Geheimnisse flüsterten, lebte ein kleiner Gnom namens Fips, der die Sprache der Tiere verstand."
+
+reference_audio_path = "stefan_backes.wav" #liegt bei uns im Projekt-Verzeichnis bereit
+output_path = "output_cloned_voice.wav"
+
+print("Generating speech...")
+with torch.inference_mode():
+    wav = model.generate(
+        text,
+        audio_prompt_path=reference_audio_path,
+        exaggeration=0.5, 
+        temperature=0.6,  
+        cfg_weight=0.3,  
+    )
+
+sf.write(output_path, wav.squeeze().cpu().numpy(), model.sr)
+print(f"Audio saved to {output_path}")
+'''
+
+Bitte hilf mir das testweise bei uns auszuprobieren in einer "german-example_tts3.py" mit der Stimme von "stefan_backes.wav" und dem Text: "Community Singing ist ein Bereich der Community Music. Was gemeinschaftliches Singen in diesem Zusammenhang bedeutet und welche Rolle Leitung in singenden Gruppen spielt, erläutert Marion Haak-Schulenburg im Gespräch mit dem folker."
 
 
-============================================================
-🎓 FINE-TUNING PROCESS EXPLANATION
-============================================================
-🔍 WHAT finetune_t3.py LIKELY DOES:
-
-1. 📥 LOADS BASE MODEL
-   - Downloads ResembleAI/chatterbox from HuggingFace
-   - Loads the 797M parameter model
-   - Preserves the model architecture
-
-2. 📊 PREPARES GERMAN DATASET
-   - Uses MrDragonFox/DE_Emilia_Yodas_680h dataset
-   - 680 hours of German speech data!
-   - Pairs German text with German audio
-   - Tokenizes text using existing tokenizer
-
-3. 🏋️ TRAINING PROCESS
-   - Supervised fine-tuning on German text-speech pairs
-   - Updates model weights to understand German
-   - Learns German phoneme mappings
-   - Adapts to German pronunciation patterns
-
-4. 💾 SAVES NEW MODEL
-   - Creates checkpoint in ./checkpoints/chatterbox_finetuned_yodas
-   - Saves fine-tuned weights
-   - Model can be loaded like original ChatterboxTTS
-   - Compatible with existing ChatterboxTTS API
-
-5. 🚀 RESULT
-   - NEW model that understands German
-   - Original model still exists and works
-   - Can be used in parallel with English model
-   - Same API, different language capability
-
-============================================================
-🗺️ INTEGRATION ROADMAP
-============================================================
-PHASE 1: EXTERNAL FINE-TUNING (1-3 days)
-  1. Clone stlohrey/chatterbox-finetuning repository
-  2. Install dependencies (transformers, datasets, etc.)
-  3. Run finetune_t3.py with German dataset
-  4. Wait for training to complete
-  5. Verify German model output quality
-
-PHASE 2: PROJECT MODIFICATIONS (2-4 hours)
-  1. Update ChatterboxModelCache to support custom paths
-  2. Add model_path parameter to speaker config
-  3. Modify TTSGenerator to handle multiple models
-  4. Add language detection/switching logic
-
-PHASE 3: CONFIGURATION (30 minutes)
-  1. Add German speaker to config
-  2. Set model_path to checkpoint directory
-  3. Add German reference audio file
-  4. Configure German-specific TTS parameters
-
-PHASE 4: TESTING (1-2 hours)
-  1. Test German text generation
-  2. Compare with English model
-  3. Verify quality and pronunciation
-  4. Test speaker switching functionality
-
-TOTAL ESTIMATED TIME: 2-4 days (mostly waiting for training)
+Warum wird der deutsche Patch auf CPU geladen?
+Apply to german-examp...
+Das ist kein Problem und erzwingt keine CPU-Nutzung! Hier die Erklärung:
+1. Sicheres Laden-Pattern
+Große Modell-Dateien werden oft zuerst auf CPU geladen
+Verhindert GPU-Speicher-Probleme beim Laden
+Standard-Praxis in PyTorch
+2. Automatische Device-Übertragung
+Das model.t3 ist bereits auf CUDA (vom Basis-Model)
+Wenn load_state_dict() aufgerufen wird, überträgt PyTorch automatisch die Gewichte vom CPU-Tensor auf das CUDA-Device des Ziel-Models
+Endergebnis: Das gepatchte Model läuft vollständig auf CUDA
 
 ============================================================
 

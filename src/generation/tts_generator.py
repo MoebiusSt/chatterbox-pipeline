@@ -242,11 +242,14 @@ class TTSGenerator:
                 var_exaggeration = conservative_config.get("exaggeration", 0.4)
                 var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                 var_temperature = conservative_config.get("temperature", 0.5)
+                # Use conservative min_p and top_p with fallback to regular tts_params
+                var_min_p = conservative_config.get("min_p", tts_params.get("min_p", 0.1))
+                var_top_p = conservative_config.get("top_p", tts_params.get("top_p", 0.8))
                 candidate_type = "CONSERVATIVE"
 
                 # Debug: Log tts_params before extracting additional_params
                 logger.info(f"🔍 tts_params for candidate 1: {tts_params}")
-                # Extract additional TTS parameters from tts_params
+                # Extract additional TTS parameters from tts_params (excluding the ones we handle explicitly)
                 additional_params = {
                     k: v
                     for k, v in tts_params.items()
@@ -255,11 +258,17 @@ class TTSGenerator:
                         "exaggeration",
                         "cfg_weight",
                         "temperature",
+                        "min_p",
+                        "top_p",
                         "exaggeration_max_deviation",
                         "cfg_weight_max_deviation",
                         "temperature_max_deviation",
                     ]
                 }
+
+                # Add the candidate-specific min_p and top_p to additional_params
+                additional_params["min_p"] = var_min_p
+                additional_params["top_p"] = var_top_p
 
                 generation_params = {
                     "exaggeration": var_exaggeration,
@@ -272,7 +281,7 @@ class TTSGenerator:
                 }
 
                 logger.debug(
-                    f"Candidate 1 ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}"
+                    f"Candidate 1 ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}, seed={candidate_seed}"
                 )
 
                 audio = self.generate_single(
@@ -335,6 +344,9 @@ class TTSGenerator:
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
+                    # Use conservative min_p and top_p with fallback to regular tts_params
+                    var_min_p = conservative_config.get("min_p", tts_params.get("min_p", 0.1))
+                    var_top_p = conservative_config.get("top_p", tts_params.get("top_p", 0.8))
                     candidate_type = "CONSERVATIVE"
                 else:
                     # Expressive candidate logic
@@ -371,14 +383,12 @@ class TTSGenerator:
                             temp_max_deviation * ramp_position
                         )
 
+                    # Use regular min_p and top_p for expressive candidates
+                    var_min_p = tts_params.get("min_p", 0.05)
+                    var_top_p = tts_params.get("top_p", 0.95)
                     candidate_type = "EXPRESSIVE"
 
-                # Debug: Log tts_params before extracting additional_params
-                logger.info(
-                    f"CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}"
-                )
-
-                # Extract additional TTS parameters from tts_params
+                # Extract additional TTS parameters from tts_params (excluding the ones we handle explicitly)
                 additional_params = {
                     k: v
                     for k, v in tts_params.items()
@@ -387,11 +397,22 @@ class TTSGenerator:
                         "exaggeration",
                         "cfg_weight",
                         "temperature",
+                        "min_p",
+                        "top_p",
                         "exaggeration_max_deviation",
                         "cfg_weight_max_deviation",
                         "temperature_max_deviation",
                     ]
                 }
+
+                # Add the candidate-specific min_p and top_p to additional_params
+                additional_params["min_p"] = var_min_p
+                additional_params["top_p"] = var_top_p
+
+                # Debug: Log tts_params with all parameters
+                logger.info(
+                    f"CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}"
+                )
 
                 generation_params = {
                     "exaggeration": var_exaggeration,
@@ -532,6 +553,9 @@ class TTSGenerator:
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
+                    # Use conservative min_p and top_p with fallback to regular tts_params
+                    var_min_p = conservative_config.get("min_p", tts_params.get("min_p", 0.1))
+                    var_top_p = conservative_config.get("top_p", tts_params.get("top_p", 0.8))
                     candidate_type = "CONSERVATIVE"
                 else:
                     # Expressive candidate logic - same as in generate_candidates
@@ -555,9 +579,12 @@ class TTSGenerator:
                             temp_max_deviation * ramp_position
                         )
 
+                    # Use regular min_p and top_p for expressive candidates
+                    var_min_p = tts_params.get("min_p", 0.05)
+                    var_top_p = tts_params.get("top_p", 0.95)
                     candidate_type = "EXPRESSIVE"
 
-                # Extract additional TTS parameters
+                # Extract additional TTS parameters (excluding the ones we handle explicitly)
                 additional_params = {
                     k: v
                     for k, v in tts_params.items()
@@ -566,11 +593,17 @@ class TTSGenerator:
                         "exaggeration",
                         "cfg_weight",
                         "temperature",
+                        "min_p",
+                        "top_p",
                         "exaggeration_max_deviation",
                         "cfg_weight_max_deviation",
                         "temperature_max_deviation",
                     ]
                 }
+
+                # Add the candidate-specific min_p and top_p to additional_params
+                additional_params["min_p"] = var_min_p
+                additional_params["top_p"] = var_top_p
 
                 generation_params = {
                     "exaggeration": var_exaggeration,
@@ -583,7 +616,7 @@ class TTSGenerator:
                 }
 
                 logger.debug(
-                    f"Candidate {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, seed={candidate_seed}"
+                    f"Candidate {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}, seed={candidate_seed}"
                 )
 
                 audio = self.generate_single(

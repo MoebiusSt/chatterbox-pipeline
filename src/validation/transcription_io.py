@@ -75,8 +75,10 @@ class TranscriptionIO:
                     exag = generation_params.get("exaggeration", 0.0)
                     cfg = generation_params.get("cfg_weight", 0.0)
                     temp = generation_params.get("temperature", 0.0)
+                    min_p = generation_params.get("min_p", 0.05)
+                    top_p = generation_params.get("top_p", 0.95)
                     param_type = generation_params.get("type", "UNKNOWN")
-                    params_str = f"exag={exag:.2f}, cfg={cfg:.2f}, temp={temp:.2f}, type={param_type}"
+                    params_str = f"exag={exag:.2f}, cfg={cfg:.2f}, temp={temp:.2f}, min_p={min_p:.2f}, top_p={top_p:.2f}, type={param_type}"
                 else:
                     params_str = "N/A"
 
