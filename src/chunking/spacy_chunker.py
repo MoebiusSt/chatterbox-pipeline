@@ -54,7 +54,7 @@ class SpeakerMarkupParser:
         return re.sub(self.SPEAKER_PATTERN, "", text)
 
     def validate_speaker_id(
-        self, speaker_id: str, available_speakers: List[str]
+        self, speaker_id: str, available_speakers: List[str], default_speaker_id: str
     ) -> str:
         """
         Validate and normalize speaker ID.
@@ -62,15 +62,14 @@ class SpeakerMarkupParser:
         Args:
             speaker_id: Speaker ID to validate
             available_speakers: List of available speaker IDs
+            default_speaker_id: The actual default speaker ID to use
 
         Returns:
             Validated/normalized speaker ID
         """
         # Normalize special IDs (default speaker aliases)
-        # Note: SpaCyChunker doesn't have access to full config, so it uses the first speaker as default
-        # The actual default speaker resolution happens in ConfigManager/FileManager
         if speaker_id in ["0", "default", "reset"]:
-            return available_speakers[0] if available_speakers else "default"
+            return available_speakers[0] if available_speakers else default_speaker_id
 
         # Check if speaker is available
         if speaker_id in available_speakers:
@@ -79,7 +78,7 @@ class SpeakerMarkupParser:
         logger.warning(
             f"Unknown speaker '{speaker_id}', falling back to default speaker"
         )
-        return available_speakers[0] if available_speakers else "default"
+        return available_speakers[0] if available_speakers else default_speaker_id
 
 
 class SpaCyChunker(BaseChunker):
@@ -119,6 +118,7 @@ class SpaCyChunker(BaseChunker):
         # Speaker system components
         self.speaker_parser = SpeakerMarkupParser()
         self.available_speakers: List[str] = []  # Set externally
+        self.default_speaker_id: Optional[str] = None  # Must be set externally
 
         logger.info(
             f"SpaCy Chunker initialized with model '{model_name}' and speaker support."
@@ -134,6 +134,16 @@ class SpaCyChunker(BaseChunker):
         self.available_speakers = speakers
         logger.debug(f"Set available speakers: {speakers}")
 
+    def set_default_speaker_id(self, default_speaker_id: str):
+        """
+        Set the default speaker ID to use when no speaker markup is found.
+
+        Args:
+            default_speaker_id: The default speaker ID
+        """
+        self.default_speaker_id = default_speaker_id
+        logger.debug(f"Set default speaker ID: {default_speaker_id}")
+
     def chunk_text(self, text: str) -> List[TextChunk]:
         """
         Chunks the text using SpaCy's sentence segmentation with speaker-aware splitting.
@@ -141,6 +151,12 @@ class SpaCyChunker(BaseChunker):
         """
         if not text or not text.strip():
             return []
+
+        # Validate that default_speaker_id is set
+        if self.default_speaker_id is None:
+            raise RuntimeError(
+                "default_speaker_id not set. Call set_default_speaker_id() before chunking."
+            )
 
         # 1. Parse speaker transitions
         transitions = self.speaker_parser.parse_speaker_transitions(text)
@@ -194,8 +210,10 @@ class SpaCyChunker(BaseChunker):
             List of speaker sections
         """
         sections = []
+        # Since we validated in chunk_text that default_speaker_id is not None, we can assert here
+        assert self.default_speaker_id is not None
         current_speaker = (
-            self.available_speakers[0] if self.available_speakers else "default"
+            self.available_speakers[0] if self.available_speakers else self.default_speaker_id
         )
 
         # Strategy: Parse the original text to create speaker sections,
@@ -231,7 +249,7 @@ class SpaCyChunker(BaseChunker):
                     # This is a speaker ID
                     new_speaker_id = text_part.strip()
                     validated_speaker = self.speaker_parser.validate_speaker_id(
-                        new_speaker_id, self.available_speakers
+                        new_speaker_id, self.available_speakers, self.default_speaker_id
                     )
                     current_speaker = validated_speaker
                 else:
@@ -313,6 +331,9 @@ class SpaCyChunker(BaseChunker):
         if not text or not text.strip():
             return []
 
+        # Since we validated in chunk_text that default_speaker_id is not None, we can assert here
+        assert self.default_speaker_id is not None
+
         # Text preprocessing (line ending normalization) is now handled by TextPreprocessor
         doc = self.nlp(text)
         sentences = list(doc.sents)
@@ -370,6 +391,9 @@ class SpaCyChunker(BaseChunker):
                                     first_part
                                 ),
                                 is_fallback_split=True,
+                                speaker_id=self.default_speaker_id,  # Use configured default speaker
+                                speaker_transition=False,  # No speaker transition in traditional chunking
+                                original_markup=None,  # No markup in traditional chunking
                             )
                         )
 
@@ -391,6 +415,9 @@ class SpaCyChunker(BaseChunker):
                                         second_part
                                     ),
                                     is_fallback_split=True,
+                                    speaker_id=self.default_speaker_id,  # Use configured default speaker
+                                    speaker_transition=False,  # No speaker transition in traditional chunking
+                                    original_markup=None,  # No markup in traditional chunking
                                 )
                             )
 
@@ -443,6 +470,9 @@ class SpaCyChunker(BaseChunker):
                         ),
                         estimated_tokens=self._estimate_token_length(final_chunk_text),
                         is_fallback_split=False,  # Regular chunks are not fallback splits
+                        speaker_id=self.default_speaker_id,  # Use configured default speaker
+                        speaker_transition=False,  # No speaker transition in traditional chunking
+                        original_markup=None,  # No markup in traditional chunking
                     )
                 )
 

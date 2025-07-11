@@ -390,41 +390,67 @@ class ConfigManager:
 
     def _validate_and_fix_default_speaker(self, config: Dict[str, Any]) -> None:
         """
-        Validate and fix default_speaker after merging configurations.
+        Validate and fix default_speaker after merging configurations using cascading fallback logic:
+        
+        1. default_speaker from merged config (task/job YAML) 
+        2. default_speaker from default_config.yaml
+        3. First speaker from merged speakers list
 
         Args:
             config: Merged configuration to validate and fix
         """
         generation_config = config.get("generation", {})
         speakers = generation_config.get("speakers", [])
-        default_speaker = generation_config.get("default_speaker")
+        current_default_speaker = generation_config.get("default_speaker")
 
         if not speakers:
             return
 
         speaker_ids = [speaker.get("id", "") for speaker in speakers]
 
-        # Check for alias speakers that may have replaced the default speaker
+        # Priority 1: Current default_speaker from merged config (task/job YAML)
+        if current_default_speaker and current_default_speaker in speaker_ids:
+            logger.debug(f"Validated task/job default speaker: '{current_default_speaker}'")
+            return
+
+        # Check for alias speakers that may represent the default speaker
         alias_speakers = [
             s for s in speakers if s.get("id") in ["default", "0", "reset"]
         ]
+        
+        # If we have alias speakers, the current default_speaker is still valid (represented by alias)
+        if current_default_speaker and alias_speakers:
+            logger.debug(f"Default speaker '{current_default_speaker}' represented by alias speakers")
+            return
 
-        # If we have alias speakers, the default_speaker is still valid (represented by alias)
-        has_valid_default = default_speaker in speaker_ids or (  # Direct match
-            default_speaker and alias_speakers
-        )  # Alias represents the default speaker
+        # Priority 2: default_speaker from default_config.yaml
+        try:
+            default_config = self.load_default_config()
+            original_default_speaker = default_config.get("generation", {}).get("default_speaker")
+            
+            if original_default_speaker and original_default_speaker in speaker_ids:
+                generation_config["default_speaker"] = original_default_speaker
+                logger.warning(
+                    f"Task/job default_speaker '{current_default_speaker}' invalid, "
+                    f"using default_config.yaml default_speaker: '{original_default_speaker}'"
+                )
+                return
+                
+        except Exception as e:
+            logger.debug(f"Could not load default_config.yaml for validation fallback: {e}")
 
-        # If default_speaker is missing or truly invalid, use first speaker
-        if not default_speaker or not has_valid_default:
-            if speakers:
-                fallback_id = speakers[0].get("id", "default")
-                generation_config["default_speaker"] = fallback_id
-                if default_speaker:
-                    logger.warning(
-                        f"Invalid default_speaker '{default_speaker}', using '{fallback_id}'"
-                    )
-                else:
-                    logger.debug(f"No default_speaker specified, using '{fallback_id}'")
+        # Priority 3: First speaker from merged speakers list
+        if speakers:
+            fallback_id = speakers[0].get("id", "default")
+            generation_config["default_speaker"] = fallback_id
+            
+            if current_default_speaker:
+                logger.warning(
+                    f"Both task/job default_speaker '{current_default_speaker}' and "
+                    f"default_config.yaml default_speaker are invalid, using first speaker: '{fallback_id}'"
+                )
+            else:
+                logger.debug(f"No default_speaker specified, using first speaker: '{fallback_id}'")
 
     def _merge_speakers_config(
         self, base_config: Dict[str, Any], job_config: Dict[str, Any]
@@ -659,36 +685,60 @@ class ConfigManager:
         
     def get_default_speaker_id(self, config: Dict[str, Any]) -> str:
         """
-        Get the ID of the default speaker using explicit default_speaker key.
+        Get the ID of the default speaker using cascading fallback logic:
+        
+        1. default_speaker from task/job config (if valid)
+        2. default_speaker from default_config.yaml (if valid) 
+        3. First speaker from merged speakers list
 
         Args:
-            config: Configuration dictionary
+            config: Merged configuration dictionary
 
         Returns:
             Default speaker ID
         """
         generation_config = config.get("generation", {})
-        default_speaker = generation_config.get("default_speaker")
-
-        if default_speaker:
-            # Verify the default_speaker exists in speakers list
-            speakers = generation_config.get("speakers", [])
-            speaker_ids = [speaker.get("id", "") for speaker in speakers]
-
-            if default_speaker in speaker_ids:
-                return default_speaker
-            else:
-                logger.warning(
-                    f"default_speaker '{default_speaker}' not found in speakers list, falling back to first speaker"
-                )
-
-        # Fallback to first speaker if default_speaker key is missing or invalid
         speakers = generation_config.get("speakers", [])
+        speaker_ids = [speaker.get("id", "") for speaker in speakers]
+        
         if not speakers:
             raise RuntimeError("No speakers configured")
 
+        # Priority 1: default_speaker from merged config (task/job YAML)
+        current_default_speaker = generation_config.get("default_speaker")
+        if current_default_speaker and current_default_speaker in speaker_ids:
+            logger.debug(f"Using task/job default speaker: '{current_default_speaker}'")
+            return current_default_speaker
+
+        # Priority 2: default_speaker from default_config.yaml
+        try:
+            default_config = self.load_default_config()
+            original_default_speaker = default_config.get("generation", {}).get("default_speaker")
+            
+            if original_default_speaker and original_default_speaker in speaker_ids:
+                logger.warning(
+                    f"Task/job default_speaker '{current_default_speaker}' invalid, "
+                    f"falling back to default_config.yaml default_speaker: '{original_default_speaker}'"
+                )
+                return original_default_speaker
+                
+        except Exception as e:
+            logger.debug(f"Could not load default_config.yaml for fallback: {e}")
+
+        # Priority 3: First speaker from merged speakers list
         fallback_id = speakers[0].get("id", "default")
-        logger.debug(f"Using fallback default speaker: '{fallback_id}'")
+        
+        if current_default_speaker:
+            logger.warning(
+                f"Both task/job default_speaker '{current_default_speaker}' and "
+                f"default_config.yaml default_speaker are invalid, "
+                f"falling back to first speaker: '{fallback_id}'"
+            )
+        else:
+            logger.warning(
+                f"No default_speaker configured, using first speaker: '{fallback_id}'"
+            )
+            
         return fallback_id
 
     def create_task_config(

@@ -34,8 +34,9 @@ class TTSGenerator:
 
         # Set task-global seed once for consistent generation
         torch.manual_seed(seed)
-        logger.info(f"🎲 Task-global seed set to {seed} for reproducible generation")
-
+        logger.info("")
+        logger.info(f"🎲 Task-global seed set to {seed}")
+        logger.info("")
         # Use direct model access
         self.model = ChatterboxModelCache.get_model(self.device)
 
@@ -675,63 +676,88 @@ class TTSGenerator:
             speaker_id: Target speaker ID
             config_manager: Optional ConfigManager for file access
         """
-        if self.current_speaker_id == speaker_id:
-            logger.debug(f"Speaker '{speaker_id}' already active, skipping switch")
+        # Resolve actual speaker ID first (handle fallbacks before Guard check)
+        actual_speaker_id = self._resolve_speaker_id(speaker_id, config_manager)
+        
+        # Check if we're already using the resolved speaker
+        if self.current_speaker_id == actual_speaker_id:
+            logger.debug(f"Speaker '{actual_speaker_id}' already active, skipping switch")
             return
 
-        # Get speaker configuration
+        # Get speaker configuration for the resolved speaker
         speaker_config = None
         for speaker in self.speakers_config:
-            if speaker.get("id") == speaker_id:
+            if speaker.get("id") == actual_speaker_id:
                 speaker_config = speaker
                 break
 
         if not speaker_config:
-            # Try to use explicit default_speaker from config
-            default_speaker = self.config.get("generation", {}).get("default_speaker")
-            if default_speaker and self.speakers_config:
-                logger.warning(
-                    f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'"
-                )
-                for speaker in self.speakers_config:
-                    if speaker.get("id") == default_speaker:
-                        speaker_config = speaker
-                        speaker_id = default_speaker
-                        break
-
-            # Final fallback to first speaker
-            if not speaker_config:
-                logger.warning("Default speaker not found, using first speaker")
-                speaker_config = self.speakers_config[0] if self.speakers_config else {}
-                speaker_id = speaker_config.get("id", "default")
+            logger.error(f"Resolved speaker '{actual_speaker_id}' not found in configuration")
+            return
 
         # Load new reference_audio
         reference_audio = speaker_config.get("reference_audio")
         if reference_audio and config_manager:
             try:
-                audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
+                audio_path = config_manager.get_reference_audio_for_speaker(actual_speaker_id)
                 logger.info(
-                    f"🎭 Switching to speaker '{speaker_id}' with voice: {audio_path.name}"
+                    f"🎭 Switching to speaker '{actual_speaker_id}' with voice: {audio_path.name}"
                 )
                 self.prepare_conditionals(str(audio_path))
 
                 # Verify conditionals are loaded
                 if hasattr(self.model, "conds") and self.model.conds is not None:
                     logger.debug(
-                        f"✅ Conditionals successfully loaded for speaker '{speaker_id}'"
+                        f"✅ Conditionals successfully loaded for speaker '{actual_speaker_id}'"
                     )
-                    self.current_speaker_id = speaker_id
+                    self.current_speaker_id = actual_speaker_id
                 else:
                     logger.error(
-                        f"❌ Failed to load conditionals for speaker '{speaker_id}'"
+                        f"❌ Failed to load conditionals for speaker '{actual_speaker_id}'"
                     )
 
             except Exception as e:
-                logger.error(f"Failed to switch to speaker '{speaker_id}': {e}")
+                logger.error(f"Failed to switch to speaker '{actual_speaker_id}': {e}")
         else:
             logger.warning(
-                f"No reference_audio or config_manager for speaker '{speaker_id}'"
+                f"No reference_audio or config_manager for speaker '{actual_speaker_id}'"
             )
+
+    def _resolve_speaker_id(self, speaker_id: str, config_manager=None) -> str:
+        """
+        Resolve speaker ID with fallback logic, but don't log warnings here.
+        
+        Args:
+            speaker_id: Requested speaker ID
+            config_manager: Optional ConfigManager for file access
+            
+        Returns:
+            Actual speaker ID to use
+        """
+        # Check if requested speaker exists
+        for speaker in self.speakers_config:
+            if speaker.get("id") == speaker_id:
+                return speaker_id
+
+        # Speaker not found - use cascading fallback logic
+        if config_manager and hasattr(config_manager, 'get_default_speaker_id'):
+            try:
+                fallback_speaker_id = config_manager.get_default_speaker_id()
+                if speaker_id != fallback_speaker_id:  # Only log if there was actually a fallback
+                    logger.warning(
+                        f"Speaker '{speaker_id}' not found, using default speaker '{fallback_speaker_id}'"
+                    )
+                return fallback_speaker_id
+            except Exception as e:
+                logger.debug(f"Could not get default speaker from config_manager: {e}")
+
+        # Final fallback to first speaker
+        if self.speakers_config:
+            fallback_speaker_id = self.speakers_config[0].get("id", "default")
+            logger.warning(f"Using first speaker as fallback: '{fallback_speaker_id}'")
+            return fallback_speaker_id
+
+        return "default"
 
     def generate_candidates_with_speaker(
         self,
@@ -801,23 +827,13 @@ class TTSGenerator:
         Returns:
             Speaker configuration or default speaker
         """
+        # Use the same resolution logic as switch_speaker
+        actual_speaker_id = self._resolve_speaker_id(speaker_id)
+        
         for speaker in self.speakers_config:
-            if speaker.get("id") == speaker_id:
+            if speaker.get("id") == actual_speaker_id:
                 return speaker
 
-        # Fallback to default speaker
-        default_speaker = self.config.get("generation", {}).get("default_speaker")
-        if default_speaker and self.speakers_config:
-            logger.debug(
-                f"Speaker '{speaker_id}' not found, using default speaker '{default_speaker}'"
-            )
-            for speaker in self.speakers_config:
-                if speaker.get("id") == default_speaker:
-                    return speaker
-
-        # Final fallback to first speaker
-        if self.speakers_config:
-            logger.debug("Default speaker not found, using first speaker")
-            return self.speakers_config[0]
-
+        # This should not happen if _resolve_speaker_id works correctly
+        logger.error(f"Could not find configuration for resolved speaker '{actual_speaker_id}'")
         return {}

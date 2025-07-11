@@ -130,9 +130,20 @@ class CandidateManager:
             config_manager = getattr(self, "file_manager", None)
             
             # Get default speaker ID from configuration
-            default_speaker_id = "default"
+            default_speaker_id = None
             if config_manager and hasattr(config_manager, "get_default_speaker_id"):
                 default_speaker_id = config_manager.get_default_speaker_id()
+            
+            if not default_speaker_id:
+                # Fallback to config-based lookup
+                generation_config = self.config.get("generation", {})
+                default_speaker_id = generation_config.get("default_speaker")
+                if not default_speaker_id:
+                    raise RuntimeError(
+                        "Cannot determine default speaker: config_manager not available "
+                        "and no default_speaker configured in generation config"
+                    )
+                logger.warning(f"config_manager not available, using config fallback: {default_speaker_id}")
             
             candidates = self.tts_generator.generate_candidates_with_speaker(
                 text=text_chunk.text,
@@ -219,9 +230,20 @@ class CandidateManager:
             config_manager = getattr(self, "file_manager", None)
             
             # Get default speaker ID from configuration
-            default_speaker_id = "default"
+            default_speaker_id = None
             if config_manager and hasattr(config_manager, "get_default_speaker_id"):
                 default_speaker_id = config_manager.get_default_speaker_id()
+            
+            if not default_speaker_id:
+                # Fallback to config-based lookup
+                generation_config = self.config.get("generation", {})
+                default_speaker_id = generation_config.get("default_speaker")
+                if not default_speaker_id:
+                    raise RuntimeError(
+                        "Cannot determine default speaker: config_manager not available "
+                        "and no default_speaker configured in generation config"
+                    )
+                logger.warning(f"config_manager not available, using config fallback: {default_speaker_id}")
             
             specific_candidates = self.tts_generator.generate_candidates_with_speaker(
                 text=text_chunk.text,

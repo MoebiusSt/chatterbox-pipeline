@@ -33,6 +33,14 @@ class PreprocessingHandler:
                     logger.debug(
                         f"Set available speakers in chunker: {available_speakers}"
                     )
+                
+                # Set default speaker ID in chunker
+                default_speaker_id = self.file_manager.get_default_speaker_id()
+                if hasattr(self.chunker, "set_default_speaker_id"):
+                    self.chunker.set_default_speaker_id(default_speaker_id)
+                    logger.debug(
+                        f"Set default speaker ID in chunker: {default_speaker_id}"
+                    )
             except Exception as e:
                 logger.debug(f"Could not set speakers in chunker (not critical): {e}")
 

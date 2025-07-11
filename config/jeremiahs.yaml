@@ -1,0 +1,17 @@
+job:
+  name: jeremiahs
+  run-label: annie_coleman_2
+input:
+  text_file: jeremiahs.txt
+preprocessing:
+  enabled: true
+  normalize_line_endings: false
+chunking:
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  min_chunk_length: 80
+  spacy_model: en_core_web_sm
+generation:
+  num_candidates: 2
+  max_retries: 1
+  default_speaker: annie_coleman_rothenberg_2

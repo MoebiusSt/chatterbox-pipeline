@@ -1,11 +1,16 @@
 """
 Model cache system for ChatterboxTTS to avoid repeated model loading.
 Implements singleton pattern with device-specific caching.
+
+Note: Cache miss on new process start is normal behavior. 
+The cache only works within a single program run.
 """
 
 import logging
+import time
 import warnings
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -15,11 +20,15 @@ logger = logging.getLogger(__name__)
 class ChatterboxModelCache:
     """
     Singleton cache for ChatterboxTTS models.
-    Caches models per device to avoid repeated loading.
+    Caches models per device to avoid repeated loading within a single process.
+    
+    Important: Cache miss on new program start is NORMAL behavior.
+    The cache only persists during a single program execution.
     """
 
     _instance = None
     _model_cache: Dict[str, Any] = {}
+    _load_times: Dict[str, float] = {}  # Track loading times
 
     def __new__(cls):
         if cls._instance is None:
@@ -41,17 +50,31 @@ class ChatterboxModelCache:
         actual_device = cls._detect_device() if device == "auto" else device
         cache_key = actual_device
 
-        if cache_key not in cls._model_cache:
+        # Check in-memory cache first
+        if cache_key in cls._model_cache:
+            load_time = cls._load_times.get(cache_key, 0)
             logger.info(
-                f"🔄 Loading ChatterboxTTS model for device: {cache_key} (cache miss)"
+                f"♻️ Using cached ChatterboxTTS model for device: {cache_key} (cache hit, originally loaded in {load_time:.1f}s)"
             )
-            cls._model_cache[cache_key] = cls._load_fresh_model(cache_key)
-        else:
-            logger.info(
-                f"♻️ Using cached ChatterboxTTS model for device: {cache_key} (cache hit)"
-            )
+            return cls._model_cache[cache_key]
 
-        return cls._model_cache[cache_key]
+        # Load fresh model
+        logger.info(
+            f"🔄 Loading ChatterboxTTS model for device: {cache_key} (cache miss)"
+        )
+        
+        # Track loading time
+        start_time = time.time()
+        model = cls._load_fresh_model(cache_key)
+        load_time = time.time() - start_time
+        
+        # Cache the model and loading time
+        cls._model_cache[cache_key] = model
+        cls._load_times[cache_key] = load_time
+        
+        logger.info(f"✅ Model loaded in {load_time:.1f}s and cached for future use in this session")
+
+        return model
 
     @classmethod
     def _detect_device(cls) -> str:
@@ -65,7 +88,7 @@ class ChatterboxModelCache:
 
     @classmethod
     def _load_fresh_model(cls, device: str):
-        """Load a fresh ChatterboxTTS model instance."""
+        """Load a fresh ChatterboxTTS model instance with optimized settings."""
         try:
             # Suppress PyTorch and Transformers warnings during model loading
             with warnings.catch_warnings():
@@ -135,6 +158,7 @@ class ChatterboxModelCache:
         """Clear all cached models (useful for testing)."""
         logger.debug("🗑️ Clearing ChatterboxTTS model cache")
         cls._model_cache.clear()
+        cls._load_times.clear()
 
     @classmethod
     def get_cache_info(cls) -> Dict[str, Any]:
@@ -145,4 +169,41 @@ class ChatterboxModelCache:
             "models_loaded": {
                 device: model is not None for device, model in cls._model_cache.items()
             },
+            "load_times": cls._load_times.copy(),
+            "cache_type": "in-memory (session-only)",
+            "cache_behavior": "Cache miss on new program start is normal"
         }
+
+    @classmethod
+    def explain_cache_behavior(cls):
+        """Explain cache behavior to users."""
+        info = cls.get_cache_info()
+        
+        print("\n" + "=" * 60)
+        print("📚 CHATTERBOX MODEL CACHE EXPLANATION")
+        print("=" * 60)
+        
+        print("\n🔍 CURRENT CACHE STATE:")
+        print(f"  - Cached devices: {info['cached_devices']}")
+        print(f"  - Cache size: {info['cache_size']}")
+        print(f"  - Cache type: {info['cache_type']}")
+        
+        if info['load_times']:
+            print(f"  - Load times: {info['load_times']}")
+        
+        print("\n💡 CACHE BEHAVIOR:")
+        print("  ✅ CACHE HIT: When using the same model within one program run")
+        print("  ❌ CACHE MISS: When starting a new program run (this is NORMAL)")
+        
+        print("\n📖 WHY CACHE MISS ON NEW PROGRAM START:")
+        print("  • Each Python process has its own memory space")
+        print("  • Models are too complex to serialize to disk efficiently")
+        print("  • HuggingFace cache still avoids re-downloading the model")
+        print("  • Only the initialization takes time, not the download")
+        
+        print("\n🚀 OPTIMIZATION TIPS:")
+        print("  • Process multiple tasks in one run (use job system)")
+        print("  • Use --mode all to process all tasks in one session")
+        print("  • Consider the cache miss as normal startup time")
+        
+        print("\n" + "=" * 60)

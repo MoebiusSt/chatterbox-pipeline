@@ -16,6 +16,7 @@ import torch
 # Project root detection
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+from generation.model_cache import ChatterboxModelCache
 from pipeline.job_manager_wrapper import JobManager
 from pipeline.task_orchestrator import TaskOrchestrator
 from utils.config_manager import ConfigManager, TaskConfig
@@ -121,6 +122,12 @@ Usage Examples:
         choices=["auto", "cpu", "cuda", "mps"],
         default="auto",
         help="Device to use for processing (default: auto)",
+    )
+
+    parser.add_argument(
+        "--explain-cache",
+        action="store_true",
+        help="Explain model cache behavior and exit",
     )
 
     parser.add_argument(
@@ -244,6 +251,11 @@ def main() -> int:
 
             cli_mapper = CLIMapper()
             print(cli_mapper.get_cli_help_text())
+            return 0
+
+        # Handle cache explanation request
+        if hasattr(args, "explain_cache") and args.explain_cache:
+            ChatterboxModelCache.explain_cache_behavior()
             return 0
 
         # Validate CLI arguments for problematic combinations

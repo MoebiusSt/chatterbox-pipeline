@@ -17,14 +17,14 @@ logger = logging.getLogger(__name__)
 class ChunkIOHandler:
     """Handles text chunk I/O operations."""
 
-    def __init__(self, texts_dir: Path):
+    def __init__(self, texts_dir: Path, file_manager=None):
         """
-        Initialize ChunkIOHandler.
-
         Args:
             texts_dir: Directory for text chunk files
+            file_manager: Optional FileManager reference for speaker resolution
         """
         self.texts_dir = texts_dir
+        self.file_manager = file_manager
         self.texts_dir.mkdir(parents=True, exist_ok=True)
 
     def save_chunks(self, chunks: List[TextChunk]) -> bool:
@@ -113,8 +113,16 @@ class ChunkIOHandler:
             )
 
             # Speaker-System Metadaten
+            # Use correct default_speaker_id instead of hardcoded "default"
+            default_speaker_fallback = "default"  # Final fallback if FileManager not available
+            if self.file_manager and hasattr(self.file_manager, 'get_default_speaker_id'):
+                try:
+                    default_speaker_fallback = self.file_manager.get_default_speaker_id()
+                except Exception as e:
+                    logger.debug(f"Could not get default_speaker_id from FileManager: {e}")
+                    
             speaker_id = (
-                chunk_meta.get("speaker_id", "default") if chunk_meta else "default"
+                chunk_meta.get("speaker_id", default_speaker_fallback) if chunk_meta else default_speaker_fallback
             )
             speaker_transition = (
                 chunk_meta.get("speaker_transition", False) if chunk_meta else False
