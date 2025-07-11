@@ -64,58 +64,24 @@ class GenerationHandler:
             except Exception as e:
                 logger.debug(f"Could not set speakers in chunker (not critical): {e}")
 
-            # 3. Legacy support: Validate reference_audio if still used
-            if self.config.get("input", {}).get("reference_audio"):
-                logger.debug("Legacy reference_audio detected - checking existence")
-                if not self.file_manager.check_reference_audio_exists():
-                    logger.error("❌ Legacy reference audio validation failed")
-                    try:
-                        self.file_manager.get_reference_audio()
-                    except FileNotFoundError as e:
-                        logger.error(str(e))
-                    logger.error(
-                        "⚠️  The generation stage cannot proceed without reference audio."
+            # 3. Initialize with default speaker
+            default_speaker_id = self.file_manager.get_default_speaker_id()
+            try:
+                reference_audio_path = (
+                    self.file_manager.get_reference_audio_for_speaker(
+                        default_speaker_id
                     )
-                    return False
-
-                try:
-                    reference_audio_path = self.file_manager.get_reference_audio()
-                    self.tts_generator.load_reference_audio(str(reference_audio_path))
-                    logger.info(
-                        f"✅ Legacy reference audio loaded: {reference_audio_path.name}"
-                    )
-                    self.reference_audio_path = str(reference_audio_path)
-                except FileNotFoundError as e:
-                    logger.error(f"❌ Reference audio file not found: {e}")
-                    logger.error(
-                        "⚠️  The generation stage cannot proceed without reference audio."
-                    )
-                    return False
-                except Exception as e:
-                    logger.error(f"❌ Failed to load reference audio: {e}")
-                    logger.error(
-                        "⚠️  The generation stage cannot proceed without valid reference audio."
-                    )
-                    return False
-            else:
-                # Speaker system: Initialize with default speaker
-                default_speaker_id = self.file_manager.get_default_speaker_id()
-                try:
-                    reference_audio_path = (
-                        self.file_manager.get_reference_audio_for_speaker(
-                            default_speaker_id
-                        )
-                    )
-                    self.tts_generator.load_reference_audio(str(reference_audio_path))
-                    logger.info(
-                        f"🎭 Default speaker '{default_speaker_id}' loaded: {reference_audio_path.name}"
-                    )
-                    self.reference_audio_path = str(reference_audio_path)
-                except Exception as e:
-                    logger.error(
-                        f"❌ Failed to load default speaker '{default_speaker_id}': {e}"
-                    )
-                    return False
+                )
+                self.tts_generator.prepare_conditionals(str(reference_audio_path))
+                logger.info(
+                    f"🎭 Default speaker '{default_speaker_id}' loaded: {reference_audio_path.name}"
+                )
+                self.reference_audio_path = str(reference_audio_path)
+            except Exception as e:
+                logger.error(
+                    f"❌ Failed to load default speaker '{default_speaker_id}': {e}"
+                )
+                return False
 
             total_chunks = len(chunks)
             generation_config = self.config["generation"]
@@ -272,20 +238,14 @@ class GenerationHandler:
                     config_manager=self.file_manager,
                 )
             else:
-                # Legacy generation without speaker system
-                logger.debug("Using legacy generation (no speaker information)")
-                tts_params = generation_config.get("tts_params", {})
-                candidates = self.tts_generator.generate_candidates(
+                # Use default speaker when no speaker ID is set
+                logger.debug("No speaker ID found, using default speaker")
+                default_speaker_id = self.file_manager.get_default_speaker_id()
+                candidates = self.tts_generator.generate_candidates_with_speaker(
                     text=chunk.text,
+                    speaker_id=default_speaker_id,
                     num_candidates=num_candidates,
-                    exaggeration=tts_params.get("exaggeration"),
-                    cfg_weight=tts_params.get("cfg_weight"),
-                    temperature=tts_params.get("temperature"),
-                    conservative_config=generation_config.get(
-                        "conservative_candidate", None
-                    ),
-                    tts_params=tts_params,
-                    reference_audio_path=getattr(self, "reference_audio_path", None),
+                    config_manager=self.file_manager,
                 )
 
             # Set chunk-specific metadata

@@ -420,9 +420,9 @@ class ValidationHandler:
                         )
                         if best_candidate_obj and best_candidate_obj.generation_params:
                             best_params = best_candidate_obj.generation_params
-                            exaggeration = best_params.get("exaggeration", 0.0)
-                            cfg_weight = best_params.get("cfg_weight", 0.0)
-                            temperature = best_params.get("temperature", 0.0)
+                            exaggeration = best_params.get("exag.", 0.0)
+                            cfg_weight = best_params.get("cfg_w.", 0.0)
+                            temperature = best_params.get("temp.", 0.0)
                             min_p = best_params.get("min_p", 0.05)
                             top_p = best_params.get("top_p", 0.95)
                         else:

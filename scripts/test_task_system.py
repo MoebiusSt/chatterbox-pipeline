@@ -64,16 +64,21 @@ def test_task_system():
         tts_gen = task_executor.tts_generator
         logger.info(f"TTS generator created with model: {tts_gen.model is not None}")
 
-        # Test reference audio loading
-        reference_audio_path = file_manager.get_reference_audio()
-        logger.info(f"Reference audio path: {reference_audio_path}")
+        # Test reference audio loading with speaker system
+        try:
+            default_speaker_id = file_manager.get_default_speaker_id()
+            reference_audio_path = file_manager.get_reference_audio_for_speaker(default_speaker_id)
+            logger.info(f"Reference audio path for default speaker '{default_speaker_id}': {reference_audio_path}")
 
-        if reference_audio_path.exists():
-            logger.info("Testing reference audio preparation...")
-            tts_gen.prepare_conditionals(str(reference_audio_path))
-            logger.info("✓ Reference audio prepared successfully")
-        else:
-            logger.warning(f"Reference audio not found: {reference_audio_path}")
+            if reference_audio_path.exists():
+                logger.info("Testing reference audio preparation...")
+                tts_gen.prepare_conditionals(str(reference_audio_path))
+                logger.info("✓ Reference audio prepared successfully")
+            else:
+                logger.warning(f"Reference audio not found: {reference_audio_path}")
+        except Exception as e:
+            logger.error(f"Failed to load reference audio: {e}")
+            return False
 
         logger.info("✓ Task system test completed successfully")
         assert True  # Explicit assertion for pytest

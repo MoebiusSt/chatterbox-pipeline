@@ -190,39 +190,7 @@ class FileManager:
             return text_path.exists()
         except Exception:
             return False
-
-    def get_reference_audio(self) -> Path:
-        """Get reference audio file path."""
-        reference_audio = self.config["input"]["reference_audio"]
-        audio_path = self.reference_audio_dir / reference_audio
-
-        if not audio_path.exists():
-            # Try to provide helpful information about available files
-            available_files = []
-            if self.reference_audio_dir.exists():
-                available_files = [
-                    f.name for f in self.reference_audio_dir.glob("*.wav")
-                ]
-
-            error_msg = f"Reference audio file not found: {audio_path}"
-            if available_files:
-                error_msg += f"\n📂 Available reference audio files: {', '.join(available_files)}"
-            else:
-                error_msg += f"\n📂 Reference audio dir: {self.reference_audio_dir} (empty or doesn't exist)"
-
-            raise FileNotFoundError(error_msg)
-
-        return audio_path
-
-    def check_reference_audio_exists(self) -> bool:
-        """Check if reference audio file exists without raising an exception."""
-        try:
-            reference_audio = self.config["input"]["reference_audio"]
-            audio_path = self.reference_audio_dir / reference_audio
-            return audio_path.exists()
-        except Exception:
-            return False
-
+    
     # Delegated Operations - Chunk Handler
     def save_chunks(self, chunks: List) -> bool:
         """Save text chunks to files."""

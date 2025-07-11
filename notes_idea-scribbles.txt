@@ -1,3 +1,279 @@
+# IN processing.py
+
+def analyze_audio_quality(file_path: str) -> dict:
+    """Analyze audio file quality metrics.
+    
+    Args:
+        file_path: Path to audio file
+        
+    Returns:
+        Dictionary with quality metrics
+    """
+    try:
+        if AUDIO_PROCESSING_AVAILABLE:
+            # Use librosa for more detailed analysis
+            y, sr = librosa.load(file_path, sr=None)
+            
+            # Calculate advanced metrics
+            rms = np.sqrt(np.mean(y**2))
+            peak = np.max(np.abs(y))
+            duration = len(y) / sr
+            
+            # Calculate spectral centroid (brightness)
+            spectral_centroids = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+            spectral_centroid_mean = np.mean(spectral_centroids)
+            
+            # Calculate zero crossing rate (useful for speech analysis)
+            zcr = librosa.feature.zero_crossing_rate(y)[0]
+            zcr_mean = np.mean(zcr)
+            
+            return {
+                'duration': duration,
+                'sample_rate': sr,
+                'rms_level': float(rms),
+                'peak_level': float(peak),
+                'dynamic_range': float(peak / (rms + 1e-6)),
+                'spectral_centroid': float(spectral_centroid_mean),
+                'zero_crossing_rate': float(zcr_mean),
+                'has_advanced_analysis': True
+            }
+        else:
+            # Fallback to basic wave analysis
+            with wave.open(file_path, 'rb') as wav_file:
+                sample_rate = wav_file.getframerate()
+                n_frames = wav_file.getnframes()
+                duration = n_frames / sample_rate
+                
+                frames = wav_file.readframes(n_frames)
+                audio_data = np.frombuffer(frames, dtype=np.int16)
+                
+                # Normalize to float
+                audio_data = audio_data.astype(np.float32) / 32768.0
+                
+                # Calculate basic metrics
+                rms = np.sqrt(np.mean(audio_data**2))
+                peak = np.max(np.abs(audio_data))
+                
+                return {
+                    'duration': duration,
+                    'sample_rate': sample_rate,
+                    'rms_level': float(rms),
+                    'peak_level': float(peak),
+                    'dynamic_range': float(peak / (rms + 1e-6)),
+                    'has_advanced_analysis': False
+                }
+            
+    except Exception as e:
+        return {'error': str(e)}
+
+
+def normalize_audio_levels(
+    file_path: str,
+    target_lufs: float = -23.0,
+    peak_limit: float = -1.0
+) -> Tuple[str, str]:
+    """Normalize audio levels to broadcast standards.
+    
+    Args:
+        file_path: Path to audio file
+        target_lufs: Target loudness in LUFS (default: -23 for broadcast)
+        peak_limit: Peak limit in dB (default: -1.0)
+        
+    Returns:
+        tuple: (status_message, output_file_path)
+    """
+    if not AUDIO_PROCESSING_AVAILABLE:
+        return "❌ Audio processing libraries not available. Install librosa and soundfile.", ""
+    
+    try:
+        # Load audio
+        y, sr = librosa.load(file_path, sr=None)
+        
+        if len(y) == 0:
+            return "❌ Audio file is empty", ""
+        
+        # Simple peak normalization (more advanced LUFS would require pyloudnorm)
+        current_peak = np.max(np.abs(y))
+        target_peak = 10 ** (peak_limit / 20)  # Convert dB to linear
+        
+        if current_peak > 0:
+            # Normalize to target peak
+            normalized_audio = y * (target_peak / current_peak)
+        else:
+            normalized_audio = y
+        
+        # Save normalized audio
+        output_path = file_path.replace('.wav', '_normalized.wav')
+        sf.write(output_path, normalized_audio, sr)
+        
+        # Calculate gain applied
+        gain_db = 20 * np.log10(target_peak / current_peak) if current_peak > 0 else 0
+        
+        return (
+            f"✅ Audio normalized! Applied {gain_db:+.2f} dB gain. "
+            f"Peak level now at {peak_limit:.1f} dB.",
+            output_path
+        )
+        
+    except Exception as e:
+        return f"❌ Error normalizing audio: {str(e)}", "" 
+        
+        
+# IN APP
+
+# =============================================================================
+# VOLUME NORMALIZATION SYSTEM
+# =============================================================================
+
+def analyze_audio_level(audio_data, sample_rate=24000):
+    """
+    Analyze the audio level and return various volume metrics.
+    
+    Args:
+        audio_data: Audio array (numpy array)
+        sample_rate: Sample rate of the audio
+        
+    Returns:
+        dict: Dictionary with volume metrics
+    """
+    try:
+        # Convert to numpy if it's a tensor
+        if hasattr(audio_data, 'cpu'):
+            audio_data = audio_data.cpu().numpy()
+        
+        # Ensure it's 1D
+        if len(audio_data.shape) > 1:
+            audio_data = audio_data.flatten()
+        
+        # RMS (Root Mean Square) level
+        rms = np.sqrt(np.mean(audio_data**2))
+        rms_db = 20 * np.log10(rms + 1e-10)  # Add small value to avoid log(0)
+        
+        # Peak level
+        peak = np.max(np.abs(audio_data))
+        peak_db = 20 * np.log10(peak + 1e-10)
+        
+        # LUFS (Loudness Units relative to Full Scale) - approximation
+        # Apply K-weighting filter (simplified)
+        try:
+            # High-shelf filter at 4kHz
+            sos_high = signal.butter(2, 4000, 'highpass', fs=sample_rate, output='sos')
+            filtered_high = signal.sosfilt(sos_high, audio_data)
+            
+            # High-frequency emphasis
+            sos_shelf = signal.butter(2, 1500, 'highpass', fs=sample_rate, output='sos')
+            filtered_shelf = signal.sosfilt(sos_shelf, filtered_high)
+            
+            # Mean square and convert to LUFS
+            ms = np.mean(filtered_shelf**2)
+            lufs = -0.691 + 10 * np.log10(ms + 1e-10)
+        except:
+            # Fallback if filtering fails
+            lufs = rms_db
+        
+        return {
+            'rms_db': float(rms_db),
+            'peak_db': float(peak_db),
+            'lufs': float(lufs),
+            'duration': len(audio_data) / sample_rate
+        }
+        
+    except Exception as e:
+        print(f"⚠️ Error analyzing audio level: {str(e)}")
+        return {'rms_db': -40.0, 'peak_db': -20.0, 'lufs': -23.0, 'duration': 0.0}
+
+def normalize_audio_to_target(audio_data, current_level_db, target_level_db, method='rms'):
+    """
+    Normalize audio to a target decibel level.
+    
+    Args:
+        audio_data: Audio array to normalize
+        current_level_db: Current level in dB
+        target_level_db: Target level in dB
+        method: Method to use ('rms', 'peak', or 'lufs')
+        
+    Returns:
+        numpy.ndarray: Normalized audio data
+    """
+    try:
+        # Convert to numpy if it's a tensor
+        if hasattr(audio_data, 'cpu'):
+            audio_data = audio_data.cpu().numpy()
+        
+        # Calculate gain needed
+        gain_db = target_level_db - current_level_db
+        gain_linear = 10 ** (gain_db / 20)
+        
+        # Apply gain with limiting to prevent clipping
+        normalized_audio = audio_data * gain_linear
+        
+        # Soft limiting to prevent clipping
+        max_val = np.max(np.abs(normalized_audio))
+        if max_val > 0.95:  # Leave some headroom
+            limiter_gain = 0.95 / max_val
+            normalized_audio = normalized_audio * limiter_gain
+            print(f"🔧 Applied soft limiting (gain: {limiter_gain:.3f}) to prevent clipping")
+        
+        return normalized_audio
+        
+    except Exception as e:
+        print(f"⚠️ Error normalizing audio: {str(e)}")
+        return audio_data
+
+def apply_volume_preset(preset_name: str, target_level: float):
+    """Apply professional volume preset and return updated target level with status"""
+    presets = {
+        "audiobook": -18.0,
+        "podcast": -16.0,
+        "broadcast": -23.0,
+        "custom": target_level
+    }
+    
+    new_target = presets.get(preset_name, target_level)
+    
+    status_messages = {
+        "audiobook": f"📚 Audiobook Standard: {new_target} dB RMS (Professional audiobook level)",
+        "podcast": f"🎙️ Podcast Standard: {new_target} dB RMS (Optimized for streaming)",
+        "broadcast": f"📺 Broadcast Standard: {new_target} dB RMS (TV/Radio compliance)",
+        "custom": f"🎛️ Custom Level: {new_target} dB RMS (User-defined)"
+    }
+    
+    status = status_messages.get(preset_name, f"Custom: {new_target} dB")
+    
+    return new_target, f"<div class='voice-status'>{status}</div>"
+
+def get_volume_normalization_status(enable_norm, target_db, audio_file):
+    """Get status message for volume normalization settings"""
+    if not enable_norm:
+        logger.info("🔧 Volume normalization disabled")
+    
+    if not audio_file:
+        logger.info("🎯 Will normalize to {target_db:.0f} dB when audio is uploaded")
+    
+    try:
+        audio_data, sample_rate = librosa.load(audio_file, sr=24000)
+        level_info = analyze_audio_level(audio_data, sample_rate)
+        current_rms = level_info['rms_db']
+        gain_needed = target_db - current_rms
+        
+        if abs(gain_needed) < 1:
+            return f"<div class='voice-status'>✅ Audio already close to target ({current_rms:.1f} dB)</div>"
+        elif gain_needed > 0:
+            return f"<div class='voice-status'>⬆️ Will boost by {gain_needed:.1f} dB ({current_rms:.1f} → {target_db:.0f} dB)</div>"
+        else:
+            return f"<div class='voice-status'>⬇️ Will reduce by {abs(gain_needed):.1f} dB ({current_rms:.1f} → {target_db:.0f} dB)</div>"
+    except:
+        return f"<div class='voice-status'>🎯 Will normalize to {target_db:.0f} dB</div>"
+
+# =============================================================================
+# END VOLUME NORMALIZATION SYSTEM
+# =============================================================================
+
+
+------------------------------------------------------------
+-------------------------------------------------------------
+
+
 Kontext: Wir werkeln an "longer-text-example_tts3.py". Es verwendet Chatterbox TTS zur Sprachsynthese und benutzt als TTS-Modell ein Pretrained Model. Es wird von HuggingFace Hub als Quelle heruntergeladen (Repository: ResembleAI/chatterbox):
 
 Methode ungefär so: 

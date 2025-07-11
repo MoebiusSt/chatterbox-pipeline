@@ -123,14 +123,33 @@ class CandidateManager:
                 success=len(candidates) > 0,
             )
         else:
-            # Legacy generation using the existing method
+            # No speaker ID found, use default speaker
             logger.info(
-                f"🔧 Using legacy generation (no speaker information) for chunk {chunk_index + 1}"
+                f"🔧 No speaker ID found, using default speaker for chunk {chunk_index + 1}"
             )
-            result = self.generate_candidates_for_chunk(
+            config_manager = getattr(self, "file_manager", None)
+            
+            # Get default speaker ID from configuration
+            default_speaker_id = "default"
+            if config_manager and hasattr(config_manager, "get_default_speaker_id"):
+                default_speaker_id = config_manager.get_default_speaker_id()
+            
+            candidates = self.tts_generator.generate_candidates_with_speaker(
+                text=text_chunk.text,
+                speaker_id=default_speaker_id,
+                num_candidates=self.max_candidates,
+                config_manager=config_manager,
+            )
+
+            # Create a mock result object for backward compatibility
+            from .batch_processor import GenerationResult
+
+            result = GenerationResult(
                 chunk=text_chunk,
-                tts_generator=self.tts_generator,
-                generation_params=generation_config,
+                candidates=candidates,
+                selected_candidate=candidates[0] if candidates else None,
+                generation_attempts=1,
+                success=len(candidates) > 0,
             )
 
         # Save candidates to disk
@@ -195,19 +214,26 @@ class CandidateManager:
                 if i < len(zero_based_indices):
                     candidate.candidate_idx = zero_based_indices[i]
         else:
-            # Legacy generation without speaker system
-            logger.info("🔧 Using legacy generation (no speaker information)")
-            specific_candidates = self.tts_generator.generate_specific_candidates(
+            # No speaker ID found, use default speaker
+            logger.info("🔧 No speaker ID found, using default speaker")
+            config_manager = getattr(self, "file_manager", None)
+            
+            # Get default speaker ID from configuration
+            default_speaker_id = "default"
+            if config_manager and hasattr(config_manager, "get_default_speaker_id"):
+                default_speaker_id = config_manager.get_default_speaker_id()
+            
+            specific_candidates = self.tts_generator.generate_candidates_with_speaker(
                 text=text_chunk.text,
-                candidate_indices=zero_based_indices,
-                exaggeration=tts_params.get("exaggeration", 0.5),
-                cfg_weight=tts_params.get("cfg_weight", 0.4),
-                temperature=tts_params.get("temperature", 0.8),
-                conservative_config=conservative_config,
-                total_candidates=total_candidates,
-                tts_params=tts_params,
-                reference_audio_path=reference_audio_path,
+                speaker_id=default_speaker_id,
+                num_candidates=len(candidate_indices),
+                config_manager=config_manager,
             )
+
+            # Map the generated candidates to the correct indices
+            for i, candidate in enumerate(specific_candidates):
+                if i < len(zero_based_indices):
+                    candidate.candidate_idx = zero_based_indices[i]
 
         # Save the specific candidates using FileManager structure (chunk_XXX/candidate_YY.wav)
         saved_candidates = []

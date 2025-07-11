@@ -651,14 +651,7 @@ class TTSGenerator:
         logger.debug(f"Successfully generated {len(candidates)} specific candidates")
         return candidates
 
-    def load_reference_audio(self, wav_fpath: str):
-        """
-        Load and prepare reference audio for voice cloning.
 
-        Args:
-            wav_fpath: Path to reference audio file
-        """
-        self.prepare_conditionals(wav_fpath)
 
     def get_current_params(self) -> Dict[str, Any]:
         """
