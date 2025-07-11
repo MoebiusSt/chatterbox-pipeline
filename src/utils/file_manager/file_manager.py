@@ -126,6 +126,10 @@ class FileManager:
         self._validation_helpers = ValidationHelpers(
             self.candidates_dir, self.whisper_dir, self._whisper_handler
         )
+        
+        # Now inject ValidationHelpers into IO handlers that need it
+        self._candidate_handler.validation_helpers = self._validation_helpers
+        self._final_audio_handler.validation_helpers = self._validation_helpers
         self._state_analyzer = StateAnalyzer(
             self.task_directory,
             self.candidates_dir,

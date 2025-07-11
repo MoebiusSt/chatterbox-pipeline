@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import requests
 
-from src.config.github_config import check_ci_status
+from src.git_ci_config.github_config import check_ci_status
 
 
 def extract_error_details(log_text: str) -> str:
@@ -281,7 +281,7 @@ def main():
         print("  - ~/.github_token")
         print("  - github_token.txt in current directory")
         print("  - github_token.txt in script directory")
-        print("  - src/config/github_token.txt")
+        print("  - src/git_ci_config/github_token.txt")
         sys.exit(1)
 
     # Get commit SHA

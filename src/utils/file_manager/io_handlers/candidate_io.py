@@ -39,16 +39,18 @@ class AudioCandidate:
 class CandidateIOHandler:
     """Handles audio candidate I/O operations."""
 
-    def __init__(self, candidates_dir: Path, config: dict):
+    def __init__(self, candidates_dir: Path, config: dict, validation_helpers=None):
         """
         Initialize CandidateIOHandler.
 
         Args:
             candidates_dir: Directory for candidate files
             config: Configuration dictionary
+            validation_helpers: Optional ValidationHelpers instance for corrupt candidate removal
         """
         self.candidates_dir = candidates_dir
         self.config = config
+        self.validation_helpers = validation_helpers
         self.candidates_dir.mkdir(parents=True, exist_ok=True)
 
     def save_candidates(
@@ -134,9 +136,20 @@ class CandidateIOHandler:
                         )
 
                         # Remove the corrupt file and its validation data
-                        self._remove_corrupt_candidate(
-                            chunk_idx, candidate.candidate_idx
-                        )
+                        if self.validation_helpers:
+                            self.validation_helpers.remove_corrupt_candidate(
+                                chunk_idx, candidate.candidate_idx
+                            )
+                        else:
+                            # Fallback: Only remove audio file if no ValidationHelpers available
+                            logger.warning(
+                                f"⚠️ No ValidationHelpers available - only removing audio file for chunk {chunk_idx}, candidate {candidate.candidate_idx}"
+                            )
+                            try:
+                                if candidate.audio_path and candidate.audio_path.exists():
+                                    candidate.audio_path.unlink()
+                            except Exception as e:
+                                logger.error(f"Failed to remove corrupt audio file: {e}")
                         continue  # Skip this candidate entirely
                 else:
                     # No audio tensor AND no valid audio file - this candidate is unusable
@@ -422,18 +435,3 @@ class CandidateIOHandler:
         if alt_whisper_file.exists():
             alt_whisper_file.unlink()
             logger.debug(f"🗑️ Deleted old whisper TXT file: {alt_whisper_file.name}")
-
-    def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:
-        """Remove corrupt candidate file - simplified version without validation data."""
-        try:
-            chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
-            audio_file = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
-            if audio_file.exists():
-                audio_file.unlink()
-                logger.info(f"🗑️ Removed corrupt audio file: {audio_file}")
-                return True
-        except Exception as e:
-            logger.error(
-                f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}"
-            )
-        return False

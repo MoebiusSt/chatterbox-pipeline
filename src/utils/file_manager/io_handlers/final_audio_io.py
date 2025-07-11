@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class FinalAudioIOHandler:
     """Handles final audio I/O operations."""
 
-    def __init__(self, final_dir: Path, candidates_dir: Path, config: dict):
+    def __init__(self, final_dir: Path, candidates_dir: Path, config: dict, validation_helpers=None):
         """
         Initialize FinalAudioIOHandler.
 
@@ -25,10 +25,12 @@ class FinalAudioIOHandler:
             final_dir: Directory for final audio files
             candidates_dir: Directory for candidate files
             config: Configuration dictionary
+            validation_helpers: Optional ValidationHelpers instance for corrupt candidate removal
         """
         self.final_dir = final_dir
         self.candidates_dir = candidates_dir
         self.config = config
+        self.validation_helpers = validation_helpers
         self.final_dir.mkdir(parents=True, exist_ok=True)
 
     def save_final_audio(self, audio: torch.Tensor, metadata: dict) -> bool:
@@ -116,7 +118,18 @@ class FinalAudioIOHandler:
                     logger.error(f"   Falling back to silence for chunk {chunk_idx}")
 
                     # Remove corrupt file and its validation data
-                    self._remove_corrupt_candidate(chunk_idx, candidate_idx)
+                    if self.validation_helpers:
+                        self.validation_helpers.remove_corrupt_candidate(chunk_idx, candidate_idx)
+                    else:
+                        # Fallback: Only remove audio file if no ValidationHelpers available
+                        logger.warning(
+                            f"⚠️ No ValidationHelpers available - only removing audio file for chunk {chunk_idx}, candidate {candidate_idx}"
+                        )
+                        try:
+                            if audio_file.exists():
+                                audio_file.unlink()
+                        except Exception as e:
+                            logger.error(f"Failed to remove corrupt audio file: {e}")
 
                     # Add silence as fallback instead of breaking the entire final audio
                     sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
@@ -132,18 +145,3 @@ class FinalAudioIOHandler:
 
         logger.debug(f"Loaded {len(audio_segments)} audio segments")
         return audio_segments
-
-    def _remove_corrupt_candidate(self, chunk_idx: int, candidate_idx: int) -> bool:
-        """Remove corrupt candidate file - simplified version."""
-        try:
-            chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
-            audio_file = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
-            if audio_file.exists():
-                audio_file.unlink()
-                logger.info(f"🗑️ Removed corrupt audio file: {audio_file}")
-                return True
-        except Exception as e:
-            logger.error(
-                f"Failed to remove corrupt candidate {candidate_idx+1} for chunk {chunk_idx+1}: {e}"
-            )
-        return False

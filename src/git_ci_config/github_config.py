@@ -25,7 +25,7 @@ def get_github_token() -> Optional[str]:
     return None
 
 
-def check_ci_status(commit_sha: str) -> dict:
+def check_ci_status(commit_sha: str) -> Optional[dict]:
     """
     Check CI status for a specific commit.
 

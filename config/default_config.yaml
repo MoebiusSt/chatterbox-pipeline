@@ -23,7 +23,7 @@ generation:
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
   speakers:
-    - id: glen_hallstrom_1                             # use any string you like
+    - id: glen_hallstrom_1                     # use any string you like
       reference_audio: glen_hallstrom_15.wav   # file in data/input/reference_audio folder
       tts_params:
         # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
@@ -33,17 +33,17 @@ generation:
         exaggeration: 0.55                  # give MAX here
         exaggeration_max_deviation: 0.25    # ramp DOWN 
 
-        cfg_weight: 0.25                     # give MIN here
+        cfg_weight: 0.25                    # give MIN here
         cfg_weight_max_deviation: 0.45      # ramp UP 
 
         temperature: 0.9                    # give MIN here
-        temperature_max_deviation: 0.25      # ramp UP 
+        temperature_max_deviation: 0.25     # ramp UP 
 
         repetition_penalty: 1.2             # Penalty for repeated output tokens (default is 1.2, was 2.0 earlier) 
         
         # Additional sampling parameters for fine-tuning generation
-        min_p: 0.04                          # Minimum probability threshold for token sampling
-        top_p: 0.98                          # Top-p (nucleus) sampling threshold
+        min_p: 0.04                         # Minimum probability threshold for token sampling
+        top_p: 0.98                         # Top-p (nucleus) sampling threshold
         
       # Conservative candidate params for most likely success. Also fallback for retries when the generation fails.
       conservative_candidate:
@@ -52,7 +52,7 @@ generation:
         cfg_weight: 0.5
         temperature: 0.8
         min_p: 0.08    # Higher for more stability
-        top_p: 0.9    # Lower for less variance
+        top_p: 0.9     # Lower for less variance
 
   # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
     - id: annie_coleman_rothenberg_1

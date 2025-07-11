@@ -2,4 +2,4 @@
 Configuration modules for the TTS pipeline.
 """
 
-__all__ = []
+__all__: list[str] = []

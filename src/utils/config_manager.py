@@ -301,46 +301,7 @@ class ConfigManager:
             with open(config_path, "r", encoding="utf-8") as f:
                 self._config_cache[config_key] = yaml.safe_load(f)
         return copy.deepcopy(self._config_cache[config_key])
-
-    def find_parent_job_config(self, task_config_path: Path) -> Optional[Path]:
-        """
-        Find the parent job-config file for a given task-config.
-
-        Args:
-            task_config_path: Path to the task-config file
-
-        Returns:
-            Path to the parent job-config file, or None if not found
-        """
-        if not self.is_task_config(task_config_path):
-            return None
-
-        # Extract job_name from task-config data
-        task_data = self.load_job_config(task_config_path)
-        job_name = task_data.get("job", {}).get("name")
-
-        if not job_name:
-            logger.warning(f"No job name found in task config: {task_config_path}")
-            return None
-
-        # Search for job-config files in config directory
-        for config_file in self.config_dir.glob("*.yaml"):
-            if config_file.name == "default_config.yaml":
-                continue  # Skip default config
-
-            try:
-                config_data = self.load_job_config(config_file)
-                if config_data.get("job", {}).get("name") == job_name:
-                    logger.debug(
-                        f"Found parent job config for {task_config_path}: {config_file}"
-                    )
-                    return config_file
-            except Exception as e:
-                logger.warning(f"Error reading config {config_file}: {e}")
-
-        logger.debug(f"No parent job config found for task: {task_config_path}")
-        return None
-
+        
     def load_cascading_config(
         self, config_path: Optional[Path] = None
     ) -> Dict[str, Any]:
@@ -695,98 +656,7 @@ class ConfigManager:
 
         logger.debug(f"✅ Validated {len(speakers)} speakers: {speaker_ids}")
         return True
-
-    def get_speaker_config(
-        self, config: Dict[str, Any], speaker_id: str
-    ) -> Dict[str, Any]:
-        """
-        Get speaker-specific configuration with fallback to default speaker.
-
-        Args:
-            config: Full configuration dictionary
-            speaker_id: ID of the speaker to get config for
-
-        Returns:
-            Speaker configuration dictionary
-        """
-        speakers = config.get("generation", {}).get("speakers", [])
-
-        if not speakers:
-            raise RuntimeError("No speakers configured")
-
-        # Normalize speaker_id (default speaker aliases)
-        if speaker_id in ["0", "default", "reset"]:
-            speaker_id = self.get_default_speaker_id(config)
-
-        # Search for speaker by ID
-        for speaker in speakers:
-            if speaker.get("id") == speaker_id:
-                return speaker
-
-        # Fallback to default speaker
-        default_speaker_id = self.get_default_speaker_id(config)
-        logger.warning(
-            f"Speaker '{speaker_id}' not found, falling back to default speaker '{default_speaker_id}'"
-        )
-
-        for speaker in speakers:
-            if speaker.get("id") == default_speaker_id:
-                return speaker
-
-        # Final fallback to first speaker (should not happen if config is valid)
-        logger.error(
-            f"Default speaker '{default_speaker_id}' not found, using first speaker"
-        )
-        return speakers[0]
-
-    def merge_speaker_params(
-        self, base_config: Dict[str, Any], speaker_config: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Merge speaker-specific config with base config using cascading inheritance.
-
-        Args:
-            base_config: Base configuration dictionary
-            speaker_config: Speaker-specific configuration
-
-        Returns:
-            Merged configuration with speaker-specific overrides
-        """
-        # Create deep copy of base config
-        merged_config = copy.deepcopy(base_config)
-
-        # Merge speaker-specific parameters
-        if "tts_params" in speaker_config:
-            merged_config["generation"]["tts_params"] = copy.deepcopy(
-                speaker_config["tts_params"]
-            )
-
-        if "conservative_candidate" in speaker_config:
-            merged_config["generation"]["conservative_candidate"] = copy.deepcopy(
-                speaker_config["conservative_candidate"]
-            )
-
-        # Set reference_audio for backward compatibility
-        if "reference_audio" in speaker_config:
-            merged_config["input"]["reference_audio"] = speaker_config[
-                "reference_audio"
-            ]
-
-        return merged_config
-
-    def get_available_speaker_ids(self, config: Dict[str, Any]) -> List[str]:
-        """
-        Get list of all available speaker IDs from configuration.
-
-        Args:
-            config: Configuration dictionary
-
-        Returns:
-            List of speaker IDs
-        """
-        speakers = config.get("generation", {}).get("speakers", [])
-        return [speaker.get("id", "default") for speaker in speakers]
-
+        
     def get_default_speaker_id(self, config: Dict[str, Any]) -> str:
         """
         Get the ID of the default speaker using explicit default_speaker key.
