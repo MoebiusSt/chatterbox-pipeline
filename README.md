@@ -673,10 +673,12 @@ generation:
         # - temperature: MIN value (ramps UP from here)
         exaggeration: 0.40                  # MAX: give maximum here
         exaggeration_max_deviation: 0.20    # Range: (ramp DOWN) [exaggeration, exaggeration-exag_max_deviation] 
-        cfg_weight: 0.2                    # MIN: give minimum
+        cfg_weight: 0.2                     # MIN: give minimum
         cfg_weight_max_deviation: 0.20      # Range: (ramp UP) [cfg_weight, cfg_weight+max_dev] 
         temperature: 0.9                    # MIN: give minimum
         temperature_max_deviation: 0.3      # Range: (ramp UP) [temp, temp+max_dev] 
+        min_p: 0.03                         # Minimum probability threshold for token sampling
+        top_p: 0.99                         # Top-p (nucleus) sampling threshold
         
       # Conservative candidate parameters for guaranteed correctness
       conservative_candidate:
@@ -684,6 +686,8 @@ generation:
         exaggeration: 0.40
         cfg_weight: 0.2
         temperature: 0.8
+        min_p: 0.08    # a little bit higher than default 0.05 for less "creativity" but more stability
+        top_p: 0.9    # a little lower than default 1.0 for less variation but added stability
     
   
 validation:
@@ -699,6 +703,18 @@ audio:
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
   # Only change this if ChatterboxTTS itself changes its output sample rate
   sample_rate: 24000 
+```
+
+```yaml
+# For higher consistency, less artifacts, but also less creative prosody:
+min_p: 0.08-0.12
+top_p: 0.90-0.96
+# For balanced results:
+min_p: 0.05-0.07
+top_p: 0.95-0.98
+# For creative natural prosody, but risking artefacts:
+min_p: 0.02-0.04
+top_p: 0.98-1.0
 ```
 
 ### Testing Architecture

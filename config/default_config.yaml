@@ -42,8 +42,8 @@ generation:
         repetition_penalty: 1.2             # Penalty for repeated output tokens (default is 1.2, was 2.0 earlier) 
         
         # Additional sampling parameters for fine-tuning generation
-        min_p: 0.05                          # Minimum probability threshold for token sampling
-        top_p: 0.95                          # Top-p (nucleus) sampling threshold
+        min_p: 0.04                          # Minimum probability threshold for token sampling
+        top_p: 0.98                          # Top-p (nucleus) sampling threshold
         
       # Conservative candidate params for most likely success. Also fallback for retries when the generation fails.
       conservative_candidate:
@@ -51,10 +51,8 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
-        min_p: 0.1    # Higher for more stability
-        top_p: 0.8    # Lower for less variance
+        min_p: 0.08    # Higher for more stability
+        top_p: 0.9    # Lower for less variance
 
   # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
     - id: annie_coleman_rothenberg_1
@@ -74,8 +72,6 @@ generation:
         exaggeration: 0.5
         cfg_weight: 0.4
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: annie_coleman_rothenberg_2
       reference_audio: annie_coleman_rothenberg_2.wav
@@ -94,8 +90,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.7
-        min_p: 0.1
-        top_p: 0.8
 
     - id: cori_samuel_1
       reference_audio: cori_samuel_1.wav
@@ -114,8 +108,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.4
         temperature: 0.75
-        min_p: 0.1
-        top_p: 0.8
 
     - id: cori_samuel_2
       reference_audio: cori_samuel_2.wav
@@ -134,8 +126,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: cori_samuel_3
       reference_audio: cori_samuel_3.wav
@@ -154,8 +144,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.75
-        min_p: 0.1
-        top_p: 0.8
 
     - id: david_barnes_1
       reference_audio: david_barnes_1.wav
@@ -174,8 +162,6 @@ generation:
         exaggeration: 0.35
         cfg_weight: 0.6
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: david_barnes_2
       reference_audio: david_barnes_2.wav
@@ -194,8 +180,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: david_barnes_3
       reference_audio: david_barnes_3.wav
@@ -214,8 +198,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.6
         temperature: 0.7
-        min_p: 0.1
-        top_p: 0.8
 
     - id: gesine_1
       reference_audio: gesine_1.wav
@@ -234,8 +216,6 @@ generation:
         exaggeration: 0.5
         cfg_weight: 0.4
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: gesine_2
       reference_audio: gesine_2.wav
@@ -254,8 +234,6 @@ generation:
         exaggeration: 0.5
         cfg_weight: 0.5
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: glen_hallstrom_2
       reference_audio: glen_hallstrom_25.wav
@@ -274,8 +252,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: glen_hallstrom_3
       reference_audio: glen_hallstrom_35.wav
@@ -294,8 +270,6 @@ generation:
         exaggeration: 0.35
         cfg_weight: 0.45
         temperature: 0.7
-        min_p: 0.1
-        top_p: 0.8
 
     - id: mike_kamp_1
       reference_audio: mike_kamp_1.wav
@@ -314,8 +288,6 @@ generation:
         exaggeration: 0.37
         cfg_weight: 0.45
         temperature: 0.75
-        min_p: 0.1
-        top_p: 0.8
 
     - id: peter_yearsley_1
       reference_audio: peter_yearsley_1.wav
@@ -334,8 +306,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.75
-        min_p: 0.1
-        top_p: 0.8
 
     - id: stephan_moebius_1
       reference_audio: stephan_moebius_1.wav
@@ -354,8 +324,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.35
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: stephan_moebius_2
       reference_audio: stephan_moebius_2.wav
@@ -374,8 +342,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.35
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: stephan_moebius_3
       reference_audio: stephan_moebius_3.wav
@@ -394,8 +360,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.4
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
     - id: stephan_moebius_5
       reference_audio: stephan_moebius_5.wav
@@ -414,8 +378,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.4
         temperature: 0.75
-        min_p: 0.1
-        top_p: 0.8
 
     - id: stephan_moebius_6
       reference_audio: stephan_moebius_6.wav
@@ -434,8 +396,6 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.8
-        min_p: 0.1
-        top_p: 0.8
 
 validation:
   whisper_model: small # base small medium large
