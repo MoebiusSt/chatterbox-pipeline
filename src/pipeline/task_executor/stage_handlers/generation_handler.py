@@ -64,19 +64,23 @@ class GenerationHandler:
             except Exception as e:
                 logger.debug(f"Could not set speakers in chunker (not critical): {e}")
 
-            # 3. Initialize with default speaker
+            # 3. Initialize with default speaker using switch_speaker for proper state tracking
             default_speaker_id = self.file_manager.get_default_speaker_id()
             try:
+                # Use switch_speaker to properly initialize and track current speaker
+                self.tts_generator.switch_speaker(default_speaker_id, self.file_manager)
+                
+                # Get reference_audio_path for legacy compatibility
                 reference_audio_path = (
                     self.file_manager.get_reference_audio_for_speaker(
                         default_speaker_id
                     )
                 )
-                self.tts_generator.prepare_conditionals(str(reference_audio_path))
+                self.reference_audio_path = str(reference_audio_path)
+                
                 logger.info(
                     f"🎭 Default speaker '{default_speaker_id}' loaded: {reference_audio_path.name}"
                 )
-                self.reference_audio_path = str(reference_audio_path)
             except Exception as e:
                 logger.error(
                     f"❌ Failed to load default speaker '{default_speaker_id}': {e}"

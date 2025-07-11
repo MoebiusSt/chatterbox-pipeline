@@ -32,6 +32,10 @@ class TTSGenerator:
         self.device = device if device != "auto" else self._detect_device()
         self.seed = seed
 
+        # Set task-global seed once for consistent generation
+        torch.manual_seed(seed)
+        logger.info(f"🎲 Task-global seed set to {seed} for reproducible generation")
+
         # Use direct model access
         self.model = ChatterboxModelCache.get_model(self.device)
 
@@ -107,18 +111,13 @@ class TTSGenerator:
 
         logger.debug("Starting TTS generation")
 
-        # Only prepare conditionals if none are loaded yet
-        # This prevents overwriting speaker-specific conditionals
+        # Conditionals should always be loaded through speaker system
+        # Removed redundant safety checks to avoid unnecessary prepare_conditionals calls
         if not hasattr(self.model, "conds") or self.model.conds is None:
-            if not reference_audio_path:
-                logger.error(
-                    "🚨 No conditionals loaded and no reference_audio_path provided"
-                )
-                return torch.zeros(48000, device=self.device)
-            logger.debug("No conditionals loaded - preparing from reference_audio_path")
-            self.prepare_conditionals(reference_audio_path)
-        else:
-            logger.debug("Using existing conditionals (speaker-specific)")
+            logger.warning("🚨 No conditionals loaded - this should not happen with speaker system")
+            return torch.zeros(48000, device=self.device)
+        
+        logger.debug("Using loaded conditionals (speaker-specific)")
 
         # Suppress PyTorch and Transformers warnings during model generation
         with warnings.catch_warnings():
@@ -236,7 +235,6 @@ class TTSGenerator:
             )
             try:
                 candidate_seed = self.seed + hash(text) % 10000
-                torch.manual_seed(candidate_seed)
 
                 # Use conservative parameters
                 var_exaggeration = conservative_config.get("exaggeration", 0.4)
@@ -327,7 +325,6 @@ class TTSGenerator:
             try:
                 # Set unique seed for this candidate
                 candidate_seed = self.seed + (i * 1000) + hash(text) % 10000
-                torch.manual_seed(candidate_seed)
 
                 # Check if this should be a conservative candidate (always last)
                 is_conservative = is_conservative_enabled and (i + 1) == num_candidates
@@ -534,7 +531,6 @@ class TTSGenerator:
             try:
                 # Set unique seed for this candidate
                 candidate_seed = self.seed + (i * 1000) + hash(text) % 10000
-                torch.manual_seed(candidate_seed)
 
                 # Check if this should be a conservative candidate (always last)
                 is_conservative = (
