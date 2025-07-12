@@ -1,6 +1,6 @@
 job:
   name: jeremiahs
-  run-label: annie_coleman_2
+  run-label: stephan_moebius_6
 input:
   text_file: jeremiahs.txt
 preprocessing:
@@ -14,4 +14,4 @@ chunking:
 generation:
   num_candidates: 2
   max_retries: 1
-  default_speaker: annie_coleman_rothenberg_2
+  default_speaker: stephan_moebius_6
