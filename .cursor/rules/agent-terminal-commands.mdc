@@ -1,5 +1,5 @@
 ---
-description: Prevent agent terminals from getting stuck
+description: Tool calls can not use &&
 alwaysApply: true
 ---
 You cannot concat commands with "&&"

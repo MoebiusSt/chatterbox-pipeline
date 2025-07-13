@@ -168,15 +168,23 @@ def resolve_config_files(args: argparse.Namespace, project_root: Path) -> List[P
                 elif (project_root / "config" / config_file).exists():
                     resolved_path = (project_root / "config" / config_file).resolve()
                 else:
+                    # Provide more helpful error message for relative paths
+                    attempted_paths = [
+                        str(config_file.resolve()),
+                        str(project_root / "config" / config_file)
+                    ]
                     raise FileNotFoundError(
-                        f"Configuration file not found: {config_file}"
+                        f"Configuration file not found: {config_file}\n"
+                        f"Attempted paths: {', '.join(attempted_paths)}"
                     )
             else:
                 if config_file.exists():
                     resolved_path = config_file
                 else:
+                    # Provide more helpful error message for absolute paths
                     raise FileNotFoundError(
-                        f"Configuration file not found: {config_file}"
+                        f"Configuration file not found: {config_file}\n"
+                        f"Absolute path does not exist: {config_file}"
                     )
 
             # Add only if not already seen (silent deduplication)
@@ -335,8 +343,52 @@ def main() -> int:
         logger.info("\nExecution interrupted by user")
         return 1
 
+    except FileNotFoundError as e:
+        # Handle configuration file not found errors gracefully
+        error_msg = str(e)
+        if "Configuration file not found" in error_msg:
+            logger.error("❌ Configuration file not found!")
+            
+            # Parse the error message to extract the file path and attempted paths
+            lines = error_msg.split('\n')
+            file_path = lines[0].split(': ')[1] if ': ' in lines[0] else lines[0]
+            logger.error(f"   Path: {file_path}")
+            
+            # Show attempted paths if available
+            if len(lines) > 1 and "Attempted paths:" in lines[1]:
+                attempted_paths = lines[1].split("Attempted paths: ")[1].split(", ")
+                logger.info("")
+                logger.info("🔍 Attempted paths:")
+                for i, path in enumerate(attempted_paths, 1):
+                    logger.info(f"   {i}. {path}")
+            
+            logger.info("")
+            logger.info("💡 Possible solutions:")
+            logger.info("   1. Check the path to the configuration file")
+            logger.info("   2. Use forward slashes (/) instead of backslashes (\\)")
+            logger.info("   3. Make sure the file exists")
+            logger.info("   4. Use relative paths from the project directory")
+            logger.info("")
+            logger.info("📁 Available configuration files in config/ directory:")
+            config_dir = PROJECT_ROOT / "config"
+            if config_dir.exists():
+                yaml_files = list(config_dir.glob("*.yaml"))
+                if yaml_files:
+                    for config_file in yaml_files:
+                        logger.info(f"   - {config_file.name}")
+                else:
+                    logger.info("   (no .yaml files found)")
+            else:
+                logger.info("   (config/ directory not found)")
+            logger.info("")
+            logger.info("🔧 Example of correct usage:")
+            logger.info(f"   python {sys.argv[0]} config/your-file.yaml")
+            logger.info(f"   python {sys.argv[0]} /absolute/path/to/file.yaml")
+        else:
+            logger.error(f"❌ File not found: {e}")
+        return 1
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
+        logger.error(f"❌ Fatal error: {e}", exc_info=True)
         return 1
 
 

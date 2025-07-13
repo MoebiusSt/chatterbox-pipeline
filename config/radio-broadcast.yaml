@@ -1,6 +1,6 @@
 job:
   name: radio-broadcast
-  run-label: 
+  run-label: war-of-the-worlds
 
 input:
   text_file: radio-broadcast.txt # file name in texts folder
@@ -9,8 +9,7 @@ generation:
   num_candidates: 5
   max_retries: 1
   default_speaker: 30s-radio2
-  
-  # overirding some parameters for speaker peter_yearsley_1
+
   speakers:
     - id: 30s-radio1
       reference_audio: 30s-radio1.wav # file name in reference_audio folder
@@ -25,7 +24,7 @@ generation:
       conservative_candidate:
         enabled: false
     - id: 30s-radio1-2
-      reference_audio: 30s-radio1.wav # file name in reference_audio folder
+      reference_audio: 30s-radio1.wav
       tts_params:
         exaggeration: 1.1
         exaggeration_max_deviation: 0.2
@@ -37,7 +36,7 @@ generation:
       conservative_candidate:
         enabled: false
     - id: 30s-radio1-3
-      reference_audio: 30s-radio1.wav # file name in reference_audio folder
+      reference_audio: 30s-radio1.wav
       tts_params:
         exaggeration: 1.3
         exaggeration_max_deviation: 0.4
@@ -49,7 +48,7 @@ generation:
       conservative_candidate:
         enabled: false
     - id: 30s-radio2
-      reference_audio: 30s-radio2.wav # file name in reference_audio folder
+      reference_audio: 30s-radio2.wav
       tts_params:
         exaggeration: 0.6
         exaggeration_max_deviation: 0.20
@@ -61,7 +60,7 @@ generation:
       conservative_candidate:
         enabled: false
     - id: 30s-radio2-2
-      reference_audio: 30s-radio2.wav # file name in reference_audio folder
+      reference_audio: 30s-radio2.wav
       tts_params:
         exaggeration: 0.7
         exaggeration_max_deviation: 0.30

@@ -1,13 +1,14 @@
+
 # Chatterbox Pipeline
 
 An enhanced Text-to-Speech pipeline based on resemble-ai/chatterbox that implements:
-- intelligent SpaCy-based text chunking for longer generations, 
-- automatic variaten generation, 
+- intelligent SpaCy-based text chunking for long text generations, 
+- automatic variation generation, 
 - automatic Whisper validation for best-candidate selection, 
 - manual picking of best candidate in simple manager
-- a job and task pipeline to prepare job renderings like magazine articles or books with chapters, 
-- speakers configuration and markdown-syntax for switching speakers or prosody params on the fly
-- a CLI with a prompt menu system 
+- a job and task pipeline to prepare job rendering queues (like magazines or books with chapters)
+- speakers configuration and markdown-syntax for switching speakers or prosody parameters on the fly
+- a Command Line Interface with a prompt menu system 
 - CLI arguments to execute almost all those functions. 
 
 Does not have:
@@ -40,7 +41,7 @@ source venv/bin/activate
 venv\Scripts\activate
 ```
 
-**⚠️ Important**: This project **must** be run in a virtual environment due to specific dependency versions (PyTorch, Transformers, etc.).
+**⚠️ Important**: This project must be run in a virtual environment due to specific dependency versions (PyTorch, Transformers, etc.).
 
 ### 3. Install Dependencies
 ```bash
@@ -58,27 +59,65 @@ pip install -r dev-requirements.txt
 ```
 
 ### 4. Production TTS Pipeline
+
+Running the main programm without arguments is the same as running the default_config.yaml 
+
 ```bash
-# Full pipeline with real TTS (requires ChatterboxTTS)
-python src/cbpipe.py
+# Full pipeline ChatterboxTTS
+python src/cbpipe.py			# Execute default job /config/default_config.yaml
 ```
 
 ### 5. Command Line Options
+
+You can copy the default_config.yaml in order to create a job-yaml, i.e. "myjob1.yaml". Any job that has never run before will be executed without interruption (no menu system). Run it like so:
+
 ```bash
 # Standard mode (interactive)
-python src/cbpipe.py                              # Execute default job from /config/default_config.yaml
-python src/cbpipe.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
-python src/cbpipe.py --job "my_job"               # Execute job with specific name present in a config or existing outputdirectory
+python src/cbpipe.py myjob1.yaml job2.yaml          # Specific job configurations
+python src/cbpipe.py --job "my_job"               # Execute job(s) with specific job-name present in a config or existing outputdirectory
 python src/cbpipe.py --job "testjob*"             # Execute all jobs starting with "testjob" (pattern matching)
 python src/cbpipe.py --job "test?job"             # Execute jobs matching pattern (e.g., test1job, test2job)
 Shortform: -j
 ```
+Running a job will create a 'task'.  This means, a job will create a copy of its configuration in the output directory among other files like text-chunks, audio-chunks, validation-results for this task etc. The task.yaml will look something like this:
+```bash
+\data\output\default\input-document_20250713_232227_config.yaml  # <-- this is a task.yaml
+```
+You can use it to modify a task,  re-run the job to fill the deleted gaps etc. If the user runs a job or task a second time it will find all former tasks related to that job. You will be prompted interactively about the execution strategy:
+
+#### Interactive Mode
+```bash
+==================================================
+TTS PIPELINE - TASK-BASED EXECUTION SYSTEM
+==================================================
+Using device: cuda
+
+Found existing tasks for job 'default':
+1. default - no-label - input-document.txt - 13.07.2025 - 23:22 (<-- latest)
+2. default - no-label - input-document.txt - 12.07.2025 - 21:11
+
+Select action:
+[Enter] - Options for latest task
+n       - Create and run new task
+a       - Options to run all tasks
+1-1     - Options for specific task
+c       - Cancel
+```
+
+#### Non-interactive mode
+If you want to work non-interactivly, you can use cli arguments to specify your **execution strategy**, resembling most of the menu options.
+
+- **last/latest**: Uses the latest task (Checks task – final audio is present? If not resumes task, if yes skips)
+- **all**: Uses all tasks (Checks all tasks – final audio are present? If not resumes tasks, if yes skips)
+- **new**: Creates a new task
+- **last-new/new-last**: Checks latest task, resumes it, fills gaps, re-assembles new final audio
+- **all-new/new-all**: Checks all tasks, resumes tasks, fills gaps, re-assembles new final audio
 
 ```bash
 # Execution strategies (global):
-python src/cbpipe.py --mode last or latest # Execute latest task (again) for all given jobs.
-python src/cbpipe.py --mode all                    # Execute all found tasks (again) for all given jobs.
-python src/cbpipe.py --mode new                    # Create new task for all given jobs.
+python src/cbpipe.py --mode last or latest		# Execute latest task (again) for all given jobs.
+python src/cbpipe.py --mode all					# Execute all found tasks (again) for all given jobs.
+python src/cbpipe.py --mode new					# Create new task for all given jobs.
 python src/cbpipe.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
 Shortform: -m
 
@@ -88,58 +127,30 @@ python src/cbpipe.py --mode all-new or new-all     # Execute all tasks + new fin
 ```
 
 ```bash
-# Force regeneration
-python src/cbpipe.py --force-final-generation      # Another way of globally forcing the regeneration of final audio from existing candidates, same as --mode new|last-new|all-new
+# Another way of globally forcing the regeneration of final audio from existing candidates, same as --mode new|last-new|all-new
+python src/cbpipe.py --force-final-generation      
 Shortform: -f
 ```
+If you want to create a completly new rendering with all new audio, don't rerun a task, but use the create new task option "--mode new" instead. If you want to partially re-render an already completed task, delete some (bad) audio-chunks, and re-run the task with the "--mode last-new" or "--mode last --force-final-generation" option. This will re-render the missing files, fill in the gaps, and re-assemble the final audio.
 
 ```bash
-# Device selection
-python src/cbpipe.py --device cuda               # Force GPU execution
+# Gap-Filling resume of the latest task
+python src/cbpipe.py myjob1.yaml --mode last --force-final-generation
+or
+python src/cbpipe.py myjob1.yaml --mode last-new
+```
+##### Combined example
+```bash
+python src/cbpipe.py --job "testjob*" --mode all-new --v # Create new tasks for all jobs matching "testjob*" pattern, in verbose mode
 ```
 
+#####  Additional options
 ```bash
-# Additional options
 python src/cbpipe.py --verbose or -v             # Detailed logging
+python src/cbpipe.py --device cuda               # Device selection: Force GPU execution
 ```
 
-```bash
-# Combined examples
-python src/cbpipe.py --job "my_job" --verbose     # Job with verbose logging
-python src/cbpipe.py --job "job1" --mode last-new   # Complete check of last task from "job1" and overwriting final audio.
-python src/cbpipe.py --job "testjob*" --mode all-new --v # Create new tasks for all jobs matching "testjob*" pattern
-```
 
-#### Note: 
-If you want to create a complete new render with all new audio, don't rerun a task, but use a new task instead.
-If you want to partially re-render an already completed task, delete some (bad) audio-chunks, and re-run the task with the "--mode new" option. This will re-render the missing files, fill in the gaps, and re-assemble the final audio.
-
-
-#### Execution Strategies
-- **last/latest**: Uses the latest task (Checks task – final audio is present? If not resumes task, if yes skips)
-- **all**: Uses all tasks (Checks all tasks – final audio are present? If not resumes tasks, if yes skips)
-- **new**: Creates a new task
-- **last-new/new-last**: Checks latest task, resumes it, fills gaps, re-assembles new final audio
-- **all-new/new-all**: Checks all tasks, resumes tasks, fills gaps, re-assembles new final audio
-
-#### Interactive Selection
-When no strategy is specified, the user is prompted interactively:
-
-```
-Found existing tasks for job 'my_job':
-1. Task 2024-03-20_120000
-2. Task 2024-03-20_110000
-3. Task 2024-03-20_100000
-
-Select action:
-[Enter] - Run latest task (Check task)
-n      - Create new task
-a      - Run all tasks (Check tasks)
-ln     - Use latest task + force new final audio
-an     - Run all tasks + force new final audio
-1-3    - Select specific task
-c      - Cancel
-```
 
 ## Implemented features
 

@@ -1,0 +1,46 @@
+job:
+  name: switching-speakers
+  run-label: example
+input:
+  text_file: speakers_example.txt
+chunking:
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  min_chunk_length: 80
+generation:
+  num_candidates: 2
+  max_retries: 1
+  default_speaker: stephan_moebius_5  # overriding the default speaker from default_config.yaml
+  speakers:
+    - id: stephan_moebius_5  # and overriding some speaker parameters below
+      tts_params:
+        exaggeration: 0.5
+        exaggeration_max_deviation: 0.15
+        cfg_weight: 0.25
+        cfg_weight_max_deviation: 0.20
+        temperature: 1.0
+        temperature_max_deviation: 0.3
+        repetition_penalty: 1.2
+        min_p: 0.05
+        top_p: 0.95
+
+    - id: stephan_moebius_2  
+      tts_params:
+        temperature: 0.90
+        temperature_max_deviation: 0.20
+        min_p: 0.04
+        top_p: 0.92
+      conservative_candidate:
+        enabled: false
+        exaggeration: 0.4
+        cfg_weight: 0.35
+        temperature: 0.8
+
+    - id: stephan_moebius_3
+      tts_params:
+        exaggeration: 0.7
+        exaggeration_max_deviation: 0.40
+        min_p: 0.08
+        top_p: 0.92
+
+# All other settings will be inherited from default_config.yaml

@@ -8,7 +8,6 @@ input:
 preprocessing:
   enabled: true
   normalize_line_endings: true    # Convert \r\n and \r to \n
-  # Future preprocessing options can be added here
 
 chunking:
   target_chunk_limit: 380
@@ -19,12 +18,13 @@ chunking:
 generation:
   num_candidates: 3
   max_retries: 1
-  default_speaker: glen_hallstrom_1
+  default_speaker: stephan_moebius_1
   
-  # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
+  # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!
+
   speakers:
-    - id: glen_hallstrom_1                     # use any string you like
-      reference_audio: glen_hallstrom_15.wav   # file in data/input/reference_audio folder
+    - id: stephan_moebius_1                     # use any string you like
+      reference_audio: stephan_moebius_1.wav   # file in data/input/reference_audio folder
       tts_params:
         # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
         # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
@@ -33,280 +33,26 @@ generation:
         exaggeration: 0.45                  # give MAX here
         exaggeration_max_deviation: 0.10    # ramp DOWN 
 
-        cfg_weight: 0.45                    # give MIN here
+        cfg_weight: 0.15                    # give MIN here
         cfg_weight_max_deviation: 0.20      # ramp UP 
 
-        temperature: 1.0                    # give MIN here
-        temperature_max_deviation: 0.25     # ramp UP 
+        temperature: 0.9                    # give MIN here
+        temperature_max_deviation: 0.20     # ramp UP 
 
-        repetition_penalty: 1.2             # Penalty for repeated output tokens (default is 1.2, was 2.0 earlier) 
+        repetition_penalty: 1.5             # Penalty for repeated output tokens (default is 1.2, was 2.0 earlier) 
         
         # Additional sampling parameters for fine-tuning generation
-        min_p: 0.02                         # Minimum probability threshold for token sampling
-        top_p: 0.99                         # Top-p (nucleus) sampling threshold
+        min_p: 0.06                         # Minimum probability threshold for token sampling
+        top_p: 0.94                         # Top-p (nucleus) sampling threshold
         
       # Conservative candidate params for most likely success. Also fallback for retries when the generation fails.
       conservative_candidate:
-        enabled: false
+        enabled: true    # if true the last of num_candidates will use conservative candidate params.
         exaggeration: 0.4
-        cfg_weight: 0.5
+        cfg_weight: 0.35
         temperature: 0.8
         min_p: 0.08    # Higher for more stability
         top_p: 0.9     # Lower for less variance
-
-  # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
-    - id: annie_coleman_rothenberg_1
-      reference_audio: annie_coleman_rothenberg_1.wav
-      tts_params:
-        exaggeration: 0.65
-        exaggeration_max_deviation: 0.25
-        cfg_weight: 0.35
-        cfg_weight_max_deviation: 0.30
-        temperature: 1.1
-        temperature_max_deviation: 0.3
-        repetition_penalty: 1.3
-        min_p: 0.03
-        top_p: 0.99
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.5
-        cfg_weight: 0.4
-        temperature: 0.8
-
-    - id: annie_coleman_rothenberg_2
-      reference_audio: annie_coleman_rothenberg_2.wav
-      tts_params:
-        exaggeration: 0.60
-        exaggeration_max_deviation: 0.15
-        cfg_weight: 0.25
-        cfg_weight_max_deviation: 0.2
-        temperature: 1.0
-        temperature_max_deviation: 0.2
-        repetition_penalty: 1.3
-        min_p: 0.03
-        top_p: 0.99
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.5
-        cfg_weight: 0.5
-        temperature: 0.85
-
-    - id: cori_samuel_1
-      reference_audio: cori_samuel_1.wav
-      tts_params:
-        exaggeration: 0.60
-        exaggeration_max_deviation: 0.10
-        cfg_weight: 0.25
-        cfg_weight_max_deviation: 0.20
-        temperature: 1.0
-        temperature_max_deviation: 0.3
-        min_p: 0.04
-        top_p: 0.98
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.4
-        temperature: 0.75
-
-    - id: cori_samuel_2
-      reference_audio: cori_samuel_2.wav
-      tts_params:
-        exaggeration: 0.55
-        exaggeration_max_deviation: 0.10
-        cfg_weight: 0.3
-        cfg_weight_max_deviation: 0.15
-        temperature: 1.05
-        temperature_max_deviation: 0.10
-        repetition_penalty: 1.6
-        min_p: 0.1
-        top_p: 0.9
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.4
-        temperature: 0.8
-        min_p: 0.1
-        top_p: 0.89
-
-    - id: cori_samuel_3
-      reference_audio: cori_samuel_3.wav
-      tts_params:
-        exaggeration: 0.5
-        exaggeration_max_deviation: 0.1
-        cfg_weight: 0.35
-        cfg_weight_max_deviation: 0.15
-        temperature: 1.05
-        temperature_max_deviation: 0.2
-        repetition_penalty: 1.2
-        min_p: 0.04
-        top_p: 0.96
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.5
-        temperature: 0.75
-
-    - id: david_barnes_1
-      reference_audio: david_barnes_1.wav
-      tts_params:
-        exaggeration: 0.5
-        exaggeration_max_deviation: 0.2
-        cfg_weight: 0.4
-        cfg_weight_max_deviation: 0.2
-        temperature: 1.20
-        temperature_max_deviation: 0.2
-        repetition_penalty: 1.3
-        min_p: 0.06
-        top_p: 0.92
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.35
-        cfg_weight: 0.6
-        temperature: 0.8
-
-    - id: david_barnes_2
-      reference_audio: david_barnes_2.wav
-      tts_params:
-        exaggeration: 0.40
-        exaggeration_max_deviation: 0.15
-        cfg_weight: 0.4
-        cfg_weight_max_deviation: 0.25
-        temperature: 1.05
-        temperature_max_deviation: 0.15
-        repetition_penalty: 1.3
-        min_p: 0.08
-        top_p: 0.92
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.5
-        temperature: 0.8
-
-    - id: gesine_1
-      reference_audio: gesine_1.wav
-      tts_params:
-        exaggeration: 0.65
-        exaggeration_max_deviation: 0.2
-        cfg_weight: 0.2
-        cfg_weight_max_deviation: 0.4
-        temperature: 1.0
-        temperature_max_deviation: 0.3
-        repetition_penalty: 1.2
-        min_p: 0.04
-        top_p: 0.96
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.5
-        cfg_weight: 0.4
-        temperature: 0.8
-
-    - id: gesine_2
-      reference_audio: gesine_2.wav
-      tts_params:
-        exaggeration: 0.65
-        exaggeration_max_deviation: 0.15
-        cfg_weight: 0.3
-        cfg_weight_max_deviation: 0.15
-        temperature: 0.95
-        temperature_max_deviation: 0.2
-        repetition_penalty: 1.5
-        min_p: 0.07
-        top_p: 0.93
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.5
-        cfg_weight: 0.5
-        temperature: 0.8
-
-    - id: glen_hallstrom_2
-      reference_audio: glen_hallstrom_25.wav
-      tts_params:
-        exaggeration: 0.45
-        exaggeration_max_deviation: 0.2
-        cfg_weight: 0.50
-        cfg_weight_max_deviation: 0.3
-        temperature: 0.90
-        temperature_max_deviation: 0.2
-        repetition_penalty: 1.3
-        min_p: 0.05
-        top_p: 0.95
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.5
-        temperature: 0.8
-
-    - id: glen_hallstrom_3
-      reference_audio: glen_hallstrom_35.wav
-      tts_params:
-        exaggeration: 0.5
-        exaggeration_max_deviation: 0.25
-        cfg_weight: 0.5
-        cfg_weight_max_deviation: 0.25
-        temperature: 0.9
-        temperature_max_deviation: 0.3
-        repetition_penalty: 1.2
-        min_p: 0.05
-        top_p: 0.95
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.35
-        cfg_weight: 0.45
-        temperature: 0.7
-
-    - id: mike_kamp_1
-      reference_audio: mike_kamp_1.wav
-      tts_params:
-        exaggeration: 0.50
-        exaggeration_max_deviation: 0.20
-        cfg_weight: 0.15
-        cfg_weight_max_deviation: 0.40
-        temperature: 0.95
-        temperature_max_deviation: 0.20
-        repetition_penalty: 1.3
-        min_p: 0.04
-        top_p: 0.97
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.37
-        cfg_weight: 0.45
-        temperature: 0.75
-
-    - id: peter_yearsley_1
-      reference_audio: peter_yearsley_1.wav
-      tts_params:
-        exaggeration: 0.55
-        exaggeration_max_deviation: 0.25
-        cfg_weight: 0.3
-        cfg_weight_max_deviation: 0.3
-        temperature: 0.95
-        temperature_max_deviation: 0.25
-        repetition_penalty: 1.2
-        min_p: 0.04
-        top_p: 0.97
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.5
-        temperature: 0.75
-
-    - id: stephan_moebius_1
-      reference_audio: stephan_moebius_1.wav
-      tts_params:
-        exaggeration: 0.45
-        exaggeration_max_deviation: 0.10
-        cfg_weight: 0.15
-        cfg_weight_max_deviation: 0.20
-        temperature: 0.9
-        temperature_max_deviation: 0.20
-        repetition_penalty: 1.5
-        min_p: 0.06
-        top_p: 0.94
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.35
-        temperature: 0.8
 
     - id: stephan_moebius_2
       reference_audio: stephan_moebius_2.wav
@@ -321,7 +67,7 @@ generation:
         min_p: 0.05
         top_p: 0.95
       conservative_candidate:
-        enabled: false
+        enabled: false  # if false the ramping params will be spread over ALL num_candidates.
         exaggeration: 0.4
         cfg_weight: 0.35
         temperature: 0.8
@@ -344,8 +90,8 @@ generation:
         cfg_weight: 0.4
         temperature: 0.8
 
-    - id: stephan_moebius_5
-      reference_audio: stephan_moebius_5.wav
+    - id: stephan_moebius_4
+      reference_audio: stephan_moebius_4.wav
       tts_params:
         exaggeration: 0.55
         exaggeration_max_deviation: 0.20
@@ -362,8 +108,8 @@ generation:
         cfg_weight: 0.4
         temperature: 0.75
 
-    - id: stephan_moebius_6
-      reference_audio: stephan_moebius_6.wav
+    - id: stephan_moebius_5
+      reference_audio: stephan_moebius_5.wav
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.15
@@ -387,9 +133,10 @@ validation:
 
 audio:
   silence_duration:
-    normal: 0.30 # inserted between chunks if split was between sentences
-    paragraph: 0.80 # inserted if split was before paragraph break blank line
+    normal: 0.30  # inserted between chunks if split was between sentences
+    paragraph: 0.80  # inserted if split was before paragraph break blank line
+  sample_rate: 24000
+
   # ChatterboxTTS native sample rate - NOT a user setting!
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
   # Only change this if ChatterboxTTS itself changes its output sample rate
-  sample_rate: 24000 

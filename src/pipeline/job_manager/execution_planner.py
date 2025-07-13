@@ -41,7 +41,7 @@ class ExecutionPlanner:
         self.cli_mapper = CLIMapper()
         self.strategy_resolver = StrategyResolver(self.cli_mapper)
 
-        logger.info("ExecutionPlanner initialized with MenuOrchestrator")
+        logger.debug("ExecutionPlanner initialized with MenuOrchestrator")
 
     def resolve_execution_plan(
         self, args: Any, config_files: Optional[List[Path]] = None
@@ -187,13 +187,13 @@ class ExecutionPlanner:
 
         # Try CLI-first approach
         if not self.strategy_resolver.requires_user_interaction(args, context):
-            logger.info("Resolving intent from CLI arguments")
+            logger.debug("Resolving intent from CLI arguments")
             cli_intent = self.cli_mapper.parse_cli_to_execution_intent(args, context)
             if cli_intent is not None:
                 return cli_intent
 
         # Fallback to interactive MenuOrchestrator
-        logger.info("Resolving intent via MenuOrchestrator")
+        logger.debug("Resolving intent via MenuOrchestrator")
         return self.menu_orchestrator.resolve_user_intent(context)
 
     def _create_execution_plan(

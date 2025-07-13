@@ -8,10 +8,3 @@ black>=23.0.0                  # Code formatting
 isort>=5.12.0                  # Import sorting
 flake8>=6.0.0                  # Linting
 mypy>=1.0.0                    # Type checking
-
-# Pre-commit hooks
-pre-commit>=3.0.0
-
-# Documentation
-sphinx>=5.0.0
-sphinx-rtd-theme>=1.2.0

@@ -1,0 +1,15 @@
+job:
+  name: simple-example
+  run-label: 
+input:
+  text_file: input-document.txt
+chunking:
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  min_chunk_length: 80
+generation:
+  num_candidates: 2
+  max_retries: 1
+  default_speaker: stephan_moebius_2
+
+# All other settings will be inherited from default_config.yaml
