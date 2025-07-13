@@ -100,7 +100,7 @@ def get_job_logs(run_id: int, token: str) -> dict:
     }
 
     # Get jobs
-    jobs_url = f"https://api.github.com/repos/MoebiusSt/tts_pipeline_enhanced/actions/runs/{run_id}/jobs"
+    jobs_url = f"https://api.github.com/repos/MoebiusSt/chatterbox-pipeline/actions/runs/{run_id}/jobs"
     response = requests.get(jobs_url, headers=headers)
     response.raise_for_status()
     jobs = response.json()["jobs"]
@@ -109,7 +109,7 @@ def get_job_logs(run_id: int, token: str) -> dict:
     job_logs = {}
     for job in jobs:
         job_id = job["id"]
-        logs_url = f"https://api.github.com/repos/MoebiusSt/tts_pipeline_enhanced/actions/jobs/{job_id}/logs"
+        logs_url = f"https://api.github.com/repos/MoebiusSt/chatterbox-pipeline/actions/jobs/{job_id}/logs"
         log_response = requests.get(logs_url, headers=headers)
         if log_response.status_code == 200:
             # Only store error details for failed jobs

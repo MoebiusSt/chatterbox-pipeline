@@ -6,15 +6,15 @@ Thank you for your interest in contributing to this project! These instructions 
 
 ### 1. Fork and clone repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/tts_pipeline_enhanced.git
-cd tts_pipeline_enhanced
+git clone https://github.com/YOUR_USERNAME/chatterbox-pipeline.git
+cd chatterbox-pipeline
 ```
 
 ### Environment Setup
 ```bash
 # Production environment setup
 git clone <repository>
-cd tts_pipeline_enhanced
+cd chatterbox-pipeline
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 pip install -r requirements.txt

@@ -6,7 +6,7 @@ input:
   text_file: test_short.txt # file name in texts folder
 
 generation:
-  num_candidates: 3
+  num_candidates: 2
   max_retries: 1
   default_speaker: peter_yearsley_1
   
