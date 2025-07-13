@@ -36,6 +36,7 @@ ENV/
 *.swp
 *.swo
 *~
+.code-workspace.code-workspace
 
 # macOS
 .DS_Store
@@ -59,7 +60,7 @@ data/output/
 *.m4a
 *.pkf
 # Keep reference audio samples
-!data/input/reference_audio/stephan_moebius_*.wav
+!data/input/reference_audio/stephan_moebius_1.wav
 
 # Model files and checkpoints
 models/

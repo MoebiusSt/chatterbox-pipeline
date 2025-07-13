@@ -164,7 +164,7 @@ def test_regenerate_final():
     logger.info("🎯 Mock scenario ready for testing!")
     logger.info("=" * 50)
     logger.info("Now you can test --regenerate-final with:")
-    logger.info(f"   python src/main.py --job {test_dir_name} --regenerate-final")
+    logger.info(f"   python src/cbpipe.py --job {test_dir_name} --regenerate-final")
     logger.info("")
     logger.info("Expected behavior:")
     logger.info("   1. Detect assembly stage (final audio exists)")

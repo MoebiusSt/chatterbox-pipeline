@@ -2,12 +2,12 @@
 
 ## The Problem
 
-Every time `main.py` is called, the message "cache miss" is displayed because ChatterboxTTS must be reloaded on each new run. This is **normal behavior**.
+Every time `cbpipe.py` is called, the message "cache miss" is displayed because ChatterboxTTS must be reloaded on each new run. This is **normal behavior**.
 
 ## Why Cache Miss on Every Run?
 
 ### 1. **In-Memory Cache**
-The cache only works within a Python process. Each new call to `main.py` starts a new process with an empty cache.
+The cache only works within a Python process. Each new call to `cbpipe.py` starts a new process with an empty cache.
 
 ### 2. **Complex Models**
 ChatterboxTTS is a composite model (TTS + Voice Encoder + Text Processor) that cannot be simply serialized to disk.
@@ -39,21 +39,21 @@ The model is **not** downloaded again. The model files are already stored in `~/
 ### 1. **Multiple Tasks in One Run**
 ```bash
 # Bad: Multiple separate runs
-python src/main.py task1.yaml
-python src/main.py task2.yaml
-python src/main.py task3.yaml
+python src/cbpipe.py task1.yaml
+python src/cbpipe.py task2.yaml
+python src/cbpipe.py task3.yaml
 
 # Better: All tasks in one run
-python src/main.py task1.yaml task2.yaml task3.yaml
+python src/cbpipe.py task1.yaml task2.yaml task3.yaml
 ```
 
 ### 2. **Use Job System**
 ```bash
 # All tasks of a job in one run
-python src/main.py --mode all
+python src/cbpipe.py --mode all
 
 # Process all existing tasks
-python src/main.py --job "myjob*" --mode all
+python src/cbpipe.py --job "myjob*" --mode all
 ```
 
 ### 3. **Accept Loading Time**
@@ -63,7 +63,7 @@ python src/main.py --job "myjob*" --mode all
 
 ### Show Cache Explanation
 ```bash
-python src/main.py --explain-cache
+python src/cbpipe.py --explain-cache
 ```
 
 ### Run Cache Test

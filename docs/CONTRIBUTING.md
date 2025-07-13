@@ -136,4 +136,4 @@ flake8 src/ scripts/
 ```bash
 # Enable verbose logging
 export PYTHONPATH=src:$PYTHONPATH
-python -m logging.basicConfig level=DEBUG src/main.py
+python -m logging.basicConfig level=DEBUG src/cbpipe.py

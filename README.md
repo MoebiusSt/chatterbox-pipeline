@@ -1,4 +1,4 @@
-# Enhanced TTS Pipeline
+# Chatterbox Pipeline
 
 An enhanced Text-to-Speech pipeline based on resemble-ai/chatterbox that implements:
 - intelligent SpaCy-based text chunking for longer generations, 
@@ -24,8 +24,8 @@ Does not have:
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/MoebiusSt/tts_pipeline_enhanced.git
-cd tts_pipeline_enhanced
+git clone https://github.com/MoebiusSt/chatterbox-pipeline.git
+cd chatterbox-pipeline
 ```
 
 ### 2. Create Virtual Environment (REQUIRED)
@@ -60,54 +60,54 @@ pip install -r dev-requirements.txt
 ### 4. Production TTS Pipeline
 ```bash
 # Full pipeline with real TTS (requires ChatterboxTTS)
-python src/main.py
+python src/cbpipe.py
 ```
 
 ### 5. Command Line Options
 ```bash
 # Standard mode (interactive)
-python src/main.py                              # Execute default job from /config/default_config.yaml
-python src/main.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
-python src/main.py --job "my_job"               # Execute job with specific name present in a config or existing outputdirectory
-python src/main.py --job "testjob*"             # Execute all jobs starting with "testjob" (pattern matching)
-python src/main.py --job "test?job"             # Execute jobs matching pattern (e.g., test1job, test2job)
+python src/cbpipe.py                              # Execute default job from /config/default_config.yaml
+python src/cbpipe.py job1.yaml job2.yaml          # Specific job configurations (interactive for each job)
+python src/cbpipe.py --job "my_job"               # Execute job with specific name present in a config or existing outputdirectory
+python src/cbpipe.py --job "testjob*"             # Execute all jobs starting with "testjob" (pattern matching)
+python src/cbpipe.py --job "test?job"             # Execute jobs matching pattern (e.g., test1job, test2job)
 Shortform: -j
 ```
 
 ```bash
 # Execution strategies (global):
-python src/main.py --mode last or latest # Execute latest task (again) for all given jobs.
-python src/main.py --mode all                    # Execute all found tasks (again) for all given jobs.
-python src/main.py --mode new                    # Create new task for all given jobs.
-python src/main.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
+python src/cbpipe.py --mode last or latest # Execute latest task (again) for all given jobs.
+python src/cbpipe.py --mode all                    # Execute all found tasks (again) for all given jobs.
+python src/cbpipe.py --mode new                    # Create new task for all given jobs.
+python src/cbpipe.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
 Shortform: -m
 
 # Execution strategies with force-overwriting final audio:
-python src/main.py --mode last-new or new-last   # Execute latest task + create new final audio for all given jobs. 
-python src/main.py --mode all-new or new-all     # Execute all tasks + new final audios for all given jobs.
+python src/cbpipe.py --mode last-new or new-last   # Execute latest task + create new final audio for all given jobs. 
+python src/cbpipe.py --mode all-new or new-all     # Execute all tasks + new final audios for all given jobs.
 ```
 
 ```bash
 # Force regeneration
-python src/main.py --force-final-generation      # Another way of globally forcing the regeneration of final audio from existing candidates, same as --mode new|last-new|all-new
+python src/cbpipe.py --force-final-generation      # Another way of globally forcing the regeneration of final audio from existing candidates, same as --mode new|last-new|all-new
 Shortform: -f
 ```
 
 ```bash
 # Device selection
-python src/main.py --device cuda               # Force GPU execution
+python src/cbpipe.py --device cuda               # Force GPU execution
 ```
 
 ```bash
 # Additional options
-python src/main.py --verbose or -v             # Detailed logging
+python src/cbpipe.py --verbose or -v             # Detailed logging
 ```
 
 ```bash
 # Combined examples
-python src/main.py --job "my_job" --verbose     # Job with verbose logging
-python src/main.py --job "job1" --mode last-new   # Complete check of last task from "job1" and overwriting final audio.
-python src/main.py --job "testjob*" --mode all-new --v # Create new tasks for all jobs matching "testjob*" pattern
+python src/cbpipe.py --job "my_job" --verbose     # Job with verbose logging
+python src/cbpipe.py --job "job1" --mode last-new   # Complete check of last task from "job1" and overwriting final audio.
+python src/cbpipe.py --job "testjob*" --mode all-new --v # Create new tasks for all jobs matching "testjob*" pattern
 ```
 
 #### Note: 
@@ -174,7 +174,7 @@ See [SPEAKER_SYSTEM.md](SPEAKER_SYSTEM.md) for detailed documentation.
 
 ## Project structure
 ```
-tts_pipeline_enhanced/
+chatterbox-pipeline/
 ├── config/
 │   ├── __init__.py
 │   ├── default_config.yaml        # Central default configuration
@@ -206,7 +206,7 @@ tts_pipeline_enhanced/
 │   │   ├── model_cache.py
 │   │   ├── selection_strategies.py
 │   │   └── tts_generator.py
-│   ├── main.py                    # Main pipeline script
+│   ├── cbpipe.py                  # Main pipeline script
 │   ├── pipeline/                  # Pipeline orchestration
 │   │   ├── __init__.py
 │   │   ├── task_orchestrator.py
@@ -410,7 +410,7 @@ graph TD
     style M fill:#ffebee
 ```
 
-### Main-Workflow (main.py)
+### Main-Workflow (cbpipe.py)
 
 ```python
 # Phase 1: Text Chunking

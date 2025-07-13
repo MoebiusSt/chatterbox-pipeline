@@ -3,7 +3,7 @@ from typing import List
 
 from .base_chunker import TextChunk
 
-# Use the centralized logging configuration from main.py
+# Use the centralized logging configuration from cbpipe.py
 logger = logging.getLogger(__name__)
 
 

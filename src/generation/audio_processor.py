@@ -7,7 +7,7 @@ import torchaudio as ta
 
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
-# Use the centralized logging configuration from main.py
+# Use the centralized logging configuration from cbpipe.py
 logger = logging.getLogger(__name__)
 
 

@@ -258,10 +258,10 @@ JOB-SPECIFIC STRATEGIES:
   --mode "job1:latest-new,job2:all" ↔ Menu: Multiple job selection with different strategies
 
 EXAMPLES:
-  python main.py --mode latest-new --rerender-all
+          python cbpipe.py --mode latest-new --rerender-all
   ↔ Menu: [Enter] → 'r' → 'y' (latest task + delete all + rerender + new final)
 
-  python main.py --mode all-new --force-final-generation
+          python cbpipe.py --mode all-new --force-final-generation
   ↔ Menu: 'a' → [Enter] (all tasks + force final generation)
 
 INTERACTIVE-ONLY FEATURES:

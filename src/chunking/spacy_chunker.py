@@ -9,7 +9,7 @@ from spacy.tokens import Span
 
 from .base_chunker import BaseChunker, TextChunk
 
-# Use the centralized logging configuration from main.py
+# Use the centralized logging configuration from cbpipe.py
 logger = logging.getLogger(__name__)
 
 

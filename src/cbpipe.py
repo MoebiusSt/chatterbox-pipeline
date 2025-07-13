@@ -57,10 +57,10 @@ def parse_arguments() -> argparse.Namespace:
     Parse command line arguments for the new task-based system.
 
     Supported usage patterns:
-    - python main.py                           -> default job
-    - python main.py config1.yaml config2.yaml -> specific configs
-    - python main.py --job "jobname"           -> find job by name
-    - python main.py --parallel               -> enable parallel execution
+    - python cbpipe.py                           -> default job
+    - python cbpipe.py config1.yaml config2.yaml -> specific configs
+    - python cbpipe.py --job "jobname"           -> find job by name
+    - python cbpipe.py --parallel               -> enable parallel execution
     """
     parser = argparse.ArgumentParser(
         description="TTS Pipeline - Task-Based Execution System",
@@ -341,4 +341,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    exit(main())
+    exit(main()) 

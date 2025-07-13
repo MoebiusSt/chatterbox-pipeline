@@ -12,7 +12,7 @@ from .batch_processor import BatchChunkProcessor, GenerationResult
 from .selection_strategies import SelectionStrategies
 from .tts_generator import TTSGenerator
 
-# Use the centralized logging configuration from main.py
+# Use the centralized logging configuration from cbpipe.py
 logger = logging.getLogger(__name__)
 
 
@@ -362,10 +362,10 @@ class CandidateManager:
         # Store normal candidates for validation check
         # normal_candidates_for_validation = all_candidates.copy()
 
-        # NOTE: Conservative retry logic is now handled in main.py after validation
+        # NOTE: Conservative retry logic is now handled in cbpipe.py after validation
         # This allows for smarter retry decisions based on validation results
 
-        # Select the best candidate (for backward compatibility, but validation will be done in main.py)
+        # Select the best candidate (for backward compatibility, but validation will be done in cbpipe.py)
         selected_candidate = all_candidates[0] if all_candidates else None
 
         success = len(all_candidates) >= self.min_successful_candidates

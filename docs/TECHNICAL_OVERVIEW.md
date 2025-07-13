@@ -7,7 +7,7 @@
 **Pipeline**: Text → Preprocessor → Chunks → Candidates → Validation → Selection → Audio Chunks → Assembly → Output  
 **Language**: Python 3.8+, PyTorch, Whisper, SpaCy  
 **Architecture**: Job/Task-based pipeline with cascading configuration  
-**Entry Point**: `src/main.py`
+**Entry Point**: `src/cbpipe.py`
 
 ## Core Components
 
@@ -184,7 +184,7 @@ data/output/{job_name}/
 
 ### Important Files
 ```
-src/main.py                      # Main pipeline orchestration
+src/cbpipe.py                      # Main pipeline orchestration
 src/pipeline/job_manager.py      # Job management
 src/pipeline/task_orchestrator.py # Task orchestration
 src/pipeline/task_executor.py    # Individual task execution
@@ -198,7 +198,7 @@ python scripts/run_chunker.py
 python scripts/test_mock_pipeline.py
 
 # Full pipeline with timing
-python src/main.py --job my_job
+python src/cbpipe.py --job my_job
 ```
 
 ## API Summary
