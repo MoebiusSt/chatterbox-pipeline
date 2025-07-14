@@ -14,13 +14,15 @@ generation:
     - id: 30s-radio1
       reference_audio: 30s-radio1.wav # file name in reference_audio folder
       tts_params:
-        exaggeration: 0.7
+        exaggeration: 0.8
         exaggeration_max_deviation: 0.3
         cfg_weight: 0.5
         cfg_weight_max_deviation: 0.2
         temperature: 0.85
         temperature_max_deviation: 0.2
         repetition_penalty: 1.5
+        min_p: 0.06
+        top_p: 0.94
       conservative_candidate:
         enabled: false
     - id: 30s-radio1-2
@@ -33,6 +35,8 @@ generation:
         temperature: 0.95
         temperature_max_deviation: 0.3
         repetition_penalty: 1.5
+        min_p: 0.07
+        top_p: 0.94
       conservative_candidate:
         enabled: false
     - id: 30s-radio1-3
@@ -45,6 +49,8 @@ generation:
         temperature: 0.95
         temperature_max_deviation: 0.3
         repetition_penalty: 1.5
+        min_p: 0.08
+        top_p: 0.93
       conservative_candidate:
         enabled: false
     - id: 30s-radio2

@@ -2,12 +2,92 @@
 
 > **Quick Reference for Developers and AI Agents**
 
+This document is an unsorted collection of useful information that goes beyond the readme.md.
+
 ## System Architecture at a Glance
 
 **Pipeline**: Text → Preprocessor → Chunks → Candidates → Validation → Selection → Audio Chunks → Assembly → Output  
 **Language**: Python 3.8+, PyTorch, Whisper, SpaCy  
 **Architecture**: Job/Task-based pipeline with cascading configuration  
 **Entry Point**: `src/cbpipe.py`
+
+
+## Project structure
+```
+chatterbox-pipeline/
+├── config/
+│   ├── __init__.py
+│   ├── default_config.yaml        # Central default configuration
+│   └── example_job_config.yaml    # Example job configuration
+├── data/
+│   ├── input/
+│   │   ├── reference_audio/       # Reference audio files
+│   │   │   └── stephan_moebius.wav
+│   │   └── texts/                 # Input texts
+│   │       └── input-document.txt
+│   └── output/                    # Job output directories
+├── logs/                           # main.log
+├── scripts/                        # Unit Tests
+├── src/
+│   ├── __init__.py
+│   ├── chunking/                  # Text segmentation
+│   │   ├── __init__.py
+│   │   ├── base_chunker.py
+│   │   ├── chunk_validator.py
+│   │   └── spacy_chunker.py
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── github_config.py
+│   ├── generation/                # Audio generation
+│   │   ├── __init__.py
+│   │   ├── audio_processor.py
+│   │   ├── batch_processor.py
+│   │   ├── candidate_manager.py
+│   │   ├── model_cache.py
+│   │   ├── selection_strategies.py
+│   │   └── tts_generator.py
+│   ├── cbpipe.py                  # Main pipeline script
+│   ├── pipeline/                  # Pipeline orchestration
+│   │   ├── __init__.py
+│   │   ├── task_orchestrator.py
+│   │   ├── job_manager/
+│   │   │   ├── ...
+│   │   ├── job_manager_wrapper.py
+│   │   ├── task_executor/
+│   │   │   ├── __init__.py
+│   │   │   ├── retry_logic.py
+│   │   │   ├── stage_handlers/
+│   │   │   │   ├── ...
+│   │   │   └── task_executor.py
+│   │   └── task_executor_original.py
+│   ├── preprocessor/              # Text preprocessing
+│   │   ├── __init__.py
+│   │   └── text_preprocessor.py
+│   └── utils/                     # Helper functions
+│       ├── __init__.py
+│       ├── audio_utils.py
+│       ├── config_manager.py
+│       ├── file_manager/
+│       │   ├── __init__.py
+│       │   ├── file_manager.py
+│       │   ├── io_handlers/
+│       │   │   ├── ...
+│       │   ├── state_analyzer.py
+│       │   └── validation_helpers.py
+│       ├── file_manager.py
+│       ├── logging_config.py
+│       └── progress_tracker.py
+├── candidate_quality_scorer_diagram.md
+├── CONTRIBUTING.md
+├── dev-requirements.txt          # Development dependencies
+├── DEVELOPMENT_PLAN.md
+├── mermaid_diagram.md
+├── mypy.ini
+├── pyproject.toml               # Project configuration
+├── README.md
+├── requirements.txt              # Production dependencies
+└── TECHNICAL_OVERVIEW.md
+```
 
 ## Core Components
 
@@ -84,6 +164,88 @@ QualityScorer.score_candidate() → QualityScore
 AudioProcessor.concatenate_segments() → torch.Tensor
 # Intelligente Audio-Verkettung mit Pausenverarbeitung
 ```
+
+
+### Core classes 
+
+#### 1. Chunking Layer
+```python
+class SpaCyChunker:
+    def chunk_text(text: str) → List[TextChunk]
+    
+class TextChunk:
+    text: str
+    start_pos: int  
+    end_pos: int
+    has_paragraph_break: bool
+```
+
+#### 2. Generation Layer  
+```python
+class TTSGenerator:
+    def generate_candidates(text, num_candidates) → List[AudioCandidate]
+    
+class CandidateManager:
+    def generate_candidates_for_chunk() → GenerationResult
+    
+class AudioCandidate:
+    audio: torch.Tensor
+    chunk_text: str
+    generation_params: Dict
+    candidate_id: str
+```
+
+#### 3. Validation Layer
+```python
+class WhisperValidator:
+    def validate_candidate() → ValidationResult
+    
+class FuzzyMatcher:
+    def match_texts() → MatchResult
+    
+class QualityScorer:
+    def score_candidate() → QualityScore
+```
+
+#### 4. Processing Layer
+```python  
+class AudioProcessor:
+    def concatenate_segments() → torch.Tensor
+    def save_audio() → bool
+```
+
+### Important data structures
+
+#### AudioCandidate
+```python
+@dataclass
+class AudioCandidate:
+    audio: torch.Tensor           # Generated audio tensor
+    chunk_text: str              # Original text
+    generation_params: Dict      # TTS parameters used
+    timestamp: datetime          # Creation time
+    candidate_id: str           # Unique identifier
+```
+
+#### ValidationResult
+```python
+@dataclass  
+class ValidationResult:
+    transcription: str           # Whisper transcription
+    similarity_score: float      # Text similarity (0-1)
+    is_valid: bool              # Passes threshold
+    processing_time: float       # Validation duration
+```
+
+#### QualityScore
+```python
+@dataclass
+class QualityScore:
+    overall_score: float         # Combined score (0-1)
+    similarity_score: float      # Text similarity component
+    length_score: float          # Audio length component  
+    transcription_score: float   # Transcription quality
+
 
 ## Data Flow
 
@@ -273,3 +435,18 @@ The pipeline supports various execution strategies:
 1. Job-specific strategies (`--job-mode`)
 2. Global strategy (`--mode`)
 3. Interactive selection (fallback)
+
+
+
+### Testing Architecture
+
+#### Mock Components
+```python
+# CI/CD compatible testing without heavy models
+MockTTSGenerator     # Generates sine waves instead of speech
+MockWhisperValidator # Returns predefined transcriptions
+MockAudioProcessor   # Basic audio operations
+```
+
+#### Test Coverage
+- **Unit Tests**: Individual component testing

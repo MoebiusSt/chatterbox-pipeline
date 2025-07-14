@@ -1,6 +1,6 @@
 # 🎭 Multi-Speaker System Documentation
 
-The TTS pipeline now supports a complete multi-speaker system with dynamic speaker switching within documents.
+The TTS pipeline supports a complete multi-speaker system with dynamic speaker switching within documents.
 
 ## 📋 Overview
 
@@ -10,7 +10,6 @@ The TTS pipeline now supports a complete multi-speaker system with dynamic speak
 - **🔧 Easy configuration** with speaker list in default_config.yaml
 
 ### Architecture
-The speaker system extends the existing pipeline with:
 - **Speaker-specific `reference_audio` files**
 - **Markup parser for `<speaker:id>` tags**
 - **Speaker-aware chunk creation**
@@ -286,9 +285,3 @@ print(f"Speaker validation: {validation_results}")
 ```
 
 ---
-
-## 📈 Roadmap
-
-### Possible future Features
-- [ ] **Visual speaker editor** for GUI-based markup creation
-- [ ] **Dynamic speaker parameters** based on context with **Emotion support** with `<speaker:id:emotion>` syntax

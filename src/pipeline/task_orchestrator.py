@@ -44,8 +44,8 @@ class TaskOrchestrator:
             
             # Detailed completion log for multiple tasks
             if total_tasks > 1:
-                status = "✅ SUCCESS" if result.success else "❌ FAILED"
-                logger.info(f"{status}: {task_config.job_name}:{task_config.task_name}")
+                # Show detailed task execution summary for each task in batch mode
+                self._log_single_task_summary(result)
         
         # Show appropriate summary based on number of tasks
         if total_tasks == 1:
