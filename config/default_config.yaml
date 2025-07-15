@@ -16,8 +16,8 @@ chunking:
   spacy_model: en_core_web_sm
 
 generation:
-  num_candidates: 3
-  max_retries: 1
+  num_candidates: 1
+  max_retries: 0
   default_speaker: stephan_moebius_1
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!
@@ -140,3 +140,12 @@ audio:
   # ChatterboxTTS native sample rate - NOT a user setting!
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
   # Only change this if ChatterboxTTS itself changes its output sample rate
+  
+  # Audio normalization settings
+  normalization:
+    enabled: true            # Enable/disable audio normalization
+    target_level: -16.0      # Target loudness level in dB (unit depends on method)
+    method: "lufs"            # Normalization method: "lufs", "rms", or "peak"
+    peak_limit: -0.1         # Peak safety limit in dB to prevent clipping
+    aggressive_mode: false    # Enable TanH limiting (apply gain first, then soft limit)
+    tanh_scale_factor: 0.8   # TanH saturation curve: 0.2=subtle, 0.5=balanced, 1.0=strong

@@ -4,5 +4,11 @@ spacy>=3.7.0,<3.8.0           # NLP and sentence segmentation
 openai-whisper>=20231117       # Speech-to-text validation
 chatterbox-tts>=0.1.2          # TTS Generation - Updated to latest version with min_p parameters
 fuzzywuzzy>=0.18.0             # Fuzzy text matching
+python-Levenshtein>=0.27.0     # Optimized Levenshtein distance for fuzzywuzzy
 pyyaml>=6.0                    # Configuration management
 perth                          # Required for ChatterboxTTS model loading
+
+# Audio normalization dependencies
+librosa>=0.10.0                # Advanced audio analysis and processing
+soundfile>=0.12.0              # Audio file I/O
+scipy>=1.9.0                   # Signal processing for audio analysis

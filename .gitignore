@@ -100,7 +100,7 @@ coverage.xml
 .env.*.local
 
 # Config files with secrets
-notes_idea-scribbles.txt
+notes_ideas.txt
 config/folker.yaml
 config/*secret*
 config/*private*
