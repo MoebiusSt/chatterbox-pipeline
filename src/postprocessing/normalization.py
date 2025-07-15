@@ -40,17 +40,11 @@ class AudioNormalizer:
             self.target_level = self.normalization_config.get("target_lufs", -23.0)
             
         self.method = self.normalization_config.get("method", "lufs")
-        self.peak_limit = self.normalization_config.get("peak_limit", -1.0)
-        
-        # Aggressive mode for brickwall limiting
-        self.aggressive_mode = self.normalization_config.get("aggressive_mode", False)
-        
-        # Scale factor for TanH limiting curve
-        self.tanh_scale_factor = self.normalization_config.get("tanh_scale_factor", 1.5)
+        self.saturation_factor = self.normalization_config.get("saturation_factor", 0.0)
         
         logger.debug(f"AudioNormalizer initialized: enabled={self.enabled}, "
                     f"target={self.target_level} dB, method={self.method}, "
-                    f"aggressive_mode={self.aggressive_mode}, tanh_scale_factor={self.tanh_scale_factor}")
+                    f"saturation_factor={self.saturation_factor}")
     
     def normalize(self, audio: torch.Tensor, sample_rate: int) -> torch.Tensor:
         """
@@ -81,39 +75,17 @@ class AudioNormalizer:
             # Calculate target gain based on method
             target_gain_db = self._calculate_target_gain(audio_analysis)
             
-            if self.aggressive_mode:
-                # Aggressive mode: Apply target gain first, then limit
-                logger.debug(f"Aggressive mode: applying {target_gain_db:+.1f} dB gain, then limiting")
-                
-                # Apply target gain without peak consideration
-                gained_audio = self._apply_gain(audio, target_gain_db)
-                
-                # Apply brickwall limiting
-                normalized_audio = self._apply_brickwall_limiting(gained_audio, self.peak_limit)
-                
-                # Log what happened
-                logger.info(f"Audio normalized (AGGRESSIVE): {self.method.upper()} "
-                           f"gain {target_gain_db:+.1f} dB + TanH limiting at {self.peak_limit:.1f} dB")
+            # Apply the gain directly - no peak limiting
+            normalized_audio = self._apply_gain(audio, target_gain_db)
+            
+            # Log normalization
+            logger.info(f"Audio normalized: {self.method.upper()} "
+                       f"gain {target_gain_db:+.1f} dB")
+            
+            # Apply TanH saturation with loudness compensation (Stage 2)
+            final_audio = self._apply_tanh_saturation(normalized_audio, sample_rate)
                            
-            else:
-                # Standard mode: Calculate peak-limited gain (the key improvement!)
-                limited_gain_db = self._calculate_peak_limited_gain(
-                    audio, target_gain_db, self.peak_limit
-                )
-                
-                # Apply the optimal gain in one step
-                normalized_audio = self._apply_gain(audio, limited_gain_db)
-                
-                # Log what happened
-                if abs(limited_gain_db - target_gain_db) > 0.1:
-                    logger.info(f"Audio normalized: {self.method.upper()} "
-                               f"target gain {target_gain_db:+.1f} dB → "
-                               f"peak-limited gain {limited_gain_db:+.1f} dB")
-                else:
-                    logger.info(f"Audio normalized: {self.method.upper()} "
-                               f"gain {limited_gain_db:+.1f} dB")
-                           
-            return normalized_audio
+            return final_audio
             
         except Exception as e:
             logger.error(f"Audio normalization failed: {e}")
@@ -129,8 +101,6 @@ class AudioNormalizer:
         - "lufs": Measure with LUFS, normalize to target_level (as LUFS)
         - "rms": Measure with RMS, normalize to target_level (as RMS target in dB)
         - "peak": Measure with Peak, normalize to target_level (as Peak target in dB)
-        
-        peak_limit is ALWAYS only used as a safety limit to prevent clipping.
         """
         if self.method == "lufs":
             current_level = float(audio_analysis["lufs"])
@@ -146,53 +116,7 @@ class AudioNormalizer:
             
         return target_level - current_level
     
-    def _calculate_peak_limited_gain(
-        self, 
-        audio: torch.Tensor, 
-        target_gain_db: float,
-        peak_limit_db: float
-    ) -> float:
-        """
-        Calculate the actual gain considering peak limits.
-        
-        This is the key improvement: we calculate what the peak would be
-        AFTER applying the target gain, and limit the gain if necessary.
-        """
-        # Convert to numpy for analysis
-        if hasattr(audio, 'cpu'):
-            audio_np = audio.cpu().numpy()
-        else:
-            audio_np = audio.numpy()
-            
-        if audio_np.ndim > 1:
-            audio_np = audio_np.flatten()
-        
-        # Calculate current peak
-        current_peak = np.max(np.abs(audio_np))
-        
-        if current_peak == 0:
-            return 0.0  # Silent audio
-            
-        # Calculate what the peak would be after applying target gain
-        target_gain_linear = 10 ** (target_gain_db / 20)
-        predicted_peak = current_peak * target_gain_linear
-        
-        # Convert peak limit to linear
-        peak_limit_linear = 10 ** (peak_limit_db / 20)
-        
-        # If predicted peak would exceed limit, reduce the gain
-        if predicted_peak > peak_limit_linear:
-            # Calculate the maximum gain we can apply
-            max_gain_linear = peak_limit_linear / current_peak
-            max_gain_db = 20 * np.log10(max_gain_linear)
-            
-            logger.debug(f"Peak limiting: target gain {target_gain_db:+.1f} dB → "
-                        f"limited gain {max_gain_db:+.1f} dB")
-            
-            return max_gain_db
-        else:
-            # No limiting needed
-            return target_gain_db
+
     
     def _apply_gain(self, audio: torch.Tensor, gain_db: float) -> torch.Tensor:
         """Apply gain to audio tensor."""
@@ -202,59 +126,56 @@ class AudioNormalizer:
         gain_linear = 10 ** (gain_db / 20)
         return audio * gain_linear
     
-    def _apply_brickwall_limiting(self, audio: torch.Tensor, threshold_db: float) -> torch.Tensor:
+    def _apply_tanh_saturation(self, audio: torch.Tensor, sample_rate: int) -> torch.Tensor:
         """
-        Apply soft limiting using TanH function for musical clipping.
+        Apply TanH saturation with loudness compensation.
         
-        TanH limiting provides smooth, musical distortion instead of harsh clipping.
-        The function is scaled so that its maximum exactly matches the threshold.
+        This method applies configurable TanH saturation while preserving 
+        the loudness level achieved in the normalization stage.
         
         Args:
-            audio: Input audio tensor
-            threshold_db: Threshold in dB for soft limiting
+            audio: Input audio tensor (already normalized)
+            sample_rate: Audio sample rate
             
         Returns:
-            TanH-limited audio tensor
+            Saturated audio tensor with preserved loudness
         """
+        if self.saturation_factor == 0.0:
+            # No saturation requested
+            return audio
+            
         try:
-            # Convert threshold to linear scale
-            threshold_linear = 10 ** (threshold_db / 20)
+            # Measure loudness before saturation
+            pre_analysis = self._analyze_audio_level(audio, sample_rate)
+            pre_loudness = pre_analysis[f"{self.method}_db" if self.method != "lufs" else "lufs"]
             
-            # Scale factor for TanH limiting curve
-            scale_factor = self.tanh_scale_factor  # Configurable saturation curve
+            # Apply TanH saturation with configurable intensity
+            # saturation_factor scales the input to TanH: 0.0=none, 1.0=strong
+            saturation_scale = 1.0 + (self.saturation_factor * 4.0)  # 1.0 to 5.0 scaling
+            saturated_audio = torch.tanh(audio * saturation_scale) / saturation_scale
             
-            # Apply TanH limiting with correct scaling
-            # We want the output to reach exactly threshold_linear at high inputs
+            # Measure loudness after saturation
+            post_analysis = self._analyze_audio_level(saturated_audio, sample_rate)
+            post_loudness = post_analysis[f"{self.method}_db" if self.method != "lufs" else "lufs"]
             
-            # Step 1: Scale audio for TanH processing
-            # We scale relative to the threshold so that threshold input → scale_factor
-            scaled_audio = audio / threshold_linear * scale_factor
+            # Calculate compensation gain to restore original loudness
+            compensation_gain_db = pre_loudness - post_loudness
             
-            # Step 2: Apply TanH
-            tanh_limited = torch.tanh(scaled_audio)
+            # Apply loudness compensation
+            compensated_audio = self._apply_gain(saturated_audio, compensation_gain_db)
             
-            # Step 3: Scale the result to reach the threshold
-            # Since TanH approaches 1 asymptotically, we scale by threshold_linear
-            # This ensures that TanH(∞) → threshold_linear
-            limited_audio = tanh_limited * threshold_linear
+            # Log saturation details
+            if self.saturation_factor > 0.0:
+                logger.info(f"🌊 TanH saturation: factor={self.saturation_factor:.2f}, "
+                           f"compensation={compensation_gain_db:+.1f} dB")
             
-            # Count samples that were affected by limiting
-            affected_samples = torch.sum(torch.abs(audio - limited_audio) > 0.001)
-            total_samples = audio.numel()
-            
-            if affected_samples > 0:
-                affected_percent = (affected_samples.float() / total_samples) * 100
-                max_output = torch.max(torch.abs(limited_audio))
-                max_output_db = 20 * torch.log10(max_output + 1e-10)
-                logger.info(f"🌊 TanH limiting: {affected_samples}/{total_samples} samples affected ({affected_percent:.2f}%), max output: {max_output_db:.1f} dB")
-            else:
-                logger.debug("🌊 TanH limiting: no limiting needed")
-                
-            return limited_audio
+            return compensated_audio
             
         except Exception as e:
-            logger.error(f"TanH limiting failed: {e}")
+            logger.error(f"TanH saturation failed: {e}")
             return audio
+    
+
     
     def _analyze_audio_level(self, audio: torch.Tensor, sample_rate: int) -> Dict[str, Any]:
         """
@@ -367,16 +288,13 @@ class AudioNormalizer:
         if self.enabled:
             try:
                 target_gain_db = self._calculate_target_gain(analysis)
-                limited_gain_db = self._calculate_peak_limited_gain(
-                    audio, target_gain_db, self.peak_limit
-                )
                 
                 analysis["normalization_preview"] = {
                     "method": self.method,
                     "target_gain": target_gain_db,
-                    "limited_gain": limited_gain_db,
-                    "peak_limiting_active": abs(limited_gain_db - target_gain_db) > 0.1,
-                    "would_normalize": abs(limited_gain_db) > 0.1
+                    "would_normalize": abs(target_gain_db) > 0.1,
+                    "saturation_factor": self.saturation_factor,
+                    "would_saturate": self.saturation_factor > 0.0
                 }
             except Exception as e:
                 analysis["normalization_preview"] = {
