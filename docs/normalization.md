@@ -24,10 +24,9 @@ audio:
   - `"rms"`: Average energy level
   - `"peak"`: Maximum peak level
 - **`saturation_factor`**: TanH saturation intensity (0.0 to 1.0)
-  - `0.0`: No saturation (transparent)
-  - `0.3`: Light saturation (subtle harmonic enhancement)
-  - `0.6`: Medium saturation (noticeable warmth)
-  - `1.0`: Strong saturation (aggressive compression)
+  - `0.0`: No saturation (transparent and fully dynamic)
+  - `0.3`: Light saturation (subtle harmonic enhancement and more equal loudness)
+  - `1.0`: Overly strong saturation (aggressive compression with softclipping)
 
 ## How It Works
 
@@ -45,9 +44,8 @@ The normalization system works in two stages:
 
 **Key Benefits:**
 - **Loudness preserved**: Target level is maintained regardless of saturation
-- **Musical saturation**: TanH provides smooth, harmonic distortion
+- **Musical saturation**: TanH provides smooth, harmonic distortion, Soft limiting
 - **Configurable intensity**: From transparent (0.0) to aggressive (1.0)
-- **No harsh clipping**: Soft limiting with natural compression
 
 ### Methods Explained
 
@@ -74,7 +72,7 @@ audio:
   normalization:
     enabled: true
     target_level: -20.0      # Conservative loudness
-    method: "lufs"
+    method: "rms"
     saturation_factor: 0.0   # No saturation for natural speech
 ```
 
@@ -84,8 +82,8 @@ audio:
   normalization:
     enabled: true
     target_level: -16.0      # Broadcast standard
-    method: "lufs"
-    saturation_factor: 0.3   # Light saturation for warmth
+    method: "rms"
+    saturation_factor: 0.1   # Light saturation for warmth and mild compression / mild dynamics reduction
 ```
 
 ### Maximum Loudness with Saturation
@@ -93,9 +91,9 @@ audio:
 audio:
   normalization:
     enabled: true
-    target_level: -12.0      # High loudness
-    method: "lufs"
-    saturation_factor: 0.6   # Medium saturation for presence
+    target_level: -14.0      # High loudness
+    method: "rms"
+    saturation_factor: 0.3   # Medium saturation for presence
 ```
 
 ### Aggressive Mastering
@@ -105,16 +103,8 @@ audio:
     enabled: true
     target_level: -12.0      # High loudness
     method: "rms"
-    saturation_factor: 1.0   # Strong saturation for maximum impact
+    saturation_factor: 0.5   # Strong saturation for maximum impact
 ```
-
-## Important Notes
-
-- **Two-stage processing**: Normalization first, then optional saturation
-- **Loudness preservation**: Target level is maintained even with saturation
-- **No harsh clipping**: TanH provides smooth, musical saturation
-- **Configurable intensity**: saturation_factor from 0.0 (off) to 1.0 (strong)
-- **Performance**: Fast processing with optional saturation stage
 
 ## Troubleshooting
 

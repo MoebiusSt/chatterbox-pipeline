@@ -16,8 +16,8 @@ chunking:
   spacy_model: en_core_web_sm
 
 generation:
-  num_candidates: 1
-  max_retries: 0
+  num_candidates: 2
+  max_retries: 1
   default_speaker: stephan_moebius_1
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!
