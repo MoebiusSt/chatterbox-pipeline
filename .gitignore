@@ -53,6 +53,14 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
+# Text files (except reference samples)
+data/input/texts/
+
+# Keep reference texts
+!data/input/texts/input-document.txt
+!data/input/texts/radio-broadcast.txt
+!data/input/texts/speakers_example.txt
+
 # Audio files (except reference samples)
 data/output/
 *.wav
@@ -101,9 +109,14 @@ coverage.xml
 
 # Config files with secrets
 notes_ideas.txt
-config/folker.yaml
 config/*secret*
 config/*private*
+config/
+# Keep reference yaml files
+!config/default_config.yaml
+!config/radio-broadcast.yaml
+!config/speakers_example.yaml
+!config/simple_example.yaml
 
 # Large data files
 *.tar.gz

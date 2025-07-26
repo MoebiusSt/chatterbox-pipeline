@@ -335,7 +335,7 @@ class FileManager:
 
         reference_audio = speaker_config.get("reference_audio")
         if not reference_audio:
-            raise ValueError(f"No reference_audio defined for speaker '{speaker_id}'")
+            raise ValueError(f"No reference_audio defined for speaker '{speaker_id}' - speaker configuration should have been completed by ConfigManager cascading logic")
 
         audio_path = self.reference_audio_dir / reference_audio
 

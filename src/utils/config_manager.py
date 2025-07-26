@@ -493,9 +493,6 @@ class ConfigManager:
         for job_speaker in job_speakers:
             job_speaker_id = job_speaker.get("id")
 
-            # Find base speaker to merge with
-            base_speaker = None
-
             # 1. Handle default speaker aliases - merge with default speaker but keep alias ID
             if job_speaker_id in ["default", "0", "reset"]:
                 # Use the configured default speaker from base config for merging
@@ -515,19 +512,15 @@ class ConfigManager:
                 merged_speakers.append(merged_speaker)
                 continue
 
-            # 2. Try exact ID match
-            elif job_speaker_id in base_speakers_by_id:
-                base_speaker = base_speakers_by_id[job_speaker_id]
-                processed_ids.add(job_speaker_id)
-
-            # Merge speaker configuration
-            if base_speaker:
-                merged_speaker = self._merge_single_speaker(base_speaker, job_speaker)
+            # 2. Apply complete cascading inheritance for all other speakers
             else:
-                # New speaker - fill in missing fields with defaults from default speaker
-                default_speaker = base_speakers_by_id.get(base_default_speaker_id, {})
-                merged_speaker = self._merge_single_speaker(
-                    default_speaker, job_speaker
+                # Mark ID as processed if it exists in base config
+                if job_speaker_id in base_speakers_by_id:
+                    processed_ids.add(job_speaker_id)
+
+                # Apply cascading inheritance to fill missing parameters
+                merged_speaker = self._apply_cascading_inheritance(
+                    job_speaker, job_config, base_config
                 )
 
             merged_speakers.append(merged_speaker)
@@ -548,7 +541,10 @@ class ConfigManager:
         self, base_speaker: Dict[str, Any], job_speaker: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Merge a single speaker configuration.
+        Merge a single speaker configuration with proper inheritance.
+
+        Only overrides fields that are explicitly defined in job_speaker.
+        Missing fields are inherited from base_speaker.
 
         Args:
             base_speaker: Base speaker configuration
@@ -559,7 +555,7 @@ class ConfigManager:
         """
         merged = copy.deepcopy(base_speaker)
 
-        # Merge top-level fields
+        # Only merge fields that are explicitly defined in job_speaker
         for key, value in job_speaker.items():
             if key in ["tts_params", "conservative_candidate"]:
                 # Deep merge for nested objects
@@ -573,9 +569,131 @@ class ConfigManager:
                     merged[key] = copy.deepcopy(value)
             else:
                 # Direct override for simple fields (id, reference_audio)
+                # Only override if the field is explicitly defined in job_speaker
                 merged[key] = value
 
         return merged
+
+    def _apply_cascading_inheritance(
+        self, 
+        job_speaker: Dict[str, Any], 
+        job_config: Dict[str, Any], 
+        base_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Apply complete cascading inheritance for missing speaker parameters.
+
+        Fallback hierarchy for missing parameters:
+        1. Local default_speaker (from job config)
+        2. Same speaker ID in default_config.yaml
+        3. Default_speaker from default_config.yaml
+
+        Args:
+            job_speaker: Job speaker configuration (potentially incomplete)
+            job_config: Complete job configuration  
+            base_config: Complete default configuration
+
+        Returns:
+            Complete speaker configuration with all missing parameters filled
+        """
+        speaker_id = job_speaker.get("id", "unknown")
+        merged = copy.deepcopy(job_speaker)
+
+        # Get fallback sources in priority order
+        fallback_sources = []
+        
+        # 1. Local default_speaker (from job config)
+        job_default_speaker_id = job_config.get("generation", {}).get("default_speaker")
+        if job_default_speaker_id and job_default_speaker_id != speaker_id:
+            job_speakers = job_config.get("generation", {}).get("speakers", [])
+            for speaker in job_speakers:
+                if speaker.get("id") == job_default_speaker_id:
+                    fallback_sources.append(("job default_speaker", speaker))
+                    break
+
+        # 2. Same speaker ID in default_config.yaml
+        base_speakers = base_config.get("generation", {}).get("speakers", [])
+        for speaker in base_speakers:
+            if speaker.get("id") == speaker_id:
+                fallback_sources.append(("base same ID", speaker))
+                break
+
+        # 3. Default_speaker from default_config.yaml
+        base_default_speaker_id = base_config.get("generation", {}).get("default_speaker")
+        if base_default_speaker_id:
+            for speaker in base_speakers:
+                if speaker.get("id") == base_default_speaker_id:
+                    fallback_sources.append(("base default_speaker", speaker))
+                    break
+
+        # Apply cascading inheritance for missing parameters
+        self._inherit_missing_parameters(merged, fallback_sources, speaker_id)
+
+        return merged
+
+    def _inherit_missing_parameters(
+        self, 
+        target_speaker: Dict[str, Any], 
+        fallback_sources: List[tuple], 
+        speaker_id: str
+    ) -> None:
+        """
+        Inherit missing parameters from fallback sources in priority order.
+
+        Args:
+            target_speaker: Speaker to fill missing parameters for (modified in-place)
+            fallback_sources: List of (source_name, speaker_config) tuples in priority order
+            speaker_id: ID of target speaker for logging
+        """
+        # Define all possible speaker parameters
+        all_params: Dict[str, Any] = {
+            "reference_audio": None,
+            "tts_params": {},
+            "conservative_candidate": {}
+        }
+
+        # Check and inherit top-level parameters
+        for param_name in ["reference_audio"]:
+            if not target_speaker.get(param_name):
+                for source_name, source_speaker in fallback_sources:
+                    source_value = source_speaker.get(param_name)
+                    if source_value:
+                        target_speaker[param_name] = source_value
+                        logger.debug(f"Speaker '{speaker_id}' inherited {param_name}='{source_value}' from {source_name}")
+                        break
+
+        # Check and inherit nested parameters  
+        for nested_param in ["tts_params", "conservative_candidate"]:
+            if nested_param not in target_speaker:
+                target_speaker[nested_param] = {}
+            
+            target_nested = target_speaker[nested_param]
+            
+            # Define expected nested parameters
+            if nested_param == "tts_params":
+                expected_keys = [
+                    "exaggeration", "exaggeration_max_deviation", 
+                    "cfg_weight", "cfg_weight_max_deviation",
+                    "temperature", "temperature_max_deviation",
+                    "repetition_penalty", "min_p", "top_p"
+                ]
+            elif nested_param == "conservative_candidate":
+                expected_keys = [
+                    "enabled", "exaggeration", "cfg_weight", 
+                    "temperature", "min_p", "top_p"
+                ]
+            else:
+                expected_keys = []
+
+            # Inherit missing nested parameters
+            for key in expected_keys:
+                if key not in target_nested or target_nested[key] is None:
+                    for source_name, source_speaker in fallback_sources:
+                        source_nested = source_speaker.get(nested_param, {})
+                        if key in source_nested and source_nested[key] is not None:
+                            target_nested[key] = source_nested[key]
+                            logger.debug(f"Speaker '{speaker_id}' inherited {nested_param}.{key}={source_nested[key]} from {source_name}")
+                            break
 
     def validate_config(self, config: Dict[str, Any]) -> bool:
         """
