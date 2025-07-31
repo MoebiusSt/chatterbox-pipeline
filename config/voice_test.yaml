@@ -1,6 +1,6 @@
 job:
   name: voice_test
-  run-label:   # empty by default, use it to organise the tasks/files/folders
+  run-label: # empty by default, use it to organise the tasks/files/folders
 
 input:
   text_file: voice_test.txt     # txt-file in data/input/texts folder
@@ -17,61 +17,56 @@ chunking:
   spacy_model: en_core_web_sm
 
 generation:
-  num_candidates: 5
-  max_retries: 1
+  num_candidates: 4
+  max_retries: 0
   default_speaker: test1
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
   speakers:
     - id: test1
-      reference_audio: stephan_moebius_1.wav
+      reference_audio: stephan_moebius.wav
       tts_params:
-        exaggeration: 0.52
-        exaggeration_max_deviation: 0.18
-        cfg_weight: 0.21
-        cfg_weight_max_deviation: 0.28
-        temperature: 0.95
-        temperature_max_deviation: 0.26
-        repetition_penalty: 1.3
-        min_p: 0.045
-        top_p: 0.97
+        exaggeration: 0.5
+        exaggeration_max_deviation: 0.0
+        cfg_weight: 0.5
+        cfg_weight_max_deviation: 0.0
+        temperature: 0.8  #only ramp up temperature, evaluate candidates with different temperature
+        temperature_max_deviation: 0.60
+        repetition_penalty: 1.5
+        min_p: 0.05  # within normal min_p and top_p range
+        top_p: 0.99
       conservative_candidate:
         enabled: false
-        exaggeration: 0.39
-        cfg_weight: 0.45
-        temperature: 0.78
-        min_p: 0.08
-        top_p: 0.94
     - id: test2
       tts_params:
-        exaggeration: 0.3
-        exaggeration_max_deviation: 0.1
-        cfg_weight: 0.4
-        cfg_weight_max_deviation: 0.1
-        temperature: 0.95
-        temperature_max_deviation: 0.20
-        repetition_penalty: 1.3
-        min_p: 0.05
-        top_p: 0.98
+        exaggeration: 0.80  #only ramp down exaggeration, evaluate effect of exaggeration
+        exaggeration_max_deviation: 0.5
+        cfg_weight: 0.50
+        cfg_weight_max_deviation: 0.0
+        temperature: 1.05
+        temperature_max_deviation: 0.0
+        repetition_penalty: 1.4
+        min_p: 0.07 # lower likelihood of artefacts with slightly narrower min_p and top_p range
+        top_p: 0.96
     - id: test3
       tts_params:
-        exaggeration: 0.65
-        exaggeration_max_deviation: 0.1
-        cfg_weight: 0.6
-        cfg_weight_max_deviation: 0.2
-        temperature: 0.95
-        temperature_max_deviation: 0.20
-        repetition_penalty: 1.3
-        min_p: 0.05
-        top_p: 0.98
+        exaggeration: 0.30
+        exaggeration_max_deviation: 0.0
+        cfg_weight: 0.30 #only ramp up cfg_weight, evaluate effect of cfg_weight
+        cfg_weight_max_deviation: 0.5
+        temperature: 1.05
+        temperature_max_deviation: 0.0
+        repetition_penalty: 1.4
+        min_p: 0.06
+        top_p: 0.99
     - id: test4
       tts_params:
-        exaggeration: 0.7
-        exaggeration_max_deviation: 0.1
-        cfg_weight: 0.2
-        cfg_weight_max_deviation: 0.1
-        temperature: 0.95
-        temperature_max_deviation: 0.20
-        repetition_penalty: 1.6
-        min_p: 0.045
-        top_p: 0.99
+        exaggeration: 0.60  #cross ramping middling values of exaggeration and cfg_weight
+        exaggeration_max_deviation: 0.3
+        cfg_weight: 0.30
+        cfg_weight_max_deviation: 0.3
+        temperature: 1.05
+        temperature_max_deviation: 0.15
+        repetition_penalty: 1.4
+        min_p: 0.06
+        top_p: 0.98

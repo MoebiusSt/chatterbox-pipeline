@@ -60,6 +60,7 @@ data/input/texts/
 !data/input/texts/input-document.txt
 !data/input/texts/radio-broadcast.txt
 !data/input/texts/speakers_example.txt
+!data/input/texts/voice_test.txt
 
 # Audio files (except reference samples)
 data/output/
@@ -117,6 +118,7 @@ config/
 !config/radio-broadcast.yaml
 !config/speakers_example.yaml
 !config/simple_example.yaml
+!config/voice_test.yaml
 
 # Large data files
 *.tar.gz

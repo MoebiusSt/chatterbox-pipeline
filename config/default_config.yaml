@@ -144,6 +144,6 @@ audio:
   # Audio normalization settings
   normalization:
     enabled: true            # Enable/disable audio normalization
-    target_level: -16.0      # Target loudness level in dB (unit depends on method)
-    method: "rms"            # Normalization method: "lufs", "rms", or "peak"
-    saturation_factor: 0.1   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)
+    target_level: -1.5      # Target loudness level in dB (unit depends on method)
+    method: "peak"            # Normalization method: "lufs", "rms", or "peak"
+    saturation_factor: 0.05   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)
