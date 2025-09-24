@@ -837,19 +837,18 @@ class ValidationHandler:
         """
         try:
             speakers_config = self.config.get("generation", {}).get("speakers", [])
-            default_language = self.config.get("generation", {}).get("default_language", "en")
             
             # Create speaker_id -> language mapping
             speaker_language_map = {}
             for speaker in speakers_config:
                 speaker_id = speaker.get("id")
-                language = speaker.get("language", default_language)
+                language = speaker.get("language")
                 if speaker_id:
                     speaker_language_map[speaker_id] = language
             
             # Enhance chunks with language_id
             for chunk in chunks:
-                chunk_language = speaker_language_map.get(chunk.speaker_id, default_language)
+                chunk_language = speaker_language_map.get(chunk.speaker_id, "en")
                 chunk.language_id = chunk_language
                 logger.debug(f"Chunk {chunk.idx + 1} (speaker: {chunk.speaker_id}) → language: {chunk_language}")
                 

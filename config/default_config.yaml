@@ -19,7 +19,6 @@ generation:
   num_candidates: 2
   max_retries: 1
   model_type: "standard"  # Options: "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
-  default_language: "en"  # Only used when model_type is "multilingual" - default language ID
   default_speaker: stephan_moebius_1
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!
@@ -71,7 +70,7 @@ generation:
         min_p: 0.05
         top_p: 0.95
       conservative_candidate:
-        enabled: false  # if false the ramping params will be spread over ALL num_candidates.
+        enabled: false  # if false the ramping params will be spread over ALL num_candidates, if true the last candidate will use the conservative params.
         exaggeration: 0.4
         cfg_weight: 0.35
         temperature: 0.8

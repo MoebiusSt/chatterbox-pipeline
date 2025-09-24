@@ -57,12 +57,13 @@ generation:
   num_candidates: 3
   max_retries: 2
   default_speaker: david                    # Explicit default speaker configuration
+  # No global default_language - language is defined per speaker
   
   # Speaker definitions - Define all your speakers here
   speakers:
     - id: david                          # Speaker referenced by default_speaker
       reference_audio: david_barnes_1.wav
-      language: en
+      language: en                    # Required for default speaker: Language ID (e.g., en, de, fr); others inherit
       tts_params:
         exaggeration: 0.55
         exaggeration_max_deviation: 0.20
@@ -79,7 +80,7 @@ generation:
     
     - id: narrator                       # Additional speaker
       reference_audio: cori_samuel_1.wav
-      language: en
+      language: en                    # Optional: Inherits from default speaker if omitted
       tts_params:
         exaggeration: 0.65
         exaggeration_max_deviation: 0.25
@@ -96,7 +97,7 @@ generation:
     
     - id: character                      # Additional speaker
       reference_audio: mike_kamp_1.wav
-      language: en
+      language: en                    # Optional: Can differ for multilingual; inherits if omitted
       tts_params:
         exaggeration: 0.45
         exaggeration_max_deviation: 0.20
@@ -118,14 +119,16 @@ The speaker system uses a clear and intuitive structure:
 ```yaml
 generation:
   default_speaker: david                  # Explicit default speaker – must exist in speakers-list or default_config.yaml
+  # Language is configured per speaker (required for default_speaker, optional for others with inheritance)
   speakers:
     - id: david                         
       reference_audio: voice.wav
-      language: en
+      language: en                    # Required for default speaker
       tts_params: {...}
       conservative_candidate: {...}
     - id: narrator                      # Additional speakers
       reference_audio: narrator.wav
+      language: en                    # Optional: Inherits from default (can be de for multilingual)
       tts_params: {...}
 ```
 
@@ -136,6 +139,8 @@ generation:
 - **Validation**: The `default_speaker` value must match an existing speaker ID in the speakers list
 - **Note**: Text without markup uses the configured default speaker
 - **Languages**: Arabic (ar) • Danish (da) • German (de) • Greek (el) • English (en) • Spanish (es) • Finnish (fi) • French (fr) • Hebrew (he) • Hindi (hi) • Italian (it) • Japanese (ja) • Korean (ko) • Malay (ms) • Dutch (nl) • Norwegian (no) • Polish (pl) • Portuguese (pt) • Russian (ru) • Swedish (sv) • Swahili (sw) • Turkish (tr) • Chinese (zh)
+**Language Requirement**: The default_speaker must define a `language` field (e.g., en, de). Other speakers can omit it and inherit via cascading from the default. For multilingual mode, different speakers can have different languages.
+
 ---
 
 ## 🔧 API Reference

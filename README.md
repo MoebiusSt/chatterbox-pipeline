@@ -466,10 +466,10 @@ generation:
   num_candidates: 3
   max_retries: 1
   model_type: "standard"          # "standard" or "multilingual"
-  default_language: "en"          # Default language for multilingual model
   speakers:
     - id: default                   # Default speaker - use default or any custom name
       reference_audio: fry.wav      # File name in data/input/reference_audio folder
+      language: en                # Required: Language for this speaker (e.g., en, de, fr)
       tts_params:
         # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
         # - exaggeration: MAX value (ramps DOWN from here)
@@ -521,21 +521,20 @@ min_p: 0.02-0.04
 top_p: 0.98-1.0
 ```
 
-### Multilingual Configuration
-
+#### Multilingual Configuration
 ```yaml
 generation:
   model_type: "multilingual"      # Use multilingual model
-  default_language: "de"          # German as default
-  # or default_language: "en"     # English as default
-  # or default_language: "fr"     # French as default
-  
+  # Language is defined per speaker in the speakers list
+  # Example: Set language: "de" for German speakers
   speakers:
     - id: german_speaker
       reference_audio: german_voice.wav
+      language: de  # Required for multilingual mode
       # TTS parameters remain the same
     - id: english_speaker  
       reference_audio: english_voice.wav
+      language: en  # Required for multilingual mode
 ```
 
 **Supported Languages**: English (en), German (de), French (fr), and other languages supported by ChatterboxMultilingualTTS.
@@ -543,3 +542,4 @@ generation:
 - **Memory Errors**: Reduce `num_candidates` in config
 - **Validation Failures**: Lower `similarity_threshold` 
 - **Audio Artifacts**: Fintune TTS parameters, – generate more and more diverse candidates
+```

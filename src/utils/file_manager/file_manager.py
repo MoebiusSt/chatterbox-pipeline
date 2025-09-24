@@ -105,15 +105,15 @@ class FileManager:
         ]:
             dir_path.mkdir(parents=True, exist_ok=True)
 
-        # Backup copy of input text for traceability
-        self._copy_input_text_backup()
-
         # Project paths
         self.project_root = self._find_project_root()
         self.input_texts_dir = self.project_root / "data" / "input" / "texts"
         self.reference_audio_dir = (
             self.project_root / "data" / "input" / "reference_audio"
         )
+
+        # Backup copy of input text for traceability
+        self._copy_input_text_backup()
 
         # Initialize specialized handlers
         self._chunk_handler = ChunkIOHandler(self.texts_dir, file_manager=self)
@@ -162,11 +162,16 @@ class FileManager:
         """
         text_file = self.config["input"]["text_file"]
         source_path = self.input_texts_dir / text_file
+        target_filename = f"original_{text_file}"
+        target_path = self.texts_dir / target_filename
         
+        # If a backup already exists for this task, reuse it and do not overwrite
+        if target_path.exists():
+            logger.info(f"Bestehendes Input-Text-Backup gefunden und wird verwendet: {target_path}")
+            return
+
+        # Otherwise create the backup once for new tasks
         if source_path.exists():
-            target_filename = f"original_{text_file}"
-            target_path = self.texts_dir / target_filename
-            
             shutil.copy2(source_path, target_path)
             logger.info(f"Backup-Kopie des Input-Texts erstellt: {target_path}")
         else:
@@ -176,7 +181,13 @@ class FileManager:
     def get_input_text(self) -> str:
         """Load input text file."""
         text_file = self.config["input"]["text_file"]
-        text_path = self.input_texts_dir / text_file
+        # Prefer task-local backup (ensures reproducibility on resumed tasks)
+        backup_path = self.texts_dir / f"original_{text_file}"
+        if backup_path.exists():
+            text_path = backup_path
+            logger.debug(f"Using backup input text: {text_path}")
+        else:
+            text_path = self.input_texts_dir / text_file
 
         if not text_path.exists():
             # Try to provide helpful information about available files
@@ -207,6 +218,10 @@ class FileManager:
         """Check if input text file exists without raising an exception."""
         try:
             text_file = self.config["input"]["text_file"]
+            # Consider backup as the authoritative source for resumed tasks
+            backup_path = self.texts_dir / f"original_{text_file}"
+            if backup_path.exists():
+                return True
             text_path = self.input_texts_dir / text_file
             return text_path.exists()
         except Exception:
@@ -494,3 +509,26 @@ class FileManager:
             )
             
         return fallback_id
+
+    def get_speaker_config(self, config: Optional[Dict[str, Any]], speaker_id: str) -> Dict[str, Any]:
+        """
+        Return the speaker configuration by ID from the provided config (or this FileManager's config),
+        with fallback to the resolved default speaker.
+        """
+        try:
+            cfg = config or self.config
+            speakers = cfg.get("generation", {}).get("speakers", [])
+
+            for speaker in speakers:
+                if speaker.get("id") == speaker_id:
+                    return speaker
+
+            # Fallback to default speaker
+            fallback_id = self.get_default_speaker_id()
+            for speaker in speakers:
+                if speaker.get("id") == fallback_id:
+                    return speaker
+        except Exception as e:
+            logger.debug(f"get_speaker_config fallback due to error: {e}")
+
+        return {}

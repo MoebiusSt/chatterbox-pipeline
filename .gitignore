@@ -58,9 +58,10 @@ data/input/texts/
 
 # Keep reference texts
 !data/input/texts/input-document.txt
-!data/input/texts/radio-broadcast.txt
+!data/input/texts/radio-broadcast_example.txt
 !data/input/texts/speakers_example.txt
-!data/input/texts/voice_test.txt
+!data/input/texts/voice_test_example.txt
+!data/input/texts/multilingual_example.txt
 
 # Audio files (except reference samples)
 data/output/
@@ -70,12 +71,15 @@ data/output/
 *.ogg
 *.m4a
 *.pkf
+
 # Keep reference audio samples
 !data/input/reference_audio/stephan_moebius_1.wav
 !data/input/reference_audio/stephan_moebius_2.wav
 !data/input/reference_audio/stephan_moebius_3.wav
 !data/input/reference_audio/stephan_moebius_4.wav
 !data/input/reference_audio/stephan_moebius_5.wav
+!data/input/reference_audio/stephan_moebius_6.wav
+!data/input/reference_audio/stephan_moebius_7_DE.wav
 !data/input/reference_audio/30s-radio1.wav
 !data/input/reference_audio/30s-radio2.wav
 
@@ -113,12 +117,14 @@ notes_ideas.txt
 config/*secret*
 config/*private*
 config/
+
 # Keep reference yaml files
 !config/default_config.yaml
-!config/radio-broadcast.yaml
+!config/radio-broadcast_example.yaml
 !config/speakers_example.yaml
 !config/simple_example.yaml
-!config/voice_test.yaml
+!config/voice_test_example.yaml
+!config/multilingual_example.yaml
 
 # Large data files
 *.tar.gz

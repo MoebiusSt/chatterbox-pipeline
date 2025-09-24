@@ -83,11 +83,36 @@ class RetryLogic:
 
                     torch.manual_seed(retry_seed)
 
+                    # Resolve language_id for multilingual models
+                    language_id = getattr(chunk, "language_id", None)
+                    if not language_id:
+                        # Try from speaker config in generation
+                        speaker_id = getattr(chunk, "speaker_id", None)
+                        speakers = generation_config.get("speakers", [])
+                        # Find exact speaker
+                        if speaker_id:
+                            for sp in speakers:
+                                if sp.get("id") == speaker_id:
+                                    language_id = sp.get("language")
+                                    break
+                        # Fallback to default speaker
+                        if not language_id:
+                            default_speaker = generation_config.get("default_speaker")
+                            if default_speaker:
+                                for sp in speakers:
+                                    if sp.get("id") == default_speaker:
+                                        language_id = sp.get("language")
+                                        break
+                        # Final hard fallback
+                        if not language_id:
+                            language_id = "en"
+
                     retry_audio = self.tts_generator.generate_single(
                         text=chunk.text,
                         exaggeration=retry_exaggeration,
                         cfg_weight=retry_cfg_weight,
                         temperature=retry_temperature,
+                        language_id=language_id,
                     )
 
                     candidate_idx = start_candidate_idx + i
@@ -99,6 +124,7 @@ class RetryLogic:
                         "type": "RETRY_CONSERVATIVE",
                         "variation_factor": variation_factor,
                         "retry_attempt": i + 1,
+                        "language_id": language_id,
                     }
 
                     retry_candidate = AudioCandidate(

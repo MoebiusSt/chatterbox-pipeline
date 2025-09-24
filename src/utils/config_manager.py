@@ -799,9 +799,16 @@ class ConfigManager:
                     logger.error(f"Speaker '{speaker_id}' missing tts_params.{param}")
                     return False
             
-            # Validate optional language field (for multilingual support)
+            # Validate language: Required only for default_speaker; others inherit via cascading
+            if speaker_id == default_speaker:
+                if not speaker.get("language"):
+                    logger.error(f"Default speaker '{speaker_id}' missing required 'language' field")
+                    return False
+                logger.debug(f"Default speaker '{speaker_id}' language validated: {speaker.get('language')}")
+
+            # Validate optional language field (for multilingual support) for non-default speakers
             speaker_language = speaker.get("language")
-            if speaker_language:
+            if speaker_language and speaker_id != default_speaker:
                 logger.debug(f"Speaker '{speaker_id}' configured for language: {speaker_language}")
 
         logger.debug(f"✅ Validated {len(speakers)} speakers: {speaker_ids}")

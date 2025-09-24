@@ -48,7 +48,6 @@ class TTSGenerator:
         # Get model type and default language from config
         generation_config = config.get("generation", {})
         self.model_type = generation_config.get("model_type", "standard")
-        self.default_language = generation_config.get("default_language", "en")
         
         # Use direct model access with model type
         self.model = ChatterboxModelCache.get_model(self.device, self.model_type)
@@ -213,11 +212,9 @@ class TTSGenerator:
             }
             
             # Add language_id for multilingual model (only if actually multilingual)
-            if self.is_multilingual:
-                # Use provided language_id or default to config default_language
-                lang_id = language_id or self.default_language
-                generate_params["language_id"] = lang_id
-                logger.debug(f"Using language_id: {lang_id} for multilingual model")
+            if self.is_multilingual and language_id is not None:
+                generate_params["language_id"] = language_id
+                logger.debug(f"Using language_id: {language_id} for multilingual model")
             elif self.model_type == "multilingual" and not self.is_multilingual:
                 logger.debug("Multilingual model requested but not available, using standard model without language_id")
             
@@ -833,70 +830,84 @@ class TTSGenerator:
         return "default"
 
     def generate_candidates_with_speaker(
-        self,
-        text: str,
-        speaker_id: str = "default",
-        num_candidates: int = 3,
-        config_manager=None,
-        language_id: Optional[str] = None,
-        **kwargs,
+        self, text: str, speaker_id: str, num_candidates: int, config_manager
     ) -> List[AudioCandidate]:
         """
-        Generate candidates with specific speaker.
-
-        Args:
-            text: Text for generation
-            speaker_id: ID of speaker to use
-            num_candidates: Number of candidates
-            config_manager: ConfigManager for file access
-            **kwargs: Additional parameters
-
-        Returns:
-            List of AudioCandidate objects
+        Generate candidates for given text using specified speaker.
         """
-
-        # 1. Switch to speaker
-        self.switch_speaker(speaker_id, config_manager)
-
-        # 2. Get speaker-specific parameters
+        # Get speaker config from internal config and resolve reference audio via file/config manager
         speaker_config = self._get_speaker_config(speaker_id)
-        tts_params = speaker_config.get("tts_params", {})
-        conservative_config = speaker_config.get("conservative_candidate", {})
-        
-        # 2.1. Get speaker-specific language (if not explicitly provided)
-        if language_id is None:
-            speaker_language = speaker_config.get("language")
-            if speaker_language:
-                language_id = speaker_language
-                logger.debug(f"Using speaker-specific language: {language_id} for speaker '{speaker_id}'")
-
-        # 3. Get reference_audio for this speaker
-        reference_audio_path = None
-        if config_manager:
-            try:
-                audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
-                reference_audio_path = str(audio_path)
-            except Exception as e:
-                logger.error(
-                    f"Could not get reference audio for speaker '{speaker_id}': {e}"
-                )
-
-        # 4. Generate with speaker parameters
-        candidates = self.generate_candidates(
-            text=text,
-            num_candidates=num_candidates,
-            tts_params=tts_params,
-            conservative_config=conservative_config,
-            reference_audio_path=reference_audio_path,
-            language_id=language_id,
-            **kwargs,
-        )
-
-        # 5. Set speaker ID in candidate metadata
-        for candidate in candidates:
-            if hasattr(candidate, "generation_params"):
-                candidate.generation_params["speaker_id"] = speaker_id
-
+        reference_audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
+ 
+        # Prepare generation parameters
+        base_params = speaker_config["tts_params"]
+        conservative_params = speaker_config.get("conservative_candidate", {})
+        conservative_enabled = conservative_params.get("enabled", False)
+ 
+        # Language from speaker
+        language_id = speaker_config.get("language")
+        if not language_id:
+            # Fallback to default speaker's language via internal config
+            default_speaker_id = (
+                config_manager.get_default_speaker_id()
+                if hasattr(config_manager, "get_default_speaker_id")
+                else speaker_id
+            )
+            default_speaker_config = self._get_speaker_config(default_speaker_id)
+            language_id = default_speaker_config.get("language", "en")  # Hard fallback to English
+            logger.warning(
+                f"No language defined for speaker '{speaker_id}', using default speaker's language: {language_id}"
+            )
+ 
+        candidates = []
+        for i in range(num_candidates):
+            if i == num_candidates - 1 and conservative_enabled:
+                # Last candidate: Use conservative parameters
+                params = conservative_params
+            elif i == 0:
+                # First candidate: Exact base parameters
+                params = base_params
+            else:
+                # Intermediate candidates: Ramped parameters
+                params = self._calculate_ramped_params(base_params, i, num_candidates - 1)
+ 
+            # Generate with speaker and language
+            # Split core params to avoid duplicate kwargs
+            core_exaggeration = params.get("exaggeration", 0.6)
+            core_cfg_weight = params.get("cfg_weight", 0.7)
+            core_temperature = params.get("temperature", 1.0)
+            additional_params = {
+                k: v
+                for k, v in params.items()
+                if k
+                not in [
+                    "exaggeration",
+                    "cfg_weight",
+                    "temperature",
+                    "exaggeration_max_deviation",
+                    "cfg_weight_max_deviation",
+                    "temperature_max_deviation",
+                ]
+            }
+            audio = self.generate_single(
+                text=text,
+                exaggeration=core_exaggeration,
+                cfg_weight=core_cfg_weight,
+                temperature=core_temperature,
+                reference_audio_path=str(reference_audio_path),
+                language_id=language_id,
+                **additional_params
+            )
+ 
+            candidate = AudioCandidate(
+                chunk_idx=0,  # Will be set by caller
+                candidate_idx=i,
+                audio_path=Path(),  # Will be set by saver
+                audio_tensor=audio,
+                generation_params=params,
+            )
+            candidates.append(candidate)
+ 
         return candidates
 
     def _get_speaker_config(self, speaker_id: str) -> Dict[str, Any]:
@@ -919,3 +930,30 @@ class TTSGenerator:
         # This should not happen if _resolve_speaker_id works correctly
         logger.error(f"Could not find configuration for resolved speaker '{actual_speaker_id}'")
         return {}
+
+    def _calculate_ramped_params(self, base_params: Dict[str, Any], i: int, num_expressive_minus_one: int) -> Dict[str, Any]:
+        """
+        Calculate ramped TTS parameters for candidate variation based on base_params.
+
+        Ramping semantics:
+        - exaggeration: ramp DOWN from base to (base - max_deviation)
+        - cfg_weight:  ramp UP   from base to (base + max_deviation)
+        - temperature: ramp UP   from base to (base + max_deviation)
+        """
+        if num_expressive_minus_one <= 0:
+            return dict(base_params)
+
+        ramp_position = i / max(1, num_expressive_minus_one)
+
+        base_exag = base_params.get("exaggeration", 0.6)
+        exag_dev = base_params.get("exaggeration_max_deviation", 0.15)
+        base_cfg = base_params.get("cfg_weight", 0.7)
+        cfg_dev = base_params.get("cfg_weight_max_deviation", 0.15)
+        base_temp = base_params.get("temperature", 1.0)
+        temp_dev = base_params.get("temperature_max_deviation", 0.2)
+
+        params = dict(base_params)
+        params["exaggeration"] = base_exag - (exag_dev * ramp_position)
+        params["cfg_weight"] = base_cfg + (cfg_dev * ramp_position)
+        params["temperature"] = base_temp + (temp_dev * ramp_position)
+        return params
