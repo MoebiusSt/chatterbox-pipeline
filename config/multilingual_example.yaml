@@ -10,8 +10,8 @@ preprocessing:
   normalize_line_endings: true
 
 chunking:
-  target_chunk_limit: 550
-  max_chunk_limit: 640
+  target_chunk_limit: 380
+  max_chunk_limit: 460
   min_chunk_length: 80
   spacy_model: en_core_web_sm
 
