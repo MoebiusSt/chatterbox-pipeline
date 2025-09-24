@@ -648,12 +648,13 @@ class ConfigManager:
         # Define all possible speaker parameters
         all_params: Dict[str, Any] = {
             "reference_audio": None,
+            "language": None,
             "tts_params": {},
             "conservative_candidate": {}
         }
 
         # Check and inherit top-level parameters
-        for param_name in ["reference_audio"]:
+        for param_name in ["reference_audio", "language"]:
             if not target_speaker.get(param_name):
                 for source_name, source_speaker in fallback_sources:
                     source_value = source_speaker.get(param_name)
@@ -797,6 +798,11 @@ class ConfigManager:
                 if param not in tts_params:
                     logger.error(f"Speaker '{speaker_id}' missing tts_params.{param}")
                     return False
+            
+            # Validate optional language field (for multilingual support)
+            speaker_language = speaker.get("language")
+            if speaker_language:
+                logger.debug(f"Speaker '{speaker_id}' configured for language: {speaker_language}")
 
         logger.debug(f"✅ Validated {len(speakers)} speakers: {speaker_ids}")
         return True

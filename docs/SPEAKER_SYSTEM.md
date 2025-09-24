@@ -62,6 +62,7 @@ generation:
   speakers:
     - id: david                          # Speaker referenced by default_speaker
       reference_audio: david_barnes_1.wav
+      language: en
       tts_params:
         exaggeration: 0.55
         exaggeration_max_deviation: 0.20
@@ -78,6 +79,7 @@ generation:
     
     - id: narrator                       # Additional speaker
       reference_audio: cori_samuel_1.wav
+      language: en
       tts_params:
         exaggeration: 0.65
         exaggeration_max_deviation: 0.25
@@ -94,6 +96,7 @@ generation:
     
     - id: character                      # Additional speaker
       reference_audio: mike_kamp_1.wav
+      language: en
       tts_params:
         exaggeration: 0.45
         exaggeration_max_deviation: 0.20
@@ -118,6 +121,7 @@ generation:
   speakers:
     - id: david                         
       reference_audio: voice.wav
+      language: en
       tts_params: {...}
       conservative_candidate: {...}
     - id: narrator                      # Additional speakers
@@ -131,7 +135,7 @@ generation:
 - **Fallback Behavior**: Unknown speaker IDs automatically fallback to the CONFIGURED default_speaker
 - **Validation**: The `default_speaker` value must match an existing speaker ID in the speakers list
 - **Note**: Text without markup uses the configured default speaker
-
+- **Languages**: Arabic (ar) • Danish (da) • German (de) • Greek (el) • English (en) • Spanish (es) • Finnish (fi) • French (fr) • Hebrew (he) • Hindi (hi) • Italian (it) • Japanese (ja) • Korean (ko) • Malay (ms) • Dutch (nl) • Norwegian (no) • Polish (pl) • Portuguese (pt) • Russian (ru) • Swedish (sv) • Swahili (sw) • Turkish (tr) • Chinese (zh)
 ---
 
 ## 🔧 API Reference

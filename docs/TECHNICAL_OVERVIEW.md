@@ -149,6 +149,11 @@ TTSGenerator.generate_candidates(text, N) → List[AudioCandidate]
 CandidateManager.generate_candidates_for_chunk() → GenerationResult
 # N candidates per chunk with inverse parameter correlation:
 # exaggeration ↑ → cfg_weight ↓, temperature ↓ (prevents "wild" parameter combinations)
+
+# Multilingual Support
+TTSGenerator(config, model_type="multilingual") → multilingual model loading
+generate_single(text, language_id="de") → language-specific generation
+# Automatic fallback: multilingual → standard model if unavailable
 ```
 
 ### 5. Quality Validation (`src/validation/`)
@@ -184,6 +189,8 @@ class TextChunk:
 ```python
 class TTSGenerator:
     def generate_candidates(text, num_candidates) → List[AudioCandidate]
+    def __init__(config, model_type="standard|multilingual")
+    # Properties: model_type, default_language, is_multilingual
     
 class CandidateManager:
     def generate_candidates_for_chunk() → GenerationResult
@@ -193,6 +200,8 @@ class AudioCandidate:
     chunk_text: str
     generation_params: Dict
     candidate_id: str
+    speaker_id: str      # speaker reference
+    language_id: str     # language used (for multilingual)
 ```
 
 #### 3. Validation Layer

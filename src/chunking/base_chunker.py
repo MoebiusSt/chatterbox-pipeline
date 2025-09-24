@@ -23,6 +23,9 @@ class TextChunk:
     speaker_id: str = "default"  # Current speaker
     speaker_transition: bool = False  # Chunk starts with speaker transition
     original_markup: Optional[str] = None  # Original markup for debugging
+    
+    # Multilingual Support
+    language_id: Optional[str] = None  # Language for this chunk (from speaker config)
 
 
 class BaseChunker(ABC):

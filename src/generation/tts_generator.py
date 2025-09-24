@@ -5,6 +5,14 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
+# Suppress external package warnings early
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API",
+    category=UserWarning,
+    module="pkg_resources",
+)
+
 from generation.model_cache import ChatterboxModelCache
 
 # Import the standardized AudioCandidate from file_manager
@@ -37,15 +45,34 @@ class TTSGenerator:
         logger.info("")
         logger.info(f"🎲 Task-global seed set to {seed}")
         logger.info("")
-        # Use direct model access
-        self.model = ChatterboxModelCache.get_model(self.device)
+        # Get model type and default language from config
+        generation_config = config.get("generation", {})
+        self.model_type = generation_config.get("model_type", "standard")
+        self.default_language = generation_config.get("default_language", "en")
+        
+        # Use direct model access with model type
+        self.model = ChatterboxModelCache.get_model(self.device, self.model_type)
+        
+        # Check if we actually got a multilingual model or fallback standard model
+        self.is_multilingual = (
+            self.model_type == "multilingual" and 
+            hasattr(self.model, '__class__') and 
+            'Multilingual' in self.model.__class__.__name__
+        )
 
         # Speaker system attributes
         self.current_speaker_id = "default"
         self.speakers_config = config.get("generation", {}).get("speakers", [])
 
+        if self.is_multilingual:
+            model_name = "ChatterboxMultilingualTTS"
+        elif self.model_type == "multilingual":
+            model_name = "ChatterboxTTS (multilingual fallback)"
+        else:
+            model_name = "ChatterboxTTS"
+        
         logger.debug(
-            f"TTSGenerator initialized on device: {self.device} with {len(self.speakers_config)} speakers"
+            f"TTSGenerator initialized on device: {self.device} with {len(self.speakers_config)} speakers, using {model_name}"
         )
 
     def _detect_device(self) -> str:
@@ -85,6 +112,7 @@ class TTSGenerator:
         cfg_weight: float = 0.7,
         temperature: float = 1.0,
         reference_audio_path: Optional[str] = None,
+        language_id: Optional[str] = None,
         **kwargs,
     ) -> torch.Tensor:
         """
@@ -131,11 +159,41 @@ class TTSGenerator:
                 "ignore", message=".*LlamaModel is using LlamaSdpaAttention.*"
             )
             warnings.filterwarnings(
+                "ignore", 
+                message=".*torch.nn.functional.scaled_dot_product_attention.*does not support.*output_attentions=True.*"
+            )
+            warnings.filterwarnings(
+                "ignore", 
+                message=".*Falling back to the manual attention implementation.*"
+            )
+            warnings.filterwarnings(
+                "ignore", 
+                message=".*specifying the manual implementation will be required from Transformers version v5.0.0.*"
+            )
+            warnings.filterwarnings(
+                "ignore", 
+                message=".*This warning can be removed using the argument.*attn_implementation.*eager.*"
+            )
+            warnings.filterwarnings(
                 "ignore", message=".*does not support `output_attentions=True`.*"
+            )
+            warnings.filterwarnings(
+                "ignore", 
+                message=".*return_dict_in_generate.*is NOT set to.*True.*but.*output_attentions.*is.*"
             )
             warnings.filterwarnings(
                 "ignore",
                 message=".*past_key_values.*tuple of tuples.*",
+                category=FutureWarning,
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message=".*detected that you are passing.*past_key_values.*as a tuple of tuples.*",
+                category=FutureWarning,
+            )
+            warnings.filterwarnings(
+                "ignore",
+                message=".*convert your cache or use an appropriate.*Cache.*class.*",
                 category=FutureWarning,
             )
             warnings.filterwarnings(
@@ -146,14 +204,24 @@ class TTSGenerator:
                 f"Generating audio for text (len={len(text)}): '{text[:50]}...'"
             )
 
-            # Generate audio using the ChatterboxTTS model directly
-            audio = self.model.generate(
-                text,
-                exaggeration=exaggeration,
-                cfg_weight=cfg_weight,
-                temperature=temperature,
+            # Generate audio using the model directly
+            generate_params = {
+                "exaggeration": exaggeration,
+                "cfg_weight": cfg_weight,
+                "temperature": temperature,
                 **kwargs,
-            )
+            }
+            
+            # Add language_id for multilingual model (only if actually multilingual)
+            if self.is_multilingual:
+                # Use provided language_id or default to config default_language
+                lang_id = language_id or self.default_language
+                generate_params["language_id"] = lang_id
+                logger.debug(f"Using language_id: {lang_id} for multilingual model")
+            elif self.model_type == "multilingual" and not self.is_multilingual:
+                logger.debug("Multilingual model requested but not available, using standard model without language_id")
+            
+            audio = self.model.generate(text, **generate_params)
 
         # ChatterboxTTS returns 1D tensor - ensure consistency
         if audio.ndim == 2:
@@ -173,6 +241,7 @@ class TTSGenerator:
         conservative_config: Optional[Dict[str, Any]] = None,
         tts_params: Optional[Dict[str, Any]] = None,
         reference_audio_path: Optional[str] = None,
+        language_id: Optional[str] = None,
         **kwargs,
     ) -> List[AudioCandidate]:
         """
@@ -289,6 +358,7 @@ class TTSGenerator:
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
                     reference_audio_path=reference_audio_path,
+                    language_id=language_id,
                     **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
@@ -428,6 +498,7 @@ class TTSGenerator:
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
                     reference_audio_path=reference_audio_path,
+                    language_id=language_id,
                     **additional_params,  # Pass repetition_penalty to renderer
                     **kwargs,
                 )
@@ -469,6 +540,7 @@ class TTSGenerator:
         tts_params: Optional[Dict[str, Any]] = None,
         total_candidates: int = 5,
         reference_audio_path: Optional[str] = None,
+        language_id: Optional[str] = None,
         **kwargs,
     ) -> List[AudioCandidate]:
         """
@@ -622,6 +694,7 @@ class TTSGenerator:
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
                     reference_audio_path=reference_audio_path,
+                    language_id=language_id,
                     **additional_params,
                     **kwargs,
                 )
@@ -765,6 +838,7 @@ class TTSGenerator:
         speaker_id: str = "default",
         num_candidates: int = 3,
         config_manager=None,
+        language_id: Optional[str] = None,
         **kwargs,
     ) -> List[AudioCandidate]:
         """
@@ -788,6 +862,13 @@ class TTSGenerator:
         speaker_config = self._get_speaker_config(speaker_id)
         tts_params = speaker_config.get("tts_params", {})
         conservative_config = speaker_config.get("conservative_candidate", {})
+        
+        # 2.1. Get speaker-specific language (if not explicitly provided)
+        if language_id is None:
+            speaker_language = speaker_config.get("language")
+            if speaker_language:
+                language_id = speaker_language
+                logger.debug(f"Using speaker-specific language: {language_id} for speaker '{speaker_id}'")
 
         # 3. Get reference_audio for this speaker
         reference_audio_path = None
@@ -807,6 +888,7 @@ class TTSGenerator:
             tts_params=tts_params,
             conservative_config=conservative_config,
             reference_audio_path=reference_audio_path,
+            language_id=language_id,
             **kwargs,
         )
 

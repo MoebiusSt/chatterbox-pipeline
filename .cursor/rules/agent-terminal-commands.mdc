@@ -1,5 +1,0 @@
----
-description: Tool calls can not use &&
-alwaysApply: true
----
-You cannot concat commands with "&&"

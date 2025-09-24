@@ -24,7 +24,8 @@ generation:
   # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
   speakers:
     - id: test1
-      reference_audio: stephan_moebius.wav
+      reference_audio: stephan_moebius_6.wav
+      language: en
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.0
@@ -50,23 +51,12 @@ generation:
         top_p: 0.96
     - id: test3
       tts_params:
-        exaggeration: 0.30
+        exaggeration: 0.40
         exaggeration_max_deviation: 0.0
-        cfg_weight: 0.30 #only ramp up cfg_weight, evaluate effect of cfg_weight
-        cfg_weight_max_deviation: 0.5
+        cfg_weight: 0.20 #only ramp up cfg_weight, evaluate effect of cfg_weight
+        cfg_weight_max_deviation: 0.6
         temperature: 1.05
         temperature_max_deviation: 0.0
         repetition_penalty: 1.4
-        min_p: 0.06
+        min_p: 0.05
         top_p: 0.99
-    - id: test4
-      tts_params:
-        exaggeration: 0.60  #cross ramping middling values of exaggeration and cfg_weight
-        exaggeration_max_deviation: 0.3
-        cfg_weight: 0.30
-        cfg_weight_max_deviation: 0.3
-        temperature: 1.05
-        temperature_max_deviation: 0.15
-        repetition_penalty: 1.4
-        min_p: 0.06
-        top_p: 0.98

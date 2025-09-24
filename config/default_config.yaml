@@ -3,7 +3,7 @@ job:
   run-label:   # empty by default, use it to organise the tasks/files/folders
 
 input:
-  text_file: input-document.txt     # txt-file in data/input/texts folder
+  text_file: input-document.txt     # txt-file in data/input/texts folder. Also accepts relative paths below the data/input/texts folder.
 
 preprocessing:
   enabled: true
@@ -18,6 +18,8 @@ chunking:
 generation:
   num_candidates: 2
   max_retries: 1
+  model_type: "standard"  # Options: "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
+  default_language: "en"  # Only used when model_type is "multilingual" - default language ID
   default_speaker: stephan_moebius_1
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!
@@ -25,6 +27,7 @@ generation:
   speakers:
     - id: stephan_moebius_1                     # use any string you like
       reference_audio: stephan_moebius_1.wav   # file in data/input/reference_audio folder
+      language: en
       tts_params:
         # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
         # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
@@ -56,6 +59,7 @@ generation:
 
     - id: stephan_moebius_2
       reference_audio: stephan_moebius_2.wav
+      language: en
       tts_params:
         exaggeration: 0.45
         exaggeration_max_deviation: 0.20
@@ -74,6 +78,7 @@ generation:
 
     - id: stephan_moebius_3
       reference_audio: stephan_moebius_3.wav
+      language: en
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.20
@@ -92,6 +97,7 @@ generation:
 
     - id: stephan_moebius_4
       reference_audio: stephan_moebius_4.wav
+      language: en
       tts_params:
         exaggeration: 0.55
         exaggeration_max_deviation: 0.20
@@ -110,6 +116,7 @@ generation:
 
     - id: stephan_moebius_5
       reference_audio: stephan_moebius_5.wav
+      language: en
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.15
@@ -125,6 +132,48 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.5
         temperature: 0.8
+        
+    - id: test1
+      reference_audio: stephan_moebius_6.wav
+      language: en
+      tts_params:
+        exaggeration: 0.5
+        exaggeration_max_deviation: 0.0
+        cfg_weight: 0.5
+        cfg_weight_max_deviation: 0.0
+        temperature: 0.8  #only ramp up temperature, evaluate candidates with different temperature
+        temperature_max_deviation: 0.60
+        repetition_penalty: 1.5
+        min_p: 0.05  # within normal min_p and top_p range
+        top_p: 0.99
+      conservative_candidate:
+        enabled: false
+    - id: test2
+      reference_audio: stephan_moebius_6.wav
+      language: en
+      tts_params:
+        exaggeration: 0.80  #only ramp down exaggeration, evaluate effect of exaggeration
+        exaggeration_max_deviation: 0.5
+        cfg_weight: 0.50
+        cfg_weight_max_deviation: 0.0
+        temperature: 1.05
+        temperature_max_deviation: 0.0
+        repetition_penalty: 1.4
+        min_p: 0.07 # lower likelihood of artefacts with slightly narrower min_p and top_p range
+        top_p: 0.96
+    - id: test3
+      reference_audio: stephan_moebius_6.wav
+      language: en
+      tts_params:
+        exaggeration: 0.40
+        exaggeration_max_deviation: 0.0
+        cfg_weight: 0.20 #only ramp up cfg_weight, evaluate effect of cfg_weight
+        cfg_weight_max_deviation: 0.6
+        temperature: 1.05
+        temperature_max_deviation: 0.0
+        repetition_penalty: 1.4
+        min_p: 0.05
+        top_p: 0.99
 
 validation:
   whisper_model: small # base small medium large
@@ -133,8 +182,8 @@ validation:
 
 audio:
   silence_duration:
-    normal: 0.30  # inserted between chunks if split was between sentences
-    paragraph: 0.80  # inserted if split was before paragraph break blank line
+    normal: 0.40  # inserted between chunks if split was between sentences
+    paragraph: 0.90  # inserted if split was before paragraph break blank line
   sample_rate: 24000
 
   # ChatterboxTTS native sample rate - NOT a user setting!

@@ -57,22 +57,82 @@ class WhisperValidator:
                 device = "cpu"
 
         self.device = device
-        self.model = None
+        self.models: dict[str, any] = {}  # Cache for language-specific models
         self.quality_calculator = QualityCalculator()
         self.transcription_io = TranscriptionIO()
+        
+        # Load default model (backwards compatibility)
+        self.model = None
         self._load_model()
 
-    def _load_model(self):
-        """Load Whisper model."""
+    def _load_model(self, language: str = "en"):
+        """Load default Whisper model for backwards compatibility."""
         try:
             self.logger.debug(
-                f"Loading Whisper model '{self.model_size}' on device '{self.device}'..."
+                f"Loading default Whisper model '{self.model_size}' on device '{self.device}'..."
             )
             self.model = whisper.load_model(self.model_size, device=self.device)
-            self.logger.debug("Whisper model loaded successfully")
+            self.models["default"] = self.model
+            self.logger.debug("Default Whisper model loaded successfully")
         except Exception as e:
-            self.logger.error(f"Failed to load Whisper model: {e}")
+            self.logger.error(f"Failed to load default Whisper model: {e}")
             raise
+    
+    def _get_model_for_language(self, language: str = "en"):
+        """
+        Get or load appropriate Whisper model for the specified language.
+        
+        Args:
+            language: Language code (e.g., "en", "de", "fr")
+            
+        Returns:
+            Loaded Whisper model
+        """
+        try:
+            # Check if we already have a cached model for this language
+            if language in self.models:
+                return self.models[language]
+            
+            # Determine best model for language
+            model_name = self._get_model_name_for_language(language)
+            
+            self.logger.debug(f"Loading Whisper model '{model_name}' for language '{language}'...")
+            model = whisper.load_model(model_name, device=self.device)
+            
+            # Cache the model
+            self.models[language] = model
+            self.logger.debug(f"✅ Loaded {model_name} model for language '{language}'")
+            
+            return model
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to load language-specific model for '{language}': {e}")
+            # Fallback to default model
+            if "default" in self.models:
+                self.logger.warning(f"Using default model as fallback for language '{language}'")
+                return self.models["default"]
+            else:
+                raise
+    
+    def _get_model_name_for_language(self, language: str) -> str:
+        """
+        Determine the best Whisper model name for a given language.
+        
+        Args:
+            language: Language code
+            
+        Returns:
+            Model name to use
+        """
+        # Map language codes to optimal model types
+        language_models = {
+            "en": f"{self.model_size}.en",  # English-only models are more accurate for English
+            "de": self.model_size,          # Use multilingual model for German
+            "fr": self.model_size,          # Use multilingual model for French  
+            "es": self.model_size,          # Use multilingual model for Spanish
+        }
+        
+        return language_models.get(language, self.model_size)
 
     def transcribe_audio(
         self, audio: torch.Tensor, sample_rate: int = 24000, language: str = "en"
@@ -107,12 +167,10 @@ class WhisperValidator:
                 audio_resampled = resampler(audio_tensor).squeeze(0)
                 audio_np = audio_resampled.numpy()
 
-            if self.model is None:
-                raise RuntimeError(
-                    "Whisper model not loaded. Call _load_model() first."
-                )
-
-            result = self.model.transcribe(
+            # Get language-appropriate model
+            model = self._get_model_for_language(language)
+            
+            result = model.transcribe(
                 audio_np,
                 language=language,
                 task="transcribe",
@@ -133,7 +191,7 @@ class WhisperValidator:
             raise
 
     def validate_candidate(
-        self, candidate: AudioCandidate, original_text: str, sample_rate: int = 24000
+        self, candidate: AudioCandidate, original_text: str, sample_rate: int = 24000, language: str = "en"
     ) -> ValidationResult:
         """
         Validate an audio candidate against original text.
@@ -142,6 +200,7 @@ class WhisperValidator:
             candidate: Audio candidate to validate
             original_text: Original text for comparison
             sample_rate: Sample rate of audio
+            language: Language code for transcription
 
         Returns:
             ValidationResult with validation outcome
@@ -150,7 +209,7 @@ class WhisperValidator:
 
         try:
             transcription = self.transcribe_audio(
-                candidate.audio_tensor, sample_rate=sample_rate
+                candidate.audio_tensor, sample_rate=sample_rate, language=language
             )
 
             # Use QualityCalculator for scoring

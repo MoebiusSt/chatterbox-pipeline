@@ -8,6 +8,7 @@ Refactored version with delegation to specialized handlers.
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import shutil
 
 from utils.config_manager import ConfigManager, TaskConfig
 
@@ -104,6 +105,9 @@ class FileManager:
         ]:
             dir_path.mkdir(parents=True, exist_ok=True)
 
+        # Backup copy of input text for traceability
+        self._copy_input_text_backup()
+
         # Project paths
         self.project_root = self._find_project_root()
         self.input_texts_dir = self.project_root / "data" / "input" / "texts"
@@ -150,6 +154,23 @@ class FileManager:
                 return current
             current = current.parent
         return Path.cwd()
+
+    def _copy_input_text_backup(self) -> None:
+        """
+        Create a backup copy of the original input text file in the task's texts directory.
+        This ensures the job remains traceable even if the original input is modified later.
+        """
+        text_file = self.config["input"]["text_file"]
+        source_path = self.input_texts_dir / text_file
+        
+        if source_path.exists():
+            target_filename = f"original_{text_file}"
+            target_path = self.texts_dir / target_filename
+            
+            shutil.copy2(source_path, target_path)
+            logger.info(f"Backup-Kopie des Input-Texts erstellt: {target_path}")
+        else:
+            logger.warning(f"Input-Text-Datei nicht gefunden, keine Backup-Kopie erstellt: {source_path}")
 
     # Input Operations
     def get_input_text(self) -> str:

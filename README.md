@@ -8,7 +8,7 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - a Command Line Interface with a prompt menu system 
 - CLI arguments to execute almost all functions non-interactivly. 
 - YAML-based a job and task pipeline to prepare job rendering queues (like magazines or books with chapters). Configurations are cascading! Only specify what you need.
-- **TTSGenerator**: Wrapper for ChatterboxTTS with candidate generation
+- **TTSGenerator**: Wrapper for ChatterboxTTS with candidate generation and multilingual support
 - **SpaCyChunker**: intelligent SpaCy-based text chunking  at sentence boundaries for long text generations,  with configurable length specifications.
 - **Parameter Variations**: automatic variation generation. Ramping values for exaggeration and other tts parameters to create more varied candidates
 - **CandidateManager**: Management of multiple candidates with retry logic
@@ -24,6 +24,12 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - **Speaker-Specific Configurations**: Define individual reference_audio per speaker 
 - **Speaker Variants**: ... or define variants (e.g., `cori_calm`, `cori_excited`) with different TTS parameters for switching speakers prosody on the fly
 - See [SPEAKER_SYSTEM.md](docs/SPEAKER_SYSTEM.md) for detailed documentation.
+
+#### 🌍 Multilingual Support
+- **Multilingual TTS Model**: Support for ChatterboxMultilingualTTS model
+- **Language Switching**: Configure default language and override per generation
+- **Multiple Language Support**: Generate audio in different languages (English, German, French, etc.)
+- **Automatic Fallback**: Graceful fallback to standard model if multilingual not available
 
 
 #### ⚠️ Does not have:
@@ -459,6 +465,8 @@ chunking:
 generation:
   num_candidates: 3
   max_retries: 1
+  model_type: "standard"          # "standard" or "multilingual"
+  default_language: "en"          # Default language for multilingual model
   speakers:
     - id: default                   # Default speaker - use default or any custom name
       reference_audio: fry.wav      # File name in data/input/reference_audio folder
@@ -512,6 +520,25 @@ top_p: 0.95-0.98
 min_p: 0.02-0.04
 top_p: 0.98-1.0
 ```
+
+### Multilingual Configuration
+
+```yaml
+generation:
+  model_type: "multilingual"      # Use multilingual model
+  default_language: "de"          # German as default
+  # or default_language: "en"     # English as default
+  # or default_language: "fr"     # French as default
+  
+  speakers:
+    - id: german_speaker
+      reference_audio: german_voice.wav
+      # TTS parameters remain the same
+    - id: english_speaker  
+      reference_audio: english_voice.wav
+```
+
+**Supported Languages**: English (en), German (de), French (fr), and other languages supported by ChatterboxMultilingualTTS.
 ### Debugging Common Issues
 - **Memory Errors**: Reduce `num_candidates` in config
 - **Validation Failures**: Lower `similarity_threshold` 

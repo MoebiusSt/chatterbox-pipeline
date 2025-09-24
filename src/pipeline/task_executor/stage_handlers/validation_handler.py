@@ -40,6 +40,9 @@ class ValidationHandler:
             if not chunks or not all_candidates:
                 logger.error("No chunks or candidates found for validation")
                 return False
+            
+            # Enhance chunks with language_id from speaker configuration
+            self._enhance_chunks_with_language_id(chunks)
 
             validation_results = {}
             logger.info(f"🚦 VALIDATION PHASE: Processing {len(chunks)} chunks")
@@ -77,9 +80,10 @@ class ValidationHandler:
 
                     candidate.chunk_text = chunk.text
 
-                    # Perform Whisper validation
+                    # Perform Whisper validation with language-specific model
+                    chunk_language = getattr(chunk, 'language_id', 'en')
                     whisper_result = self.whisper_validator.validate_candidate(
-                        candidate, chunk.text
+                        candidate, chunk.text, language=chunk_language
                     )
 
                     if whisper_result:
@@ -98,6 +102,8 @@ class ValidationHandler:
                             "error_message": whisper_result.error_message,
                             "overall_quality_score": quality_result.overall_score,
                             "quality_details": quality_result.details,
+                            "speaker_id": chunk.speaker_id,
+                            "language_id": getattr(chunk, 'language_id', 'en'),
                         }
 
                         # Save whisper result
@@ -236,8 +242,10 @@ class ValidationHandler:
 
                     retry_candidate.chunk_text = chunk.text
 
+                    # Use language-specific validation for retry candidates
+                    chunk_language = getattr(chunk, 'language_id', 'en')
                     whisper_result = self.whisper_validator.validate_candidate(
-                        retry_candidate, chunk.text
+                        retry_candidate, chunk.text, language=chunk_language
                     )
 
                     if whisper_result:
@@ -254,6 +262,8 @@ class ValidationHandler:
                             "error_message": whisper_result.error_message,
                             "overall_quality_score": quality_result.overall_score,
                             "quality_details": quality_result.details,
+                            "speaker_id": chunk.speaker_id,
+                            "language_id": getattr(chunk, 'language_id', 'en'),
                         }
 
                         self.file_manager.save_whisper(
@@ -380,6 +390,8 @@ class ValidationHandler:
                         if len(chunk.text) > 100
                         else chunk.text
                     ),
+                    "speaker_id": chunk.speaker_id,
+                    "language_id": getattr(chunk, 'language_id', 'en'),
                     "candidates": {},
                     "best_candidate": best_candidate_idx,
                     "best_score": best_score_value,
@@ -574,9 +586,10 @@ class ValidationHandler:
                     # Set chunk text for validation compatibility
                     candidate.chunk_text = chunk.text
 
-                    # Perform Whisper validation
+                    # Perform Whisper validation with language-specific model
+                    chunk_language = getattr(chunk, 'language_id', 'en')
                     whisper_result = self.whisper_validator.validate_candidate(
-                        candidate, chunk.text
+                        candidate, chunk.text, language=chunk_language
                     )
 
                     if whisper_result:
@@ -595,6 +608,8 @@ class ValidationHandler:
                             "error_message": whisper_result.error_message,
                             "overall_quality_score": quality_result.overall_score,
                             "quality_details": quality_result.details,
+                            "speaker_id": chunk.speaker_id,
+                            "language_id": getattr(chunk, 'language_id', 'en'),
                         }
 
                         # Save whisper result
@@ -812,3 +827,35 @@ class ValidationHandler:
         except Exception as e:
             logger.error(f"Failed to update enhanced metrics selectively: {e}")
             return False
+    
+    def _enhance_chunks_with_language_id(self, chunks: List[TextChunk]) -> None:
+        """
+        Enhance chunks with language_id from speaker configuration.
+        
+        Args:
+            chunks: List of chunks to enhance (modified in-place)
+        """
+        try:
+            speakers_config = self.config.get("generation", {}).get("speakers", [])
+            default_language = self.config.get("generation", {}).get("default_language", "en")
+            
+            # Create speaker_id -> language mapping
+            speaker_language_map = {}
+            for speaker in speakers_config:
+                speaker_id = speaker.get("id")
+                language = speaker.get("language", default_language)
+                if speaker_id:
+                    speaker_language_map[speaker_id] = language
+            
+            # Enhance chunks with language_id
+            for chunk in chunks:
+                chunk_language = speaker_language_map.get(chunk.speaker_id, default_language)
+                chunk.language_id = chunk_language
+                logger.debug(f"Chunk {chunk.idx + 1} (speaker: {chunk.speaker_id}) → language: {chunk_language}")
+                
+        except Exception as e:
+            logger.warning(f"Failed to enhance chunks with language_id: {e}")
+            # Set fallback language for all chunks
+            default_language = self.config.get("generation", {}).get("default_language", "en")
+            for chunk in chunks:
+                chunk.language_id = default_language
