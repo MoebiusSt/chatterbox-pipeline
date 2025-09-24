@@ -1,0 +1,75 @@
+job:
+  name: test_multilingual
+  run-label: multilingual-test
+
+input:
+  text_file: multilingual_example.txt     # small test file
+
+preprocessing:
+  enabled: true
+  normalize_line_endings: true
+
+chunking:
+  target_chunk_limit: 550
+  max_chunk_limit: 640
+  min_chunk_length: 80
+  spacy_model: en_core_web_sm
+
+generation:
+  num_candidates: 3
+  max_retries: 1
+  model_type: "multilingual"  # Important to override the model_type standart from default_config.yaml. Now the language parameters per speaker will be used.
+  default_speaker: stephan_EN
+  
+  speakers:
+    - id: stephan_EN
+      reference_audio: stephan_moebius_6.wav
+      language: en
+      tts_params:
+        exaggeration: 0.25
+        exaggeration_max_deviation: 0.10
+        cfg_weight: 0.1
+        cfg_weight_max_deviation: 0.10
+        temperature: 0.9               
+        temperature_max_deviation: 0.2
+        repetition_penalty: 1.8        
+        min_p: 0.06                    
+        top_p: 0.98                    
+      conservative_candidate:
+        enabled: false                
+    - id: stephan_DE
+      reference_audio: stephan_moebius_7_DE.wav
+      language: de
+      tts_params:
+        exaggeration: 0.40
+        exaggeration_max_deviation: 0.1
+        cfg_weight: 0.35
+        cfg_weight_max_deviation: 0.10
+        temperature: 0.8                
+        temperature_max_deviation: 0.2 
+        repetition_penalty: 1.8         
+        min_p: 0.07                     
+        top_p: 0.96                     
+      conservative_candidate:
+        enabled: false
+    - id: stephan_DE-EN
+      reference_audio: stephan_moebius_7_DE.wav
+      language: en
+      tts_params:
+        exaggeration: 0.40
+        exaggeration_max_deviation: 0.1
+        cfg_weight: 0.40
+        cfg_weight_max_deviation: 0.10
+        temperature: 0.8                
+        temperature_max_deviation: 0.2 
+        repetition_penalty: 1.5         
+        min_p: 0.08                     
+        top_p: 0.98                     
+      conservative_candidate:
+        enabled: false
+
+
+audio:
+  silence_duration:
+    normal: 0.60  # inserted between chunks if split was between sentences
+    paragraph: 1.00  # inserted if split was before paragraph break blank line

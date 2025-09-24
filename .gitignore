@@ -54,7 +54,7 @@ Desktop.ini
 $RECYCLE.BIN/
 
 # Text files (except reference samples)
-data/input/texts/
+data/input/texts/*
 
 # Keep reference texts
 !data/input/texts/input-document.txt
@@ -116,7 +116,7 @@ coverage.xml
 notes_ideas.txt
 config/*secret*
 config/*private*
-config/
+config/*
 
 # Keep reference yaml files
 !config/default_config.yaml

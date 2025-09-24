@@ -1,0 +1,62 @@
+job:
+  name: voice_test
+  run-label: # empty by default, use it to organise the tasks/files/folders
+
+input:
+  text_file: voice_test_example.txt     # txt-file in data/input/texts folder
+
+preprocessing:
+  enabled: true
+  normalize_line_endings: true    # Convert \r\n and \r to \n
+  # Future preprocessing options can be added here
+
+chunking:
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  min_chunk_length: 80
+  spacy_model: en_core_web_sm
+
+generation:
+  num_candidates: 4
+  max_retries: 0
+  default_speaker: test1
+  
+  # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
+  speakers:
+    - id: test1
+      reference_audio: stephan_moebius_6.wav
+      language: en
+      tts_params:
+        exaggeration: 0.5
+        exaggeration_max_deviation: 0.0
+        cfg_weight: 0.5
+        cfg_weight_max_deviation: 0.0
+        temperature: 0.8  #only ramp up temperature, evaluate candidates with different temperature
+        temperature_max_deviation: 0.60
+        repetition_penalty: 1.5
+        min_p: 0.05  # within normal min_p and top_p range
+        top_p: 0.99
+      conservative_candidate:
+        enabled: false
+    - id: test2
+      tts_params:
+        exaggeration: 0.80  #only ramp down exaggeration, evaluate effect of exaggeration
+        exaggeration_max_deviation: 0.5
+        cfg_weight: 0.50
+        cfg_weight_max_deviation: 0.0
+        temperature: 1.05
+        temperature_max_deviation: 0.0
+        repetition_penalty: 1.4
+        min_p: 0.07 # lower likelihood of artefacts with slightly narrower min_p and top_p range
+        top_p: 0.96
+    - id: test3
+      tts_params:
+        exaggeration: 0.40
+        exaggeration_max_deviation: 0.0
+        cfg_weight: 0.20 #only ramp up cfg_weight, evaluate effect of cfg_weight
+        cfg_weight_max_deviation: 0.6
+        temperature: 1.05
+        temperature_max_deviation: 0.0
+        repetition_penalty: 1.4
+        min_p: 0.05
+        top_p: 0.99
