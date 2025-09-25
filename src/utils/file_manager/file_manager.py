@@ -162,7 +162,10 @@ class FileManager:
         """
         text_file = self.config["input"]["text_file"]
         source_path = self.input_texts_dir / text_file
-        target_filename = f"original_{text_file}"
+        # Flatten the path to avoid creating subdirectories in the backup location
+        # Use only the filename part for the backup to avoid path issues
+        text_filename = Path(text_file).name
+        target_filename = f"original_{text_filename}"
         target_path = self.texts_dir / target_filename
         
         # If a backup already exists for this task, reuse it and do not overwrite
@@ -182,7 +185,9 @@ class FileManager:
         """Load input text file."""
         text_file = self.config["input"]["text_file"]
         # Prefer task-local backup (ensures reproducibility on resumed tasks)
-        backup_path = self.texts_dir / f"original_{text_file}"
+        # Use flattened filename for backup path to match _copy_input_text_backup
+        text_filename = Path(text_file).name
+        backup_path = self.texts_dir / f"original_{text_filename}"
         if backup_path.exists():
             text_path = backup_path
             logger.debug(f"Using backup input text: {text_path}")
