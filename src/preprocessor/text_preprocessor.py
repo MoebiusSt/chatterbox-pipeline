@@ -93,7 +93,7 @@ class TextPreprocessor:
         if self.config.get("normalize_quotes", True):
             original_length = len(processed_text)
             # Replace German quotation marks „ and " with standard quotes
-            processed_text = processed_text.replace("„", '"').replace('"', '"')
+            processed_text = processed_text.replace("„", '"').replace('“', '"')
             # Replace French/typographic quotation marks » and « with standard quotes
             processed_text = processed_text.replace("»", '"').replace("«", '"')
             if len(processed_text) != original_length:

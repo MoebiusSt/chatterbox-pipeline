@@ -255,6 +255,11 @@ class SpaCyChunker(BaseChunker):
                 else:
                     # This is text content after a speaker tag
                     if text_part.strip():
+                        # Determine transition context based on surrounding text
+                        prev_text = parts[i - 2] if i - 2 >= 0 else ""
+                        context = self._classify_speaker_transition_context(
+                            prev_text, text_part
+                        )
                         sections.append(
                             {
                                 "text": text_part.lstrip(),
@@ -262,6 +267,7 @@ class SpaCyChunker(BaseChunker):
                                 "start_pos": 0,  # Will be recalculated
                                 "speaker_transition": True,
                                 "original_markup": new_speaker_id if i > 1 else None,
+                                "speaker_transition_context": context,
                             }
                         )
             i += 1
@@ -296,6 +302,9 @@ class SpaCyChunker(BaseChunker):
                 speaker_id=section["speaker_id"],
                 speaker_transition=(i == 0 and section["speaker_transition"]),
                 original_markup=section["original_markup"] if i == 0 else None,
+                speaker_transition_context=(
+                    section.get("speaker_transition_context") if i == 0 else None
+                ),
             )
             enhanced_chunks.append(enhanced_chunk)
 
@@ -311,12 +320,114 @@ class SpaCyChunker(BaseChunker):
         Returns:
             Finalized list of TextChunk objects
         """
+        # Adjust leading closing punctuation at chunk boundaries
+        chunks = self._fix_leading_closing_punctuation(chunks)
+
         # Set correct indices
         for i, chunk in enumerate(chunks):
             chunk.idx = i
 
         logger.debug(f"Finalized {len(chunks)} chunks with speaker information")
         return chunks
+
+    def _fix_leading_closing_punctuation(self, chunks: List[TextChunk]) -> List[TextChunk]:
+        """
+        Move leading sequences of closing punctuation from a chunk to the end of the previous chunk.
+
+        Examples moved sequences at start of chunk N: '"', '!"', '."', '!”', '!?"', etc.
+        The sequence is inserted before trailing whitespace/newlines of chunk N-1.
+        """
+        if not chunks:
+            return chunks
+
+        # Define characters considered as closing/end punctuation
+        closing_chars = set(["\"", "!", ".", "?", ";", ":", ")", "]", "”", "’", "›", "»"])  # quotes normalized by preprocessor
+
+        fixed: List[TextChunk] = chunks
+        for i in range(1, len(fixed)):
+            current_text = fixed[i].text
+            if not current_text:
+                continue
+
+            # Extract leading punctuation sequence (skip zero or more leading whitespace, but only move punctuation if it is the first non-space)
+            j = 0
+            while j < len(current_text) and current_text[j].isspace():
+                j += 1
+            start_ws_end = j
+
+            k = j
+            while k < len(current_text) and current_text[k] in closing_chars:
+                k += 1
+
+            # No leading closing punctuation sequence
+            if k == j:
+                continue
+
+            leading_ws = current_text[:start_ws_end]
+            leading_punct = current_text[start_ws_end:k]
+            remainder = current_text[k:]
+
+            # Move punctuation to previous chunk end (before its trailing whitespace)
+            prev_text = fixed[i - 1].text or ""
+
+            # Split previous text into body and trailing whitespace to preserve paragraph detection
+            t = len(prev_text) - 1
+            while t >= 0 and prev_text[t].isspace():
+                t -= 1
+            # body: up to t inclusive (if t >= 0), trailing_ws: from t+1
+            if t >= 0:
+                prev_body = prev_text[: t + 1]
+                prev_trailing_ws = prev_text[t + 1 :]
+            else:
+                prev_body = ""
+                prev_trailing_ws = prev_text
+
+            # Update previous and current chunk texts
+            fixed[i - 1].text = prev_body + leading_punct + prev_trailing_ws
+            fixed[i].text = leading_ws + remainder
+
+        return fixed
+
+    def _classify_speaker_transition_context(self, prev_text: str, next_text: str) -> str:
+        """
+        Classify the context of a speaker tag position to guide pause insertion.
+
+        Returns one of: 'paragraph' | 'normal' | 'none'
+        - 'paragraph': tag is at the beginning of a new paragraph (start of doc or after \n\n)
+        - 'normal': tag is at a sentence boundary within a paragraph
+        - 'none': tag is mid-sentence (no extra pause)
+        """
+        # If previous text is empty or whitespace only, treat as paragraph start
+        if not prev_text or not prev_text.strip():
+            return "paragraph"
+
+        # Check for explicit paragraph break (double newline) before the tag
+        prev_stripped_soft = prev_text.rstrip(" \t\r")
+        if prev_stripped_soft.endswith("\n\n"):
+            return "paragraph"
+
+        # Determine the last non-whitespace character in the previous text
+        j = len(prev_text) - 1
+        while j >= 0 and prev_text[j].isspace():
+            j -= 1
+        if j < 0:
+            return "paragraph"
+
+        last_char = prev_text[j]
+
+        # Sentence-ending characters that indicate a natural break
+        sentence_enders = {".", "!", "?", '"', "]"}
+
+        if last_char in sentence_enders or last_char == "\n":
+            return "normal"
+
+        # Characters typically used inside sentences; prefer no extra pause
+        mid_sentence_punct = {",", ";", ":", "—", "–", "-", "("}
+        if last_char in mid_sentence_punct or last_char.isalpha() or last_char.isdigit():
+            return "none"
+
+        # Default to a normal short pause
+        return "normal"
 
     def _chunk_text_traditional(self, text: str) -> List[TextChunk]:
         """

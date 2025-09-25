@@ -59,6 +59,7 @@ class ChunkIOHandler:
                         "speaker_id": chunk.speaker_id,
                         "speaker_transition": chunk.speaker_transition,
                         "original_markup": chunk.original_markup,
+                        "speaker_transition_context": getattr(chunk, "speaker_transition_context", None),
                     }
                     for chunk in chunks
                 ],
@@ -128,6 +129,9 @@ class ChunkIOHandler:
                 chunk_meta.get("speaker_transition", False) if chunk_meta else False
             )
             original_markup = chunk_meta.get("original_markup") if chunk_meta else None
+            speaker_transition_context = (
+                chunk_meta.get("speaker_transition_context") if chunk_meta else None
+            )
 
             chunk = TextChunk(
                 idx=chunk_idx,
@@ -140,6 +144,7 @@ class ChunkIOHandler:
                 speaker_id=speaker_id,
                 speaker_transition=speaker_transition,
                 original_markup=original_markup,
+                speaker_transition_context=speaker_transition_context,
             )
             chunks.append(chunk)
 

@@ -1,5 +1,5 @@
 ---
-description: Don't pipe or && commands
+description: dont-pipe-or-&&-commands
 globs:
 alwaysApply: true
 ---

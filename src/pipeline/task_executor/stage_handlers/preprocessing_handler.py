@@ -1,10 +1,12 @@
 """Preprocessing stage handler."""
 
 import logging
+from pathlib import Path
 from typing import Any, Dict
 
 from chunking.chunk_validator import ChunkValidator
 from chunking.spacy_chunker import SpaCyChunker
+from preprocessor.text_preprocessor import TextPreprocessor
 from utils.file_manager.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
@@ -57,25 +59,69 @@ class PreprocessingHandler:
                 )
                 return False
 
-            # Load input text with graceful error handling
-            try:
-                input_text = self.file_manager.get_input_text()
-                logger.debug(f"Loaded input text: {len(input_text)} characters")
-            except FileNotFoundError as e:
-                logger.error(f"❌ Input text file not found: {e}")
-                logger.error(
-                    "⚠️  preprocessing cannot proceed.Please ensure the input text file exists in the correct location."
-                )
-                return False
-            except Exception as e:
-                logger.error(f"❌ Failed to load input text: {e}")
-                logger.error(
-                    "⚠️  The preprocessing stage cannot proceed without valid input text."
-                )
-                return False
+            # Apply text preprocessing if enabled
+            preprocessing_config = self.config.get("preprocessing", {})
+            preprocessing_enabled = preprocessing_config.get("enabled", True)
+            
+            if preprocessing_enabled:
+                logger.info("🔄 Text preprocessing enabled - applying transformations")
+                text_preprocessor = TextPreprocessor(preprocessing_config)
+                
+                # Load raw input text
+                try:
+                    input_text = self.file_manager.get_input_text()
+                    logger.debug(f"Loaded raw input text: {len(input_text)} characters")
+                except FileNotFoundError as e:
+                    logger.error(f"❌ Input text file not found: {e}")
+                    logger.error(
+                        "⚠️  preprocessing cannot proceed. Please ensure the input text file exists in the correct location."
+                    )
+                    return False
+                except Exception as e:
+                    logger.error(f"❌ Failed to load input text: {e}")
+                    logger.error(
+                        "⚠️  The preprocessing stage cannot proceed without valid input text."
+                    )
+                    return False
+                
+                # Apply preprocessing transformations
+                processed_text = text_preprocessor._process_text_content(input_text)
+                logger.info(f"✅ Text preprocessing applied: {len(input_text)} → {len(processed_text)} characters")
+                
+                # Use the processed text for chunking
+                chunking_input_text = processed_text
 
-            # Chunk text
-            text_chunks = self.chunker.chunk_text(input_text)
+                # Persist processed text for traceability next to original backup
+                try:
+                    text_file = self.file_manager.config["input"]["text_file"]
+                    text_stem = Path(text_file).stem
+                    processed_out_path = self.file_manager.texts_dir / f"original_{text_stem}_processed.txt"
+                    with open(processed_out_path, "w", encoding="utf-8") as f:
+                        f.write(processed_text)
+                    logger.info(f"✅ Persisted processed text to: {processed_out_path.name}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not persist processed text copy: {e}")
+            else:
+                logger.info("⚠️ Text preprocessing disabled - using original text")
+                # Load input text with graceful error handling
+                try:
+                    chunking_input_text = self.file_manager.get_input_text()
+                    logger.debug(f"Loaded original input text: {len(chunking_input_text)} characters")
+                except FileNotFoundError as e:
+                    logger.error(f"❌ Input text file not found: {e}")
+                    logger.error(
+                        "⚠️  preprocessing cannot proceed. Please ensure the input text file exists in the correct location."
+                    )
+                    return False
+                except Exception as e:
+                    logger.error(f"❌ Failed to load input text: {e}")
+                    logger.error(
+                        "⚠️  The preprocessing stage cannot proceed without valid input text."
+                    )
+                    return False
+
+            # Chunk text (using processed or original text based on preprocessing config)
+            text_chunks = self.chunker.chunk_text(chunking_input_text)
             logger.info(f"Generated {len(text_chunks)} text chunks")
 
             # Update indices for TextChunk objects

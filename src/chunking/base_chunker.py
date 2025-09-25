@@ -23,6 +23,8 @@ class TextChunk:
     speaker_id: str = "default"  # Current speaker
     speaker_transition: bool = False  # Chunk starts with speaker transition
     original_markup: Optional[str] = None  # Original markup for debugging
+    # Context of a speaker transition for pause handling: 'paragraph' | 'normal' | 'none'
+    speaker_transition_context: Optional[str] = None
     
     # Multilingual Support
     language_id: Optional[str] = None  # Language for this chunk (from speaker config)

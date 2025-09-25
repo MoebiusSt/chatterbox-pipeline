@@ -66,9 +66,14 @@ class AudioProcessor:
         self,
         audio_segments: List[torch.Tensor],
         has_paragraph_breaks: Optional[List[bool]] = None,
+        boundary_pause_types: Optional[List[str]] = None,
     ) -> torch.Tensor:
         """
         Concatenates audio segments with appropriate silence insertion.
+
+        If boundary_pause_types is provided, it takes precedence over
+        has_paragraph_breaks. Valid values per boundary are: 'none',
+        'normal', 'paragraph'.
 
         """
         if not audio_segments:
@@ -92,14 +97,25 @@ class AudioProcessor:
 
             # Add silence after segment (except for the last one)
             if i < len(audio_segments) - 1:
-                if has_paragraph_breaks and i < len(has_paragraph_breaks):
-                    if has_paragraph_breaks[i]:
+                # Prefer explicit boundary pause types if provided
+                if boundary_pause_types and i < len(boundary_pause_types):
+                    pause_type = boundary_pause_types[i]
+                    if pause_type == "paragraph":
                         processed_segments.append(self.paragraph_silence)
-                    else:
+                    elif pause_type == "none":
+                        processed_segments.append(torch.zeros((1, 0), device=self.device))
+                    else:  # 'normal' or unknown
                         processed_segments.append(self.normal_silence)
                 else:
-                    # Default to normal silence
-                    processed_segments.append(self.normal_silence)
+                    # Backward compatibility using paragraph break flags
+                    if has_paragraph_breaks and i < len(has_paragraph_breaks):
+                        if has_paragraph_breaks[i]:
+                            processed_segments.append(self.paragraph_silence)
+                        else:
+                            processed_segments.append(self.normal_silence)
+                    else:
+                        # Default to normal silence
+                        processed_segments.append(self.normal_silence)
 
         # Concatenate all segments
         try:
@@ -115,13 +131,18 @@ class AudioProcessor:
         self,
         candidates: List[AudioCandidate],
         has_paragraph_breaks: Optional[List[bool]] = None,
+        boundary_pause_types: Optional[List[str]] = None,
     ) -> torch.Tensor:
         """
         Concatenates audio from a list of AudioCandidate objects.
 
         """
         audio_segments = [candidate.audio_tensor for candidate in candidates]
-        return self.concatenate_segments(audio_segments, has_paragraph_breaks)
+        return self.concatenate_segments(
+            audio_segments,
+            has_paragraph_breaks=has_paragraph_breaks,
+            boundary_pause_types=boundary_pause_types,
+        )
 
     def save_audio(
         self, audio: torch.Tensor, output_path: str, sample_rate: Optional[int] = None

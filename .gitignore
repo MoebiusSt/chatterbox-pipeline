@@ -29,7 +29,7 @@ env/
 ENV/
 .venv/
 .env/
-cursor/
+.cursor/*
 .cursorignore
 
 # IDE

@@ -454,6 +454,7 @@ input:
 preprocessing:
   enabled: true
   normalize_line_endings: true    # Convert \r\n and \r to \n
+  normalize_quotes: true
   # Future preprocessing options might be added here
 
 chunking:

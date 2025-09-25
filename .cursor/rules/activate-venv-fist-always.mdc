@@ -1,5 +1,5 @@
 ---
-description: Check venv
+description: check-venv
 globs: 
 alwaysApply: true
 ---

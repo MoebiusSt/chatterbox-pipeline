@@ -46,13 +46,29 @@ class AssemblyHandler:
                 logger.error("No audio segments loaded for assembly")
                 return False
 
-            # Load chunks for paragraph break information
+            # Load chunks for pause boundary information
             chunks = self.file_manager.get_chunks()
-            has_paragraph_breaks = [chunk.has_paragraph_break for chunk in chunks]
+            # Build boundary pause types between segments (length = len(segments) - 1)
+            boundary_pause_types: List[str] = []
+            for i in range(len(chunks) - 1):
+                # Priority: explicit paragraph break after chunk i
+                if chunks[i].has_paragraph_break:
+                    boundary_pause_types.append("paragraph")
+                    continue
+
+                # If next chunk starts with a speaker transition, use its context
+                if getattr(chunks[i + 1], "speaker_transition", False):
+                    ctx = getattr(chunks[i + 1], "speaker_transition_context", None)
+                    if ctx in ("paragraph", "normal", "none"):
+                        boundary_pause_types.append(ctx)
+                        continue
+
+                # Default short pause between chunks
+                boundary_pause_types.append("normal")
 
             # Assemble audio with appropriate silences
             final_audio = self._assemble_audio_with_silences(
-                audio_segments, has_paragraph_breaks
+                audio_segments, boundary_pause_types
             )
 
             # Apply post-processing (audio normalization)
@@ -109,7 +125,7 @@ class AssemblyHandler:
             return audio
 
     def _assemble_audio_with_silences(
-        self, audio_segments: List[torch.Tensor], has_paragraph_breaks: List[bool]
+        self, audio_segments: List[torch.Tensor], boundary_pause_types: List[str]
     ) -> torch.Tensor:
         """Assemble audio segments with appropriate silences."""
         if not audio_segments:
@@ -127,9 +143,12 @@ class AssemblyHandler:
 
             # Add silence between segments (except after the last one)
             if i < len(audio_segments) - 1:
-                if i < len(has_paragraph_breaks) and has_paragraph_breaks[i]:
+                pause_type = boundary_pause_types[i] if i < len(boundary_pause_types) else "normal"
+                if pause_type == "paragraph":
                     silence = torch.zeros(paragraph_silence)
-                else:
+                elif pause_type == "none":
+                    silence = torch.zeros(0)
+                else:  # "normal" or fallback
                     silence = torch.zeros(normal_silence)
                 assembled_segments.append(silence)
 
