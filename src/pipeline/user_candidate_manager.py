@@ -176,7 +176,7 @@ class UserCandidateManager:
 
             # Display candidate table with proper alignment
             print(
-                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        sim_score:  length_score:  qty_score:  passed:"
+                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        sim_score:  length_score:  val_score:  qty_score:  passed:"
             )
             for info in candidate_infos:
                 selected_marker = "<- sel" if info.is_selected else ""
@@ -190,6 +190,7 @@ class UserCandidateManager:
                     f"{info.candidate_type:<12} "
                     f"{info.similarity_score:<11.2f} "
                     f"{info.length_score:<14.2f} "
+                    f"{getattr(info, 'validation_score', 0.0):<10.2f} "
                     f"{info.quality_score:<11.2f} "
                     f"{passed_marker:<7} {selected_marker}"
                 )
@@ -245,7 +246,7 @@ class UserCandidateManager:
 
                             # Display candidate table with proper alignment
                             print(
-                                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        sim_score:  length_score:  qty_score:  passed:"
+                                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        sim_score:  length_score:  val_score:  qty_score:  passed:"
                             )
                             for info in candidate_infos:
                                 selected_marker = "<- sel" if info.is_selected else ""
@@ -259,6 +260,7 @@ class UserCandidateManager:
                                     f"{info.candidate_type:<12} "
                                     f"{info.similarity_score:<11.2f} "
                                     f"{info.length_score:<14.2f} "
+                                    f"{getattr(info, 'validation_score', 0.0):<10.2f} "
                                     f"{info.quality_score:<11.2f} "
                                     f"{passed_marker:<7} {selected_marker}"
                                 )
@@ -313,10 +315,20 @@ class UserCandidateManager:
 
                 # Find matching file candidate for generation parameters
                 file_candidate = None
+                wav_exists = False
                 for fc in file_candidates:
                     if fc.candidate_idx == candidate_idx:
-                        file_candidate = fc
-                        break
+                        # Ensure the WAV actually exists (stale metrics guard)
+                        chunk_dir = self.file_manager.candidates_dir / f"chunk_{chunk_idx+1:03d}"
+                        wav_path = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
+                        wav_exists = wav_path.exists()
+                        if wav_exists:
+                            file_candidate = fc
+                            break
+
+                # Skip candidates without existing WAV files (UI should reflect actual selectable items)
+                if not wav_exists:
+                    continue
 
                 # Extract generation parameters
                 if file_candidate and file_candidate.generation_params:
@@ -329,19 +341,63 @@ class UserCandidateManager:
                     exaggeration = cfg_weight = temperature = 0.0
                     candidate_type = "UNKNOWN"
 
+                # Derive realistic length_score from metrics if available
+                sim_score = candidate_data.get("similarity_score", 0.0)
+                val_score = candidate_data.get("validation_score", 0.0)
+                overall = candidate_data.get("overall_quality_score", 0.0)
+
+                # If quality_details contain individual length score, prefer it
+                quality_details = candidate_data.get("quality_details", {})
+                individual = quality_details.get("individual_scores", {}) if isinstance(quality_details, dict) else {}
+                length_score = individual.get("length_score")
+                if length_score is None:
+                    # Fallback: approximate length_score from overall and sim weights when possible
+                    # Default weights in QualityScorer: similarity 0.7, length 0.3 (if unchanged)
+                    try:
+                        approx = (overall - 0.7 * sim_score) / 0.3
+                        length_score = max(0.0, min(1.0, approx))
+                    except Exception:
+                        length_score = 0.0
+
+                # Determine validity: prefer stored is_valid, else recompute using config thresholds (mirror WhisperValidator)
+                stored_is_valid = candidate_data.get("is_valid")
+                if stored_is_valid is None:
+                    try:
+                        validation_cfg = self.file_manager.config.get("validation", {})
+                        sim_thr = float(validation_cfg.get("similarity_threshold", 0.8))
+                        min_q = float(validation_cfg.get("min_quality_score", 0.75))
+                        strict_validation = (sim_score >= sim_thr and val_score >= min_q)
+                        flexible_validation = (
+                            (val_score >= min_q + 0.02 and sim_score >= sim_thr - 0.10)
+                            or (sim_score >= sim_thr + 0.02 and val_score >= min_q - 0.10)
+                            or (
+                                sim_score >= sim_thr - 0.05
+                                and val_score >= min_q - 0.05
+                                and (sim_score + val_score) >= (sim_thr + min_q) - 0.05
+                            )
+                        )
+                        computed_is_valid = strict_validation or flexible_validation
+                    except Exception:
+                        computed_is_valid = overall > 0.6
+                    is_valid_flag = bool(computed_is_valid)
+                else:
+                    is_valid_flag = bool(stored_is_valid)
+
                 info = CandidateInfo(
                     candidate_id=candidate_idx,
                     exaggeration=exaggeration,
                     cfg_weight=cfg_weight,
                     temperature=temperature,
                     candidate_type=candidate_type,
-                    similarity_score=candidate_data.get("similarity_score", 0.0),
-                    length_score=0.97,  # Mock value, not stored in metrics
-                    quality_score=candidate_data.get("overall_quality_score", 0.0),
-                    validation_passed=candidate_data.get("overall_quality_score", 0.0)
-                    > 0.6,
+                    similarity_score=sim_score,
+                    length_score=float(length_score),
+                    quality_score=overall,
+                    validation_passed=is_valid_flag,
                     is_selected=(candidate_idx == current_selected),
                 )
+
+                # Attach validation_score dynamically for printing
+                setattr(info, "validation_score", float(val_score))
 
                 candidate_infos.append(info)
 

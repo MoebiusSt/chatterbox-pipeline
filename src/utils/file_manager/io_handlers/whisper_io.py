@@ -286,18 +286,29 @@ class WhisperIOHandler:
 
             # Update candidate data in enhanced metrics
             candidate_key = str(candidate_idx)
-            candidate_data = {
+            new_candidate_data = {
                 "transcription": result.get("transcription", ""),
                 "similarity_score": result.get("similarity_score", 0.0),
                 "validation_score": result.get("quality_score", 0.0),
                 "overall_quality_score": result.get("overall_quality_score", 0.0),
                 "quality_details": result.get("quality_details", {}),
-                "is_valid": result.get(
-                    "is_valid", False
-                ),  # Store original validation result
+                "is_valid": result.get("is_valid", False),
             }
 
-            metrics["chunks"][chunk_key]["candidates"][candidate_key] = candidate_data
+            # Merge into existing candidate entry if present to preserve fields like final_score
+            existing_candidate = metrics["chunks"][chunk_key]["candidates"].get(candidate_key)
+            if isinstance(existing_candidate, dict):
+                merged = existing_candidate.copy()
+                merged.update(new_candidate_data)
+                # Ensure final_score is present and consistent
+                if "final_score" not in merged and "overall_quality_score" in merged:
+                    merged["final_score"] = merged["overall_quality_score"]
+                metrics["chunks"][chunk_key]["candidates"][candidate_key] = merged
+            else:
+                # Ensure final_score on fresh insert
+                if "final_score" not in new_candidate_data:
+                    new_candidate_data["final_score"] = new_candidate_data["overall_quality_score"]
+                metrics["chunks"][chunk_key]["candidates"][candidate_key] = new_candidate_data
 
             # Save updated metrics back
             with open(metrics_path, "w", encoding="utf-8") as f:

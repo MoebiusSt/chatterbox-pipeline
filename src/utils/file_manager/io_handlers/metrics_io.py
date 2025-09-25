@@ -162,16 +162,46 @@ class MetricsIOHandler:
                     )
                     new_candidates = chunk_data.get("candidates", {})
 
-                    # Merge candidates (new ones override existing ones with same key)
-                    merged_candidates = existing_candidates.copy()
-                    merged_candidates.update(new_candidates)
+                    # Normalize keys to strings to avoid duplicate numeric vs string keys
+                    existing_candidates_str = {
+                        str(k): v for k, v in existing_candidates.items()
+                    }
+                    new_candidates_str = {str(k): v for k, v in new_candidates.items()}
 
-                    # Update chunk data
-                    metrics["chunks"][chunk_key].update(chunk_data)
+                    # Merge candidates (new override existing)
+                    merged_candidates = existing_candidates_str.copy()
+                    for cand_key, cand_val in new_candidates_str.items():
+                        # If we already have data for this candidate, merge shallowly to preserve existing fields like final_score
+                        if cand_key in merged_candidates and isinstance(merged_candidates[cand_key], dict) and isinstance(cand_val, dict):
+                            merged = merged_candidates[cand_key].copy()
+                            merged.update(cand_val)
+                            # Ensure final_score is present if overall_quality_score exists
+                            if "final_score" not in merged and "overall_quality_score" in merged:
+                                merged["final_score"] = merged["overall_quality_score"]
+                            merged_candidates[cand_key] = merged
+                        else:
+                            # Ensure final_score consistency on fresh inserts as well
+                            if isinstance(cand_val, dict) and "final_score" not in cand_val and "overall_quality_score" in cand_val:
+                                cand_val = cand_val.copy()
+                                cand_val["final_score"] = cand_val["overall_quality_score"]
+                            merged_candidates[cand_key] = cand_val
+
+                    # Update chunk data but avoid re-setting candidates with possibly non-normalized keys
+                    chunk_data_copy = chunk_data.copy()
+                    if "candidates" in chunk_data_copy:
+                        del chunk_data_copy["candidates"]
+                    metrics["chunks"][chunk_key].update(chunk_data_copy)
                     metrics["chunks"][chunk_key]["candidates"] = merged_candidates
                 else:
-                    # Add new chunk data
-                    metrics["chunks"][chunk_key] = chunk_data
+                    # Add new chunk data (normalize candidate keys)
+                    normalized_chunk = chunk_data.copy()
+                    candidates = normalized_chunk.get("candidates", {})
+                    normalized_chunk["candidates"] = {str(k): v for k, v in candidates.items()}
+                    # Ensure final_score consistency for all new candidates
+                    for k, v in normalized_chunk["candidates"].items():
+                        if isinstance(v, dict) and "final_score" not in v and "overall_quality_score" in v:
+                            v["final_score"] = v["overall_quality_score"]
+                    metrics["chunks"][chunk_key] = normalized_chunk
 
                 # Update selected candidates only for new chunks or if not preserving
                 if (

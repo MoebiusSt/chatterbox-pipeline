@@ -403,13 +403,16 @@ class ValidationHandler:
                     candidate_score = result_dict.get("overall_quality_score", 0.0)
                     candidate_scores.append(candidate_score)
 
-                    chunk_metrics["candidates"][candidate.candidate_idx] = {
+                    # Use string keys for candidate indices to avoid int/str duplicates in JSON
+                    cand_key = str(candidate.candidate_idx)
+                    chunk_metrics["candidates"][cand_key] = {
                         "transcription": result_dict.get("transcription", ""),
                         "similarity_score": result_dict.get("similarity_score", 0.0),
                         "validation_score": result_dict.get("quality_score", 0.0),
                         "overall_quality_score": candidate_score,
                         "quality_details": result_dict.get("quality_details", {}),
                         "final_score": candidate_score,
+                        "is_valid": result_dict.get("is_valid", False),
                     }
 
                 # Log results
