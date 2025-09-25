@@ -303,6 +303,20 @@ class GenerationHandler:
         self, chunk: TextChunk, max_retries: int, start_candidate_idx: int
     ) -> List[AudioCandidate]:
         """Generate additional conservative candidates if initial generation fails quality."""
+        try:
+            # Ensure the correct speaker is active before generating retry candidates
+            speaker_id = getattr(chunk, "speaker_id", None)
+            if not speaker_id and hasattr(self.file_manager, "get_default_speaker_id"):
+                speaker_id = self.file_manager.get_default_speaker_id()
+
+            if speaker_id:
+                self.tts_generator.switch_speaker(speaker_id, self.file_manager)
+                logger.debug(
+                    f"Retry generation: ensured speaker '{speaker_id}' is active for chunk {chunk.idx+1}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to ensure correct speaker before retry generation: {e}")
+
         return self.retry_logic.generate_retry_candidates(
             chunk, max_retries, start_candidate_idx
         )

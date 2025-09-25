@@ -1,5 +1,6 @@
 import logging
 import warnings
+import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -219,6 +220,12 @@ class TTSGenerator:
             elif self.model_type == "multilingual" and not self.is_multilingual:
                 logger.debug("Multilingual model requested but not available, using standard model without language_id")
             
+            # Normalize parameters to what the model accepts
+            try:
+                generate_params = self._normalize_generation_params(generate_params)
+            except Exception as e:
+                logger.debug(f"Param normalization failed (non-fatal): {e}")
+
             audio = self.model.generate(text, **generate_params)
 
         # ChatterboxTTS returns 1D tensor - ensure consistency
@@ -274,6 +281,22 @@ class TTSGenerator:
             for k, v in additional_params.items()
             if k not in {"min_p", "top_p"}
         }
+
+        # Ensure speaker conditionals are loaded; if missing and a reference audio is provided,
+        # prepare conditionals now as a safety net for speaker-aware generation paths.
+        try:
+            model_ref = self.model
+            if (
+                model_ref is not None
+                and (not hasattr(model_ref, "conds") or getattr(model_ref, "conds", None) is None)
+                and reference_audio_path
+            ):
+                logger.debug(
+                    f"Preparing missing conditionals from reference audio: {Path(reference_audio_path).name}"
+                )
+                self.prepare_conditionals(reference_audio_path)
+        except Exception as e:
+            logger.error(f"Failed to prepare conditionals from reference audio: {e}")
 
         def _clamp(v: float, lo: float, hi: float) -> float:
             return max(lo, min(hi, v))
@@ -365,6 +388,12 @@ class TTSGenerator:
             root_logger = logging.getLogger()
             mem_handler = _MemoryHandler(level=logging.DEBUG)
             root_logger.addHandler(mem_handler)
+            # Normalize parameters to what the model accepts
+            try:
+                gen_params = self._normalize_generation_params(gen_params)
+            except Exception as e:
+                logger.debug(f"Param normalization failed (non-fatal): {e}")
+
             try:
                 audio_tensor = self.model.generate(text, **gen_params)
             except Exception as e:
@@ -733,6 +762,66 @@ class TTSGenerator:
         )
         return candidates
 
+    def _normalize_generation_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize generation kwargs to align with the underlying model.generate signature.
+
+        Behavior:
+        - If model.generate has **kwargs (VAR_KEYWORD), do NOT filter unknown keys (only alias-remap).
+        - If model.generate does NOT have **kwargs, filter to accepted names to avoid TypeError.
+        - Attempt common alias remaps (cfg_weight, temperature, exaggeration, top_p, min_p, language_id, repetition_penalty).
+        """
+        model_ref = self.model
+        if model_ref is None or not hasattr(model_ref, "generate"):
+            return params
+
+        try:
+            sig = inspect.signature(model_ref.generate)
+            accepted_params = set(sig.parameters.keys())
+            has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        except Exception:
+            return params
+
+        normalized: Dict[str, Any] = dict(params)
+
+        def remap(src_key: str, candidates: List[str]):
+            if src_key in normalized and src_key not in accepted_params:
+                for cand in candidates:
+                    if cand in accepted_params:
+                        normalized[cand] = normalized.pop(src_key)
+                        return
+                # keep original; it may be filtered below
+
+        # Attempt common alias remaps
+        remap("cfg_weight", ["cfg_weight", "cfg", "guidance_scale", "classifier_free_guidance_weight"]) 
+        remap("temperature", ["temperature", "temp"]) 
+        remap("exaggeration", ["exaggeration", "style_exaggeration", "expressiveness"]) 
+        remap("top_p", ["top_p", "nucleus_p"]) 
+        remap("min_p", ["min_p", "p_min"]) 
+        remap("language_id", ["language_id", "language", "lang"]) 
+        remap("repetition_penalty", ["repetition_penalty", "repeat_penalty"]) 
+
+        # If model accepts **kwargs, retain all keys (no filtering) to allow the model to consume kwargs.
+        if has_var_kw:
+            try:
+                logger.debug(
+                    f"Model.generate accepts **kwargs; passing params without filtering. Keys: {sorted(normalized.keys())}"
+                )
+            except Exception:
+                pass
+            return normalized
+
+        # Otherwise, filter to accepted names to avoid TypeError
+        filtered = {k: v for k, v in normalized.items() if k in accepted_params}
+        dropped = [k for k in normalized.keys() if k not in accepted_params]
+        if dropped:
+            logger.debug(f"Dropping unsupported TTS params for model.generate (no **kwargs): {dropped}")
+        try:
+            logger.debug(f"Params passed to model.generate: {sorted(filtered.keys())}")
+        except Exception:
+            pass
+        return filtered
+
     def generate_specific_candidates(
         self,
         text: str,
@@ -1054,6 +1143,13 @@ class TTSGenerator:
         speaker_config = self._get_speaker_config(speaker_id)
         reference_audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
  
+        # Activate the requested speaker to load/update conditionals before generation.
+        # This is idempotent if the speaker is already active.
+        try:
+            self.switch_speaker(speaker_id, config_manager)
+        except Exception as e:
+            logger.error(f"Failed to switch to speaker '{speaker_id}': {e}")
+
         # Prepare generation parameters
         base_params = speaker_config["tts_params"]
         conservative_params = speaker_config.get("conservative_candidate", {})
@@ -1069,9 +1165,19 @@ class TTSGenerator:
                 else speaker_id
             )
             default_speaker_config = self._get_speaker_config(default_speaker_id)
-            language_id = default_speaker_config.get("language", "en")  # Hard fallback to English
+            language_id = default_speaker_config.get("language")
+            # Next fallback: generation.default_language
+            if not language_id:
+                try:
+                    generation_cfg = self.config.get("generation", {})
+                    language_id = generation_cfg.get("default_language")
+                except Exception:
+                    language_id = None
+            # Final fallback to English
+            if not language_id:
+                language_id = "en"
             logger.warning(
-                f"No language defined for speaker '{speaker_id}', using default speaker's language: {language_id}"
+                f"No language defined for speaker '{speaker_id}', using fallback language: {language_id}"
             )
  
         candidates = []
@@ -1117,7 +1223,8 @@ class TTSGenerator:
                 log_top_p = additional_params.get("top_p")
                 log_rep = additional_params.get("repetition_penalty")
                 logger.info(
-                    f"CAND {i+1}/{num_candidates} ({'CONS' if (i == num_candidates - 1 and conservative_enabled) else 'EXP'}): "
+                    f"CAND {i+1}/{num_candidates} (lang={language_id}) "
+                    f"({'CONS' if (i == num_candidates - 1 and conservative_enabled) else 'EXP'}): "
                     f"exag={core_exaggeration:.2f}, cfg={core_cfg_weight:.2f}, temp={core_temperature:.2f}, "
                     f"min_p={log_min_p if log_min_p is not None else '-'}, top_p={log_top_p if log_top_p is not None else '-'}, rep_pen={log_rep if log_rep is not None else '-'}"
                 )
@@ -1144,6 +1251,7 @@ class TTSGenerator:
                 audio_tensor=audio,
                 generation_params={
                     **params,
+                    "language_id": language_id,
                     **{k: v for k, v in result.get("used_params", {}).items()},
                 },
             )
