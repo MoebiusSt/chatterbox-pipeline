@@ -1050,6 +1050,67 @@ class ConfigManager:
 
         return task_config
 
+    def load_task_config_shallow(self, config_path: Path) -> TaskConfig:
+        """Load a saved task-yaml with minimal parsing (no cascading merge).
+
+        This avoids heavy operations (speaker inheritance, validation) during menu listing.
+        The full cascading merge will occur later when executing the task.
+        """
+        # Directly parse the YAML without merging with defaults
+        with open(config_path, "r", encoding="utf-8") as f:
+            try:
+                config_data = yaml.safe_load(f) or {}
+            except Exception:
+                config_data = {}
+
+        # Extract filename-based metadata (same as in load_task_config)
+        filename = config_path.stem
+        if filename.endswith("_config"):
+            filename = filename[:-7]
+
+        parts = filename.split("_")
+        if len(parts) >= 3:
+            time_part = parts[-1]
+            date_part = parts[-2]
+            timestamp = f"{date_part}_{time_part}"
+            if len(parts) >= 4:
+                run_label = parts[0]
+                text_base = "_".join(parts[1:-2])
+            else:
+                run_label = ""
+                text_base = parts[0]
+        elif len(parts) >= 2:
+            time_part = parts[-1]
+            date_part = parts[-2]
+            timestamp = f"{date_part}_{time_part}"
+            run_label = ""
+            text_base = parts[0]
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_label = ""
+            text_base = filename
+
+        # Determine job name directly from YAML (fallback to parent dir name)
+        job_name = (
+            (config_data.get("job", {}) or {}).get("name")
+            if isinstance(config_data, dict)
+            else None
+        ) or config_path.parent.name
+
+        task_directory = config_path.parent / (filename)
+
+        task_config = TaskConfig(
+            task_name=(f"{run_label}_{text_base}_{timestamp}" if run_label else f"{text_base}_{timestamp}"),
+            run_label=run_label,
+            timestamp=timestamp,
+            base_output_dir=task_directory,
+            config_path=config_path,
+            job_name=job_name,
+            preloaded_config=None,  # Force full merge later during execution
+        )
+
+        return task_config
+
     def find_configs_by_job_name(self, job_name: str) -> List[Path]:
         """
         Find all configuration files (job-yamls) related to a specific job name or pattern.
@@ -1113,7 +1174,7 @@ class ConfigManager:
         return configs
 
     def find_existing_tasks(
-        self, job_name: str, run_label: Optional[str] = None
+        self, job_name: str, run_label: Optional[str] = None, *, shallow: bool = False
     ) -> List[TaskConfig]:
         """
         Find existing completed task configurations within the output directory for a given job.
@@ -1154,7 +1215,11 @@ class ConfigManager:
 
         for config_file in config_files:
             try:
-                task_config = self.load_task_config(config_file)
+                task_config = (
+                    self.load_task_config_shallow(config_file)
+                    if shallow
+                    else self.load_task_config(config_file)
+                )
 
                 # Double-check run_label match (filename might not be perfect due to sanitization edge cases)
                 if run_label and task_config.run_label != run_label:

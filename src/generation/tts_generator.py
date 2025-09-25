@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import torch
+import re
 
 # Suppress external package warnings early
 warnings.filterwarnings(
@@ -228,6 +229,201 @@ class TTSGenerator:
         logger.debug(f"Generated audio with shape: {audio.shape}")
         return audio
 
+    def _generate_single_with_immediate_retries(
+        self,
+        *,
+        text: str,
+        exaggeration: float,
+        cfg_weight: float,
+        temperature: float,
+        base_seed: int,
+        language_id: Optional[str],
+        additional_params: Dict[str, Any],
+        reference_audio_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate audio with immediate retries if Chatterbox reports artifact-related warnings.
+
+        Strategy per retry (attempt >= 1):
+        - Change seed deterministically based on base_seed and attempt
+        - Increase min_p by +0.05 per attempt (clamped to [0.0, 1.0])
+        - Decrease top_p by -0.05 per attempt (clamped to [0.0, 1.0])
+        - Decrease temperature by -0.05 per attempt (>= 0.05)
+
+        Retries stop early if logs contain a clean EOS without repetition/long_tail flags.
+
+        Returns:
+            {
+              "audio": torch.Tensor,
+              "used_params": Dict[str, Any],  # actual params used on final attempt
+              "attempts": int,                # number of attempts performed
+              "flags": Dict[str, bool]        # detected flags from logs on final attempt
+            }
+        """
+        generation_config = self.config.get("generation", {})
+        max_retries: int = int(generation_config.get("max_retries", 0))
+
+        # Extract and prepare adjustable parameters
+        base_min_p = float(additional_params.get("min_p", 0.05))
+        base_top_p = float(additional_params.get("top_p", 0.95))
+        base_temperature = float(temperature)
+
+        # Non-adjustable passthrough params (copy to avoid side effects)
+        static_params: Dict[str, Any] = {
+            k: v
+            for k, v in additional_params.items()
+            if k not in {"min_p", "top_p"}
+        }
+
+        def _clamp(v: float, lo: float, hi: float) -> float:
+            return max(lo, min(hi, v))
+
+        def _parse_generation_logs(log_text: str) -> Dict[str, Any]:
+            # Default flags
+            flags = {
+                "long_tail": False,
+                "alignment_repetition": False,
+                "token_repetition": False,
+                "eos_success": False,
+                "forcing_eos": False,
+            }
+
+            if not log_text:
+                return flags
+
+            lt_true = re.search(r"long_tail\s*=\s*tensor\(True\)|long_tail\s*=\s*True", log_text)
+            ar_true = re.search(r"alignment_repetition\s*=\s*tensor\(True\)|alignment_repetition\s*=\s*True", log_text)
+            tr_true = re.search(r"token_repetition\s*=\s*tensor\(True\)|token_repetition\s*=\s*True", log_text)
+            forcing = "forcing EOS token" in log_text
+            eos_ok = "EOS token detected" in log_text
+
+            flags["long_tail"] = bool(lt_true)
+            flags["alignment_repetition"] = bool(ar_true)
+            flags["token_repetition"] = bool(tr_true)
+            flags["forcing_eos"] = forcing
+            flags["eos_success"] = eos_ok
+            return flags
+
+        def _should_retry(flags: Dict[str, Any]) -> bool:
+            # Retry if any of the problematic flags are True or if EOS was forced
+            return bool(
+                flags.get("forcing_eos")
+                or flags.get("long_tail")
+                or flags.get("alignment_repetition")
+                or flags.get("token_repetition")
+            )
+
+        attempts = 0
+        final_flags: Dict[str, Any] = {}
+        audio_tensor: Optional[torch.Tensor] = None
+        used_params: Dict[str, Any] = {}
+
+        while True:
+            # Compute attempt-adjusted parameters
+            min_p = _clamp(base_min_p + 0.05 * attempts, 0.0, 1.0)
+            top_p = _clamp(base_top_p - 0.05 * attempts, 0.0, 1.0)
+            temp = _clamp(base_temperature - 0.05 * attempts, 0.05, 2.0)
+            attempt_seed = int(base_seed + attempts * 9973)
+
+            # Re-seed for this attempt
+            try:
+                torch.manual_seed(attempt_seed)
+            except Exception:
+                pass
+
+            # Build parameter set for this attempt
+            gen_params = {
+                "exaggeration": exaggeration,
+                "cfg_weight": cfg_weight,
+                "temperature": temp,
+                "min_p": min_p,
+                "top_p": top_p,
+                **static_params,
+            }
+
+            # Add language_id only for true multilingual
+            if self.is_multilingual and language_id is not None:
+                gen_params["language_id"] = language_id
+
+            # Capture logs during generation
+            captured_messages: List[str] = []
+
+            class _MemoryHandler(logging.Handler):
+                def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
+                    try:
+                        msg = record.getMessage()
+                        # Only capture chatterbox-related or EOS messages
+                        if (
+                            "chatterbox" in record.name
+                            or "EOS token" in msg
+                            or "forcing EOS token" in msg
+                        ):
+                            captured_messages.append(msg)
+                    except Exception:
+                        pass
+
+            root_logger = logging.getLogger()
+            mem_handler = _MemoryHandler(level=logging.DEBUG)
+            root_logger.addHandler(mem_handler)
+            try:
+                audio_tensor = self.model.generate(text, **gen_params)
+            except Exception as e:
+                # On hard error, decide to retry if possible
+                logger.error(f"Immediate retry attempt {attempts+1} failed with exception: {e}")
+                final_flags = {"exception": True}
+            finally:
+                root_logger.removeHandler(mem_handler)
+
+            # Normalize audio tensor shape/device if we have a result
+            if isinstance(audio_tensor, torch.Tensor):
+                if audio_tensor.ndim == 2:
+                    audio_tensor = audio_tensor.squeeze(0)
+                audio_tensor = audio_tensor.to(self.device)
+
+            # Analyze logs
+            log_text = "\n".join(captured_messages)
+            flags = _parse_generation_logs(log_text)
+            final_flags = flags
+
+            # Decide to stop or retry
+            if flags.get("eos_success") and not _should_retry(flags):
+                used_params = {
+                    "exaggeration": exaggeration,
+                    "cfg_weight": cfg_weight,
+                    "temperature": temp,
+                    "min_p": min_p,
+                    "top_p": top_p,
+                    "seed": attempt_seed,
+                }
+                if attempts > 0 and max_retries > 0:
+                    logger.info("Retry succesful")
+                break
+
+            if attempts >= max_retries:
+                # Give up and return the latest attempt (even if flagged)
+                if max_retries > 0:
+                    logger.warning(
+                        "Exceeded immediate retries; returning last attempt despite warnings"
+                    )
+                used_params = {
+                    "exaggeration": exaggeration,
+                    "cfg_weight": cfg_weight,
+                    "temperature": temp,
+                    "min_p": min_p,
+                    "top_p": top_p,
+                    "seed": attempt_seed,
+                }
+                break
+
+            attempts += 1
+
+        return {
+            "audio": audio_tensor if isinstance(audio_tensor, torch.Tensor) else torch.zeros(48000, device=self.device),
+            "used_params": used_params,
+            "attempts": attempts + 1,
+            "flags": final_flags,
+        }
+
     def generate_candidates(
         self,
         text: str,
@@ -352,23 +548,27 @@ class TTSGenerator:
                     f"Candidate 1 ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}, seed={candidate_seed}"
                 )
 
-                audio = self.generate_single(
-                    text,
+                result = self._generate_single_with_immediate_retries(
+                    text=text,
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
-                    reference_audio_path=reference_audio_path,
+                    base_seed=candidate_seed,
                     language_id=language_id,
-                    **additional_params,  # Pass repetition_penalty to renderer
-                    **kwargs,
+                    additional_params=additional_params,
+                    reference_audio_path=reference_audio_path,
                 )
+                audio = result["audio"]
 
                 candidate = AudioCandidate(
                     chunk_idx=0,  # Will be set by caller
                     candidate_idx=0,
                     audio_path=Path(),  # Will be set when saving
                     audio_tensor=audio,
-                    generation_params=generation_params.copy(),
+                    generation_params={
+                        **generation_params,
+                        **{k: v for k, v in result.get("used_params", {}).items()},
+                    },
                 )
 
                 candidates.append(candidate)
@@ -492,23 +692,27 @@ class TTSGenerator:
                     **kwargs,
                 }
 
-                audio = self.generate_single(
-                    text,
+                result = self._generate_single_with_immediate_retries(
+                    text=text,
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
-                    reference_audio_path=reference_audio_path,
+                    base_seed=candidate_seed,
                     language_id=language_id,
-                    **additional_params,  # Pass repetition_penalty to renderer
-                    **kwargs,
+                    additional_params=additional_params,
+                    reference_audio_path=reference_audio_path,
                 )
+                audio = result["audio"]
 
                 candidate = AudioCandidate(
                     chunk_idx=0,  # Will be set by caller
                     candidate_idx=i,
                     audio_path=Path(),  # Will be set when saving
                     audio_tensor=audio,
-                    generation_params=generation_params.copy(),
+                    generation_params={
+                        **generation_params,
+                        **{k: v for k, v in result.get("used_params", {}).items()},
+                    },
                 )
 
                 candidates.append(candidate)
@@ -691,23 +895,27 @@ class TTSGenerator:
                     f"Candidate {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}, seed={candidate_seed}"
                 )
 
-                audio = self.generate_single(
-                    text,
+                result = self._generate_single_with_immediate_retries(
+                    text=text,
                     exaggeration=var_exaggeration,
                     cfg_weight=var_cfg_weight,
                     temperature=var_temperature,
-                    reference_audio_path=reference_audio_path,
+                    base_seed=candidate_seed,
                     language_id=language_id,
-                    **additional_params,
-                    **kwargs,
+                    additional_params=additional_params,
+                    reference_audio_path=reference_audio_path,
                 )
+                audio = result["audio"]
 
                 candidate = AudioCandidate(
                     chunk_idx=0,  # Will be set by caller
                     candidate_idx=i,
                     audio_path=Path(),  # Will be set when saving
                     audio_tensor=audio,
-                    generation_params=generation_params.copy(),
+                    generation_params={
+                        **generation_params,
+                        **{k: v for k, v in result.get("used_params", {}).items()},
+                    },
                 )
 
                 candidates.append(candidate)
@@ -878,14 +1086,19 @@ class TTSGenerator:
                 # Intermediate candidates: Ramped parameters
                 params = self._calculate_ramped_params(base_params, i, num_candidates - 1)
  
+            # Merge with base tts_params to ensure fallbacks (e.g., repetition_penalty)
+            # Conservative params override base; for ramped/base, params already contains core values
+            effective_params = dict(base_params)
+            effective_params.update(params)
+
             # Generate with speaker and language
             # Split core params to avoid duplicate kwargs
-            core_exaggeration = params.get("exaggeration", 0.6)
-            core_cfg_weight = params.get("cfg_weight", 0.7)
-            core_temperature = params.get("temperature", 1.0)
+            core_exaggeration = effective_params.get("exaggeration", 0.6)
+            core_cfg_weight = effective_params.get("cfg_weight", 0.7)
+            core_temperature = effective_params.get("temperature", 1.0)
             additional_params = {
                 k: v
-                for k, v in params.items()
+                for k, v in effective_params.items()
                 if k
                 not in [
                     "exaggeration",
@@ -897,22 +1110,42 @@ class TTSGenerator:
                     "enabled",  # do not pass control flag into model.generate
                 ]
             }
-            audio = self.generate_single(
+ 
+            # Compact per-candidate parameter log for runtime verification
+            try:
+                log_min_p = additional_params.get("min_p")
+                log_top_p = additional_params.get("top_p")
+                log_rep = additional_params.get("repetition_penalty")
+                logger.info(
+                    f"CAND {i+1}/{num_candidates} ({'CONS' if (i == num_candidates - 1 and conservative_enabled) else 'EXP'}): "
+                    f"exag={core_exaggeration:.2f}, cfg={core_cfg_weight:.2f}, temp={core_temperature:.2f}, "
+                    f"min_p={log_min_p if log_min_p is not None else '-'}, top_p={log_top_p if log_top_p is not None else '-'}, rep_pen={log_rep if log_rep is not None else '-'}"
+                )
+            except Exception:
+                # Never fail generation due to logging
+                pass
+ 
+            result = self._generate_single_with_immediate_retries(
                 text=text,
                 exaggeration=core_exaggeration,
                 cfg_weight=core_cfg_weight,
                 temperature=core_temperature,
-                reference_audio_path=str(reference_audio_path),
+                base_seed=self.seed + (i * 1000) + hash(text) % 10000,
                 language_id=language_id,
-                **additional_params
+                additional_params=additional_params,
+                reference_audio_path=str(reference_audio_path),
             )
+            audio = result["audio"]
  
             candidate = AudioCandidate(
                 chunk_idx=0,  # Will be set by caller
                 candidate_idx=i,
                 audio_path=Path(),  # Will be set by saver
                 audio_tensor=audio,
-                generation_params=params,
+                generation_params={
+                    **params,
+                    **{k: v for k, v in result.get("used_params", {}).items()},
+                },
             )
             candidates.append(candidate)
  

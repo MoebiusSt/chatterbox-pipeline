@@ -46,21 +46,34 @@ class JobManager:
             try:
                 if self.is_task_config(config_file):
                     # Load existing task config
-                    task_config = self.config_manager.load_task_config(config_file)
+                    task_config = self.config_manager.load_task_config_shallow(
+                        config_file
+                    )
                     task_configs.append(task_config)
                 else:
-                    # Create new task config from job-yaml
-                    config_data = self.config_manager.load_cascading_config(config_file)
-                    task_config = self.config_manager.create_task_config(config_data)
-                    # Set the original job-yaml path for later use
-                    task_config.config_path = config_file
-                    task_configs.append(task_config)
+                    # For menu listing, avoid merging; create a shallow TaskConfig signature
+                    # Load just minimal job yaml to extract identifiers
+                    job_yaml = self.config_manager.load_job_config(config_file)
+                    if not isinstance(job_yaml, dict):
+                        continue
+                    # Create a transient TaskConfig (no saving here)
+                    temp = self.config_manager.create_task_config(
+                        {
+                            "job": {
+                                "name": job_yaml.get("job", {}).get("name", "job"),
+                                "run-label": job_yaml.get("job", {}).get("run-label", ""),
+                            },
+                            "input": {"text_file": job_yaml.get("input", {}).get("text_file", "input.txt")},
+                        }
+                    )
+                    temp.config_path = config_file
+                    task_configs.append(temp)
 
             except Exception as e:
                 logger.warning(f"Error processing config {config_file}: {e}")
 
         # Also search for existing tasks in output directory
-        existing_tasks = self.config_manager.find_existing_tasks(job_name)
+        existing_tasks = self.config_manager.find_existing_tasks(job_name, shallow=True)
         task_configs.extend(existing_tasks)
 
         # Remove duplicates and sort by timestamp
@@ -86,9 +99,20 @@ class JobManager:
                 continue  # Skip default config
 
             try:
-                config_data = self.config_manager.load_cascading_config(config_file)
-                task_config = self.config_manager.create_task_config(config_data)
-                task_configs.append(task_config)
+                job_yaml = self.config_manager.load_job_config(config_file)
+                if not isinstance(job_yaml, dict):
+                    continue
+                temp = self.config_manager.create_task_config(
+                    {
+                        "job": {
+                            "name": job_yaml.get("job", {}).get("name", "job"),
+                            "run-label": job_yaml.get("job", {}).get("run-label", ""),
+                        },
+                        "input": {"text_file": job_yaml.get("input", {}).get("text_file", "input.txt")},
+                    }
+                )
+                temp.config_path = config_file
+                task_configs.append(temp)
 
             except Exception as e:
                 logger.warning(f"Error processing config {config_file}: {e}")
@@ -100,7 +124,7 @@ class JobManager:
                 if job_dir.is_dir():
                     for config_file in job_dir.glob("*_config.yaml"):
                         try:
-                            task_config = self.config_manager.load_task_config(
+                            task_config = self.config_manager.load_task_config_shallow(
                                 config_file
                             )
                             task_configs.append(task_config)

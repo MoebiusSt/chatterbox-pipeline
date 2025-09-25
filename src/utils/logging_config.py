@@ -210,7 +210,37 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
         console_fmt = "%(message)s"
 
         # Console handler with structured formatting
-        console_handler = logging.StreamHandler(sys.stdout)
+        class _TqdmFriendlyStreamHandler(logging.StreamHandler):
+            """StreamHandler that inserts a newline before specific messages that would collide with tqdm progress bars."""
+
+            def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
+                try:
+                    # Detect the specific Chatterbox EOS-forcing warning or its logger
+                    raw_msg = record.getMessage()
+                    needs_newline = (
+                        "forcing EOS token" in raw_msg
+                        or record.name.startswith(
+                            "chatterbox.models.t3.inference.alignment_stream_analyzer"
+                        )
+                    )
+
+                    if needs_newline:
+                        try:
+                            stream = self.stream
+                            stream.write("\n")
+                            stream.flush()
+                        except Exception:
+                            # If writing a newline fails, continue gracefully
+                            pass
+
+                    msg = self.format(record)
+                    stream = self.stream
+                    stream.write(msg + self.terminator)
+                    self.flush()
+                except Exception:
+                    self.handleError(record)
+
+        console_handler = _TqdmFriendlyStreamHandler(sys.stdout)
         console_handler.setLevel(actual_console_level)
 
         # Create structured formatter with color support

@@ -348,7 +348,7 @@ class CandidateManager:
             valid_normal_candidates = [
                 c
                 for c in normal_candidates
-                if c.audio is not None and c.audio.numel() > 100
+                if c.audio_tensor is not None and c.audio_tensor.numel() > 100
             ]
 
             all_candidates.extend(valid_normal_candidates)

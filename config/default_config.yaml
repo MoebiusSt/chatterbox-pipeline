@@ -18,7 +18,7 @@ chunking:
 generation:
   num_candidates: 2
   max_retries: 1
-  model_type: "standard"  # Options: "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
+  model_type: standard  # Options: "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
   default_speaker: stephan_moebius_1
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!

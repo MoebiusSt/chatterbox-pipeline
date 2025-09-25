@@ -77,8 +77,8 @@ class QualityScorer:
 
         # Default weights for weighted average strategy
         self.weights = weights or {
-            "similarity": 0.65,  # 65% - text similarity from FuzzyMatcher or WhisperValidator
-            "length": 0.35,  # 35% - text length comparison (original vs transcribed text)
+            "similarity": 0.60,  # 60% - text similarity from FuzzyMatcher or WhisperValidator
+            "length": 0.40,  # 40% - text length comparison (original vs transcribed text)
         }
 
         # Normalize weights to ensure they sum to 1.0
