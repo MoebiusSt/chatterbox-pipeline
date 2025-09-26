@@ -93,10 +93,12 @@ class SpaCyChunker(BaseChunker):
         target_limit: int = 500,
         max_limit: int = 600,
         min_length: int = 200,
+        force_paragraph_chunks: bool = False,
     ):
         self.target_limit = target_limit
         self.max_limit = max_limit
         self.min_length = min_length
+        self.force_paragraph_chunks = force_paragraph_chunks
         try:
             self.nlp = spacy.load(model_name)
         except OSError:
@@ -121,7 +123,7 @@ class SpaCyChunker(BaseChunker):
         self.default_speaker_id: Optional[str] = None  # Must be set externally
 
         logger.info(
-            f"SpaCy Chunker initialized with model '{model_name}' and speaker support."
+            f"SpaCy Chunker initialized with model '{model_name}', speaker support, and paragraph chunking: {force_paragraph_chunks}."
         )
 
     def set_available_speakers(self, speakers: List[str]):
@@ -147,7 +149,7 @@ class SpaCyChunker(BaseChunker):
     def chunk_text(self, text: str) -> List[TextChunk]:
         """
         Chunks the text using SpaCy's sentence segmentation with speaker-aware splitting.
-        Speaker changes have highest chunking priority.
+        Speaker changes have highest chunking priority, followed by paragraph breaks if force_paragraph_chunks is enabled.
         """
         if not text or not text.strip():
             return []
@@ -165,6 +167,10 @@ class SpaCyChunker(BaseChunker):
             logger.debug(f"Found {len(transitions)} speaker transitions")
             # Use speaker-aware chunking
             return self._chunk_text_with_speakers(text, transitions)
+        elif self.force_paragraph_chunks:
+            logger.debug("Using paragraph-based chunking")
+            # Use paragraph-based chunking
+            return self._chunk_text_by_paragraphs(text)
         else:
             # Use traditional chunking without speaker support
             return self._chunk_text_traditional(text)
@@ -193,6 +199,61 @@ class SpaCyChunker(BaseChunker):
             all_chunks.extend(section_chunks)
 
         # 3. Post-processing and indexing
+        return self._finalize_chunks(all_chunks)
+
+    def _chunk_text_by_paragraphs(self, text: str) -> List[TextChunk]:
+        """
+        Paragraph-based chunking: Split at double newlines first, then chunk each paragraph section.
+        Ensures that the last chunk of each paragraph section gets has_paragraph_break=True.
+        
+        Args:
+            text: Text to chunk
+            
+        Returns:
+            List of TextChunk objects with proper paragraph break flags
+        """
+        if not text or not text.strip():
+            return []
+            
+        # Split text into paragraph sections at double newlines
+        paragraph_sections = text.split('\n\n')
+        logger.debug(f"Split text into {len(paragraph_sections)} paragraph sections")
+        
+        all_chunks = []
+        current_position = 0
+        
+        for section_idx, section in enumerate(paragraph_sections):
+            if not section.strip():
+                # Skip empty sections but count their position
+                current_position += len(section) + 2  # +2 for the \n\n delimiter
+                continue
+                
+            # Add back the paragraph break to all sections except the last one
+            is_last_section = section_idx == len(paragraph_sections) - 1
+            if not is_last_section:
+                section_with_break = section + '\n\n'
+            else:
+                section_with_break = section
+                
+            # Chunk this paragraph section using traditional chunking
+            section_chunks = self._chunk_text_traditional(section_with_break)
+            
+            # Adjust positions and set paragraph break flags
+            for chunk_idx, chunk in enumerate(section_chunks):
+                # Adjust position to be relative to the full text
+                chunk.start_pos += current_position
+                chunk.end_pos += current_position
+                
+                # Mark the last chunk of each paragraph section (except empty sections) as having a paragraph break
+                is_last_chunk_in_section = chunk_idx == len(section_chunks) - 1
+                if is_last_chunk_in_section and not is_last_section:
+                    # Force paragraph break for last chunk of non-final sections
+                    chunk.has_paragraph_break = True
+                    logger.debug(f"Forced paragraph break for chunk {len(all_chunks)} (last in section {section_idx})")
+                    
+            all_chunks.extend(section_chunks)
+            current_position += len(section_with_break)
+            
         return self._finalize_chunks(all_chunks)
 
     def _create_speaker_splits(

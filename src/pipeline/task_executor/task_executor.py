@@ -94,6 +94,7 @@ class TaskExecutor:
                 target_limit=chunking_config.get("target_chunk_limit", 480),
                 max_limit=chunking_config.get("max_chunk_limit", 600),
                 min_length=chunking_config.get("min_chunk_length", 50),
+                force_paragraph_chunks=chunking_config.get("force_paragraph_chunks", False),
             )
         return self._chunker
 

@@ -44,7 +44,18 @@ def main():
         target_limit=chunking_config.get("target_chunk_limit", 500),
         max_limit=chunking_config.get("max_chunk_limit", 600),
         min_length=chunking_config.get("min_chunk_length", 200),
+        force_paragraph_chunks=chunking_config.get("force_paragraph_chunks", False),
     )
+
+    # Set speaker configuration (required for chunker)
+    generation_config = config.get("generation", {})
+    default_speaker = generation_config.get("default_speaker", "default")
+    speakers = generation_config.get("speakers", [])
+    speaker_ids = [speaker.get("id", "default") for speaker in speakers] or ["default"]
+    
+    chunker.set_available_speakers(speaker_ids)
+    chunker.set_default_speaker_id(default_speaker)
+    logging.info(f"Set speakers: {speaker_ids}, default: {default_speaker}")
 
     logging.info("Running chunker...")
     chunks = chunker.chunk_text(text_input)

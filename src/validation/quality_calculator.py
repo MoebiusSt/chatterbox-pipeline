@@ -4,6 +4,7 @@ Handles similarity scoring and overall quality assessment.
 """
 
 import logging
+import math
 
 from typing import TYPE_CHECKING
 
@@ -65,7 +66,14 @@ class QualityCalculator:
         """
         try:
             if len(candidate.chunk_text) > 0:
-                length_score = min(1.0, len(transcription) / len(candidate.chunk_text))
+                # Calculate progressive length score that tolerates fine differences
+                # but increasingly penalizes larger deviations in both directions
+                raw_ratio = len(transcription) / len(candidate.chunk_text)
+                length_deviation = abs(1.0 - raw_ratio)
+                
+                # Use a progressive penalty: mild for small deviations, harsh for large ones
+
+                length_score = max(0.0, 1.0 - (length_deviation ** 1.4))
             else:
                 length_score = 1.0 if transcription else 0.0
 

@@ -231,6 +231,33 @@ class MetricsIOHandler:
             # Update timestamp
             metrics["timestamp"] = __import__("time").time()
 
+            # Calculate summary medians
+            overall_scores = []
+            similarity_scores = []
+            if "chunks" in metrics:
+                for chunk_data in metrics["chunks"].values():
+                    if "candidates" in chunk_data:
+                        for cand in chunk_data["candidates"].values():
+                            if isinstance(cand, dict):
+                                if "overall_quality_score" in cand:
+                                    overall_scores.append(cand["overall_quality_score"])
+                                if "similarity_score" in cand:
+                                    similarity_scores.append(cand["similarity_score"])
+            if overall_scores:
+                overall_sorted = sorted(overall_scores)
+                median_overall = overall_sorted[len(overall_sorted) // 2]
+            else:
+                median_overall = 0.0
+            if similarity_scores:
+                sim_sorted = sorted(similarity_scores)
+                median_sim = sim_sorted[len(sim_sorted) // 2]
+            else:
+                median_sim = 0.0
+            metrics["summary"] = {
+                "median_overall_quality_score": round(median_overall, 4),
+                "median_similarity_score": round(median_sim, 4)
+            }
+
             return self.save_metrics(metrics)
 
         except Exception as e:

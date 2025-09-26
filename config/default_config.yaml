@@ -15,6 +15,7 @@ chunking:
   max_chunk_limit: 460
   min_chunk_length: 80
   spacy_model: en_core_web_sm
+  force_paragraph_chunks: false  # double newlines force chunking; ensures added paragraph break silence
 
 generation:
   num_candidates: 2
@@ -177,13 +178,13 @@ generation:
 
 validation:
   whisper_model: small # base small medium large
-  similarity_threshold: 0.8
-  min_quality_score: 0.75
+  similarity_threshold: 0.59  # WhisperValidator: token-based similarity of original and transcribed text tokens
+  min_quality_score: 0.76  #  WhisperValidator: 70% * similarity_score + 30% * length_score
 
 audio:
   silence_duration:
     normal: 0.40  # inserted between chunks if split was between sentences
-    paragraph: 0.90  # inserted if split was before paragraph break blank line
+    paragraph: 0.80  # inserted if split was before paragraph break blank line
   sample_rate: 24000
 
   # ChatterboxTTS native sample rate - NOT a user setting!

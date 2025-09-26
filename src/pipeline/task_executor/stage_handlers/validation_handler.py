@@ -467,6 +467,22 @@ class ValidationHandler:
                         0
                     ].candidate_idx
 
+        # Calculate median overall_quality_score and similarity_score across all candidates
+        all_overall_scores = []
+        all_similarity_scores = []
+        for chunk_validation in validation_results.values():
+            for result_dict in chunk_validation.values():
+                all_overall_scores.append(result_dict.get("overall_quality_score", 0.0))
+                all_similarity_scores.append(result_dict.get("similarity_score", 0.0))
+
+        median_overall_score = round(float(sum(all_overall_scores) / len(all_overall_scores)), 4) if all_overall_scores else 0.0
+        median_similarity_score = round(float(sum(all_similarity_scores) / len(all_similarity_scores)), 4) if all_similarity_scores else 0.0
+
+        metrics["summary"] = {
+            "median_overall_quality_score": median_overall_score,
+            "median_similarity_score": median_similarity_score,
+        }
+
         return metrics
 
     def execute_selective_validation(
