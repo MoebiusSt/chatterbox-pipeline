@@ -114,12 +114,18 @@ class TaskExecutor:
         """Lazy-loaded Whisper validator."""
         if self._whisper_validator is None:
             validation_config = self.config["validation"]
-            self._whisper_validator = WhisperValidator(
+            validator = WhisperValidator(
                 model_size=validation_config.get("whisper_model", "base"),
                 device="auto",
                 similarity_threshold=validation_config.get("similarity_threshold", 0.7),
                 min_quality_score=validation_config.get("min_quality_score", 0.75),
             )
+            # Inject config for optional prompt and normalization access
+            try:
+                setattr(validator, "_config", self.config)
+            except Exception:
+                pass
+            self._whisper_validator = validator
         return self._whisper_validator
 
     @property

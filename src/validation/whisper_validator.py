@@ -7,7 +7,7 @@ import logging
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 import torchaudio
@@ -16,6 +16,7 @@ import whisper
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 
 from .quality_calculator import QualityCalculator
+from .number_normalization import normalize_text_for_numbers
 from .transcription_io import TranscriptionIO
 
 @dataclass
@@ -28,6 +29,10 @@ class ValidationResult:
     quality_score: float
     validation_time: float
     error_message: Optional[str] = None
+    # Optional normalization metadata
+    normalized_transcription: Optional[str] = None
+    normalization_language: Optional[str] = None
+    numbers_normalization_mode: Optional[str] = None
 
 class WhisperValidator:
     """
@@ -57,7 +62,7 @@ class WhisperValidator:
                 device = "cpu"
 
         self.device = device
-        self.models: dict[str, any] = {}  # Cache for language-specific models
+        self.models: Dict[str, Any] = {}  # Cache for language-specific models
         self.quality_calculator = QualityCalculator()
         self.transcription_io = TranscriptionIO()
         
@@ -135,7 +140,11 @@ class WhisperValidator:
         return language_models.get(language, self.model_size)
 
     def transcribe_audio(
-        self, audio: torch.Tensor, sample_rate: int = 24000, language: str = "en"
+        self,
+        audio: torch.Tensor,
+        sample_rate: int = 24000,
+        language: str = "en",
+        initial_prompt: Optional[str] = None,
     ) -> str:
         """
         Transcribe audio tensor using Whisper.
@@ -170,12 +179,15 @@ class WhisperValidator:
             # Get language-appropriate model
             model = self._get_model_for_language(language)
             
-            result = model.transcribe(
-                audio_np,
-                language=language,
-                task="transcribe",
-                fp16=False,
-            )
+            kwargs = {
+                "language": language,
+                "task": "transcribe",
+                "fp16": False,
+            }
+            if initial_prompt:
+                kwargs["initial_prompt"] = initial_prompt
+
+            result = model.transcribe(audio_np, **kwargs)
 
             transcription = result["text"].strip()
 
@@ -191,7 +203,11 @@ class WhisperValidator:
             raise
 
     def validate_candidate(
-        self, candidate: AudioCandidate, original_text: str, sample_rate: int = 24000, language: str = "en"
+        self,
+        candidate: AudioCandidate,
+        original_text: str,
+        sample_rate: int = 24000,
+        language: str = "en",
     ) -> ValidationResult:
         """
         Validate an audio candidate against original text.
@@ -208,16 +224,40 @@ class WhisperValidator:
         start_time = datetime.now()
 
         try:
+            # Prepare optional initial prompt from config
+            validation_cfg = getattr(self, "_config", {}).get("validation", {}) if hasattr(self, "_config") else {}
+            prompt_enabled = bool(validation_cfg.get("whisper_initial_prompt_enabled", False))
+            prompt_text = str(validation_cfg.get("whisper_initial_prompt_text", "")).strip() if prompt_enabled else None
+
             transcription = self.transcribe_audio(
-                candidate.audio_tensor, sample_rate=sample_rate, language=language
+                candidate.audio_tensor,
+                sample_rate=sample_rate,
+                language=language,
+                initial_prompt=prompt_text if prompt_enabled and prompt_text else None,
             )
 
             # Use QualityCalculator for scoring
+            # Apply number normalization for non-English if configured
+            numbers_mode = str(validation_cfg.get("numbers_normalization_mode", "placeholder")).lower() if validation_cfg else "placeholder"
+            apply_norm = language.lower() != "en" and numbers_mode in {"placeholder", "digits", "words"}
+
+            if apply_norm:
+                original_for_sim = normalize_text_for_numbers(original_text, language, numbers_mode)
+                transcr_for_sim = normalize_text_for_numbers(transcription, language, numbers_mode)
+            else:
+                original_for_sim = original_text
+                transcr_for_sim = transcription
+
             similarity_score = self.quality_calculator.calculate_similarity(
-                original_text, transcription
+                original_for_sim, transcr_for_sim
             )
+            # For length comparison, we want to use the same normalization (if applied)
+            base_original_for_length = original_for_sim if apply_norm else original_text
             quality_score = self.quality_calculator.calculate_quality_score(
-                candidate, transcription, similarity_score
+                candidate,
+                transcription,
+                similarity_score,
+                original_text_for_length=base_original_for_length,
             )
 
             # Validation logic with flexibility
@@ -253,6 +293,9 @@ class WhisperValidator:
                 similarity_score=similarity_score,
                 quality_score=quality_score,
                 validation_time=validation_time,
+                normalized_transcription=(transcr_for_sim if apply_norm else None),
+                normalization_language=(language if apply_norm else None),
+                numbers_normalization_mode=(numbers_mode if apply_norm else None),
             )
 
             return result

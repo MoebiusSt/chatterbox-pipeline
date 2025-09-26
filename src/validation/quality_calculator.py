@@ -51,7 +51,11 @@ class QualityCalculator:
             return 0.0
 
     def calculate_quality_score(
-        self, candidate: "AudioCandidate", transcription: str, similarity_score: float
+        self,
+        candidate: "AudioCandidate",
+        transcription: str,
+        similarity_score: float,
+        original_text_for_length: str | None = None,
     ) -> float:
         """
         Calculate overall quality score for the candidate.
@@ -65,10 +69,16 @@ class QualityCalculator:
             Quality score (0.0 to 1.0)
         """
         try:
-            if len(candidate.chunk_text) > 0:
+            base_original = (
+                original_text_for_length
+                if original_text_for_length is not None
+                else candidate.chunk_text
+            )
+
+            if base_original and len(base_original) > 0:
                 # Calculate progressive length score that tolerates fine differences
                 # but increasingly penalizes larger deviations in both directions
-                raw_ratio = len(transcription) / len(candidate.chunk_text)
+                raw_ratio = len(transcription) / len(base_original)
                 length_deviation = abs(1.0 - raw_ratio)
                 
                 # Use a progressive penalty: mild for small deviations, harsh for large ones

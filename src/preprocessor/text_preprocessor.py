@@ -99,12 +99,70 @@ class TextPreprocessor:
             if len(processed_text) != original_length:
                 logger.info("✅ Normalized quotation marks to standard quotes")
 
+        # Optional: Convert four-digit years to words for non-EN
+        if self.config.get("convert_years_to_words", False):
+            try:
+                from validation.number_normalization import normalize_text_for_numbers
+            except Exception:
+                normalize_text_for_numbers = None  # type: ignore
+
+            if normalize_text_for_numbers is not None:
+                # Resolve language for conversion
+                language = str(self.config.get("years_language", "auto")).lower()
+                if language == "auto":
+                    # Fallback to generation.default_language if available
+                    try:
+                        # Expect a higher-level config injection at construction time if needed
+                        # If not provided, default to 'en'
+                        language = (
+                            self.config.get("_generation_default_language")  # type: ignore[attr-defined]
+                            or "en"
+                        )
+                    except Exception:
+                        language = "en"
+
+                if language != "en":
+                    processed_text = _convert_years_to_words(
+                        processed_text,
+                        language=language,
+                        year_min=int(self.config.get("year_min", 1000)),
+                        year_max=int(self.config.get("year_max", 2099)),
+                    )
+
         # Future preprocessing options can be added here:
         # - Extra whitespace removal
         # - Encoding issue fixes
         # - Special character handling
 
         return processed_text
+
+
+def _convert_years_to_words(text: str, language: str, year_min: int, year_max: int) -> str:
+    """Convert four-digit year-like numbers within bounds to words using num2words.
+
+    Falls back gracefully (no change) if num2words is unavailable or conversion fails.
+    """
+    try:
+        from validation.number_normalization import _NUM2WORDS as _N2W
+        import re
+
+        if _N2W is None:
+            return text
+
+        year_re = re.compile(r"\b(\d{4})\b")
+
+        def repl(m: "re.Match[str]") -> str:
+            try:
+                year = int(m.group(1))
+                if year_min <= year <= year_max:
+                    return _N2W(year, lang=language)  # type: ignore
+                return m.group(0)
+            except Exception:
+                return m.group(0)
+
+        return year_re.sub(repl, text)
+    except Exception:
+        return text
 
     def validate_processed_text(
         self, processed_text_path: Path, run_config_path: Optional[Path] = None
