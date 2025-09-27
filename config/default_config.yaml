@@ -9,7 +9,7 @@ preprocessing:
   enabled: true
   normalize_line_endings: true    # Convert \r\n and \r to \n
   normalize_quotes: true
-  convert_years_to_words: false   # Convert four-digit years (range below) to words for non-EN jobs
+  convert_years_to_words: true    # Convert four-digit years (range below) to words for non-EN jobs
   years_language: auto            # 'auto' uses generation.default_language; else explicit language code (e.g., 'de')
   year_min: 1000                  # Inclusive lower bound for year conversion
   year_max: 2099                  # Inclusive upper bound for year conversion
@@ -182,16 +182,16 @@ generation:
 
 validation:
   whisper_model: small # base small medium large
-  similarity_threshold: 0.59  # WhisperValidator: token-based similarity of original and transcribed text tokens
-  min_quality_score: 0.76  #  WhisperValidator: 70% * similarity_score + 30% * length_score
+  similarity_threshold: 0.64  # WhisperValidator: token-based similarity of original and transcribed text tokens
+  min_quality_score: 0.72  #  WhisperValidator: 70% * similarity_score + 30% * length_score
   numbers_normalization_mode: placeholder  # off|placeholder|digits|words (applied only for language != 'en')
-  whisper_initial_prompt_enabled: false    # If true, pass an initial prompt to Whisper
+  whisper_initial_prompt_enabled: true    # If true, pass an initial prompt to Whisper
   whisper_initial_prompt_text: "Schreibe Zahlen ausgeschrieben."  # Style-only prompt, no language directive
 
 audio:
   silence_duration:
     normal: 0.40  # inserted between chunks if split was between sentences
-    paragraph: 0.80  # inserted if split was before paragraph break blank line
+    normal: 0.80  # inserted if split was before paragraph break blank line
   sample_rate: 24000
 
   # ChatterboxTTS native sample rate - NOT a user setting!

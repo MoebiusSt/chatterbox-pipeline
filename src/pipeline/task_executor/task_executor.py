@@ -343,6 +343,15 @@ class TaskExecutor:
                         logger.warning(
                             f"Could not extract chunk index from component: {comp}"
                         )
+                elif "whisper_chunk" in comp:
+                    # Also validate chunks with missing whisper results
+                    try:
+                        chunk_idx = int(comp.split("_")[-1])
+                        missing_chunk_indices.append(chunk_idx)
+                    except (ValueError, IndexError):
+                        logger.warning(
+                            f"Could not extract chunk index from component: {comp}"
+                        )
 
         # Execute stages in order based on what's missing
         if task_state.completion_stage in [

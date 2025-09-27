@@ -229,21 +229,24 @@ class WhisperValidator:
             prompt_enabled = bool(validation_cfg.get("whisper_initial_prompt_enabled", False))
             prompt_text = str(validation_cfg.get("whisper_initial_prompt_text", "")).strip() if prompt_enabled else None
 
+            # Guard language against None or empty strings
+            safe_language = language or "en"
+
             transcription = self.transcribe_audio(
                 candidate.audio_tensor,
                 sample_rate=sample_rate,
-                language=language,
+                language=safe_language,
                 initial_prompt=prompt_text if prompt_enabled and prompt_text else None,
             )
 
             # Use QualityCalculator for scoring
             # Apply number normalization for non-English if configured
             numbers_mode = str(validation_cfg.get("numbers_normalization_mode", "placeholder")).lower() if validation_cfg else "placeholder"
-            apply_norm = language.lower() != "en" and numbers_mode in {"placeholder", "digits", "words"}
+            apply_norm = safe_language.lower() != "en" and numbers_mode in {"placeholder", "digits", "words"}
 
             if apply_norm:
-                original_for_sim = normalize_text_for_numbers(original_text, language, numbers_mode)
-                transcr_for_sim = normalize_text_for_numbers(transcription, language, numbers_mode)
+                original_for_sim = normalize_text_for_numbers(original_text, safe_language, numbers_mode)
+                transcr_for_sim = normalize_text_for_numbers(transcription, safe_language, numbers_mode)
             else:
                 original_for_sim = original_text
                 transcr_for_sim = transcription
@@ -294,7 +297,7 @@ class WhisperValidator:
                 quality_score=quality_score,
                 validation_time=validation_time,
                 normalized_transcription=(transcr_for_sim if apply_norm else None),
-                normalization_language=(language if apply_norm else None),
+                normalization_language=(safe_language if apply_norm else None),
                 numbers_normalization_mode=(numbers_mode if apply_norm else None),
             )
 

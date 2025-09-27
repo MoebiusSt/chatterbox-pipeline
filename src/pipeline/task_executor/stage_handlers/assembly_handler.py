@@ -63,8 +63,9 @@ class AssemblyHandler:
                         boundary_pause_types.append(ctx)
                         continue
 
-                # Default short pause between chunks
-                boundary_pause_types.append("normal")
+                # Check if chunk ends at a sentence boundary for intelligent pause decisions
+                pause_type = self._determine_boundary_pause_type(chunks[i])
+                boundary_pause_types.append(pause_type)
 
             # Assemble audio with appropriate silences
             final_audio = self._assemble_audio_with_silences(
@@ -153,3 +154,45 @@ class AssemblyHandler:
                 assembled_segments.append(silence)
 
         return torch.cat(assembled_segments)
+
+    def _determine_boundary_pause_type(self, chunk) -> str:
+        """
+        Determine the appropriate pause type after a chunk based on how it ends.
+        
+        Args:
+            chunk: TextChunk object to analyze
+            
+        Returns:
+            Pause type: 'normal', 'none'
+        """
+        if not chunk or not chunk.text:
+            return "normal"
+            
+        # Define sentence ending characters (same as ChunkValidator)
+        sentence_enders = (".", "!", "?", '"', '"', "]")
+        
+        # Get the last non-whitespace character
+        text_stripped = chunk.text.strip()
+        if not text_stripped:
+            return "normal"
+            
+        last_char = text_stripped[-1]
+        
+        # Check if chunk ends at a proper sentence boundary
+        if last_char in sentence_enders:
+            return "normal"  # Normal pause after sentence end
+            
+        # Check for mid-sentence punctuation that shouldn't have pauses
+        mid_sentence_punct = (",", ";", ":", "—", "–", "-", "(", ")")
+        if last_char in mid_sentence_punct:
+            logger.debug(f"Chunk ends with mid-sentence punctuation '{last_char}' - using no pause")
+            return "none"  # No pause after mid-sentence punctuation
+            
+        # Check if chunk ends mid-word (likely forced split)
+        if last_char.isalnum():
+            logger.debug(f"Chunk ends mid-word ('{last_char}') - using no pause")
+            return "none"  # No pause after forced mid-word split
+            
+        # Default: short pause for other cases
+        logger.debug(f"Chunk ends with '{last_char}' - using normal pause")
+        return "normal"

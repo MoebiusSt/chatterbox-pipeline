@@ -855,22 +855,26 @@ class ValidationHandler:
             chunks: List of chunks to enhance (modified in-place)
         """
         try:
-            speakers_config = self.config.get("generation", {}).get("speakers", [])
-            
-            # Create speaker_id -> language mapping
+            gen_cfg = self.config.get("generation", {})
+            default_language = gen_cfg.get("default_language", "en")
+            speakers_config = gen_cfg.get("speakers", [])
+
+            # Create speaker_id -> language mapping with safe defaulting
             speaker_language_map = {}
             for speaker in speakers_config:
                 speaker_id = speaker.get("id")
                 language = speaker.get("language")
                 if speaker_id:
-                    speaker_language_map[speaker_id] = language
-            
-            # Enhance chunks with language_id
+                    # Use speaker-specific language if truthy, otherwise fall back to default_language
+                    speaker_language_map[speaker_id] = language or default_language
+
+            # Enhance chunks with language_id using safe fallback
             for chunk in chunks:
-                chunk_language = speaker_language_map.get(chunk.speaker_id, "en")
+                mapped_lang = speaker_language_map.get(chunk.speaker_id)
+                chunk_language = mapped_lang or default_language or "en"
                 chunk.language_id = chunk_language
                 logger.debug(f"Chunk {chunk.idx + 1} (speaker: {chunk.speaker_id}) → language: {chunk_language}")
-                
+
         except Exception as e:
             logger.warning(f"Failed to enhance chunks with language_id: {e}")
             # Set fallback language for all chunks
