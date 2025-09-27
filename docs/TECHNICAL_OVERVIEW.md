@@ -133,8 +133,12 @@ TaskExecutor:
 
 ### 2. Text Pre-Processing (`src/preprocessing/`)
 ```python
-tbd;
-# Use small ai LLM to detect non-english-words or passages, detect the the language of those passages, and convert them to a pseudo english string that would help an english speaker pronounce the phonemes right. BUT DON'T(!) use IPA (International Phonetic Alphabet).
+TextPreprocessor.process_text_file()
+ - normalize_line_endings: bool
+ - normalize_quotes: bool
+ - convert_years_to_words: bool  # non-EN only, 4-digit years within bounds
+ - years_language: "auto"|<lang>
+ - year_min/year_max: int bounds (default 1000..2099)
 ```
 
 ### 3. Text Processing (`src/chunking/`)
@@ -163,6 +167,17 @@ FuzzyMatcher.match_texts() → MatchResult
 QualityScorer.score_candidate() → QualityScore
 # Speech-to-Text Validierung + Multi-Kriterien Scoring
 ```
+
+Numbers Normalization (non-EN only)
+- Config: validation.numbers_normalization_mode: off | placeholder | digits | words
+- placeholder: Replaces digits and recognized number words with <NUM>
+- digits: Converts number words → digits (e.g., "tausend" → 1000) [uses word2num-de if available]
+- words: Converts digits → words (e.g., 1995 → "neunzehnhundertfünfundneunzig") [uses num2words]
+
+Effects
+- Similarity: computed on normalized texts (original + transcription)
+- Length: uses normalized original length; transcription length remains raw
+- Optional Whisper initial prompt: validation.whisper_initial_prompt_enabled + validation.whisper_initial_prompt_text
 
 ### 6. Audio Assembly (`src/generation/audio_processor.py`)
 ```python
@@ -303,6 +318,10 @@ generation:
 validation:
   similarity_threshold: 0.80         # Quality gate: higher = stricter
   min_quality_score: 0.75        # Minimum quality score for validation
+  whisper_model: small|base|medium|large
+  numbers_normalization_mode: off|placeholder|digits|words   # non-EN only
+  whisper_initial_prompt_enabled: false
+  whisper_initial_prompt_text: "Schreibe Zahlen ausgeschrieben."
   
 chunking:
   target_chunk_limit: 520       # Balance: quality vs risk of context window overload

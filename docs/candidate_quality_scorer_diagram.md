@@ -9,10 +9,10 @@ graph TD
     
     CANDIDATES --> WHISPER_VAL["WhisperValidator"]
     WHISPER_VAL --> TRANSCRIBE["Whisper Transcription<br/>Audio → Text"]
-    TRANSCRIBE --> QUALITY_CALC["QualityCalculator"]
+    TRANSCRIBE --> QUALITY_CALC["QualityCalculator<br/>(with optional numbers normalization for non-EN)"]
     
-    QUALITY_CALC --> W_SIMILARITY["Token-based Similarity<br/>Jaccard similarity<br/>original_tokens ∩ transcribed_tokens<br/>original_tokens ∪ transcribed_tokens"]
-    QUALITY_CALC --> W_QUALITY["Whisper Quality Score<br/>similarity(70%) + length_score(30%)<br/>length_score = min(1.0, len_transcription/len_original)"]
+    QUALITY_CALC --> W_SIMILARITY["Token-based Similarity<br/>Jaccard similarity<br/>(applies numbers normalization for non-EN before tokenization)"]
+    QUALITY_CALC --> W_QUALITY["Whisper Quality Score<br/>similarity(70%) + length_score(30%)<br/>length_score = 1 - |1 - (len_transcription/len_original)|^1.4<br/>(uses normalized original length when normalization is active)"]
     
     W_QUALITY --> W_VALID{"Is Valid?<br/>similarity ≥ similarity_threshold<br/>AND quality ≥ min_quality_score<br/>OR flexible validation logic"}
     
@@ -30,7 +30,7 @@ graph TD
     LENGTH_SCORE --> COMBINE
     PENALTY_SCORE --> COMBINE
     
-    COMBINE --> FINAL_FORMULA["Final Quality Score<br/>weighted_sum × (1.0 - penalty_score)<br/><br/>weights:<br/>similarity: 65%<br/>length: 35%"]
+    COMBINE --> FINAL_FORMULA["Final Quality Score<br/>weighted_sum × (1.0 - penalty_score)<br/><br/>weights:<br/>similarity: 75%<br/>length: 25%"]
     
     FINAL_FORMULA --> FINAL_SCORE["Final Quality Score<br/>Range: 0.0-1.0"]
     

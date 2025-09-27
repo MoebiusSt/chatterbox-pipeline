@@ -17,6 +17,8 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - **WhisperValidator**: Speech-to-text re-validation of audio-candidates with local Whisper integration
 - **FuzzyMatcher**: Advanced text similarity calculations
 - **QualityScorer**: Multi-criteria evaluation and best candidate selection (best match to input text)
+- - **Numbers Normalization (non-EN)**: Optional normalization to align digits vs. written numbers during validation; modes: off|placeholder|digits|words
+- - **Year-to-Words Preprocessing (non-EN)**: Optional conversion of four-digit years to words within bounds (e.g., 1995 → "neunzehnhundertfünfundneunzig")
 - Complete Error handling and fallback mechanisms and structured logging and progress tracking
 
 #### 🎭 Multi-Speaker System 
@@ -70,9 +72,6 @@ pip install -r requirements.txt
 
 # Download SpaCy model
 python -m spacy download en_core_web_sm
-
-# Install all dependencies
-pip install -r requirements.txt
 
 # Optional: Development dependencies (for contributors)
 pip install -r dev-requirements.txt
@@ -254,7 +253,7 @@ graph TD
     F --> G["WhisperValidator"]
     G --> H["ValidationResult[]<br/>(transcriptions)"]
     
-    H --> I["FuzzyMatcher"]
+    H --> I["FuzzyMatcher / Numbers Normalization (non-EN)"]
     I --> J["MatchResult[]<br/>(similarity scores)"]
     
     J --> K["QualityScorer"]

@@ -88,6 +88,13 @@ WhisperValidator.validate() → transcription + similarity_score
 FuzzyMatcher.match_texts() → MatchResult (token/partial/ratio methods)
 QualityScorer.score_candidate() → QualityScore (combined metrics)
 
+# Numbers Normalization (non-EN only)
+# - validation.numbers_normalization_mode: off|placeholder|digits|words
+# - placeholder: Replace digits and recognized number words with <NUM>
+# - digits: Number words → digits (DE uses word2num-de if available)
+# - words: Digits → words (uses num2words)
+# Similarity computed on normalized texts; length uses normalized original
+
 # Selection Logic (3-stage fallback)
 # Stage 1: Best valid candidate (similarity > threshold)
 # Stage 2: Best invalid candidate (highest quality score)
@@ -241,6 +248,8 @@ spacy>=3.7.0                    # Text processing
 openai-whisper>=20231117        # Validation
 fuzzywuzzy>=0.18.0             # Text similarity
 librosa>=0.10.0                 # Audio processing
+num2words>=0.5.13               # Digits → words conversion
+word2num-de>=1.1                # German word → number conversion
 
 # Development Tools  
 black>=23.0.0                   # Code formatting
