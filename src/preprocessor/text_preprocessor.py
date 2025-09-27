@@ -89,15 +89,31 @@ class TextPreprocessor:
             if len(processed_text) != original_length:
                 logger.info("✅ Normalized line endings")
 
-        # Normalize quotation marks to standard quotes
-        if self.config.get("normalize_quotes", True):
+        # Optional punctuation normalization (simulates Chatterbox internal processing)
+        if self.config.get("normalize_punct", True):
             original_length = len(processed_text)
-            # Replace German quotation marks „ and " with standard quotes
-            processed_text = processed_text.replace("„", '"').replace('“', '"')
-            # Replace French/typographic quotation marks » and « with standard quotes
-            processed_text = processed_text.replace("»", '"').replace("«", '"')
+            replacements = [
+                ("...", ", "),
+                ("…", ", "),
+                (":", ","),
+                (" - ", ", "),
+                (";", "."),
+                ("—", "-"),
+                ("–", "-"),
+                (" ,", ","),
+                ("“", "\""),
+                ("„", "\""),
+                ("”", "\""),
+                ("‘", "'"),
+                ("’", "'"),
+                ("‚", "'"),
+                ("»", "\""),
+                ("«", "\""),
+            ]
+            for old, new in replacements:
+                processed_text = processed_text.replace(old, new)
             if len(processed_text) != original_length:
-                logger.info("✅ Normalized quotation marks to standard quotes")
+                logger.info("✅ Normalized punctuation (including Chatterbox standarts)")
 
         # Optional: Convert four-digit years to words for non-EN
         if self.config.get("convert_years_to_words", False):

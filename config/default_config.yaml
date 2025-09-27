@@ -8,7 +8,7 @@ input:
 preprocessing:
   enabled: true
   normalize_line_endings: true    # Convert \r\n and \r to \n
-  normalize_quotes: true
+  normalize_punct: true           # Normalize punctuation (incl. quotes & Chatterbox standards)
   convert_years_to_words: true    # Convert four-digit years (range below) to words for non-EN jobs
   years_language: auto            # 'auto' uses generation.default_language; else explicit language code (e.g., 'de')
   year_min: 1000                  # Inclusive lower bound for year conversion

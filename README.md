@@ -546,7 +546,32 @@ generation:
       language: en  # Required for multilingual mode
 ```
 
-**Supported Languages**: English (en), German (de), French (fr), and other languages supported by ChatterboxMultilingualTTS.
+**Supported Languages**: 
+{
+  "ar": "Arabic",
+  "da": "Danish",
+  "de": "German",
+  "el": "Greek",
+  "en": "English",
+  "es": "Spanish",
+  "fi": "Finnish",
+  "fr": "French",
+  "he": "Hebrew",
+  "hi": "Hindi",
+  "it": "Italian",
+  "ja": "Japanese",
+  "ko": "Korean",
+  "ms": "Malay",
+  "nl": "Dutch",
+  "no": "Norwegian",
+  "pl": "Polish",
+  "pt": "Portuguese",
+  "ru": "Russian",
+  "sv": "Swedish",
+  "sw": "Swahili",
+  "tr": "Turkish",
+  "zh": "Chinese",
+}
 ### Debugging Common Issues
 - **Memory Errors**: Reduce `num_candidates` in config
 - **Validation Failures**: Lower `similarity_threshold` 
