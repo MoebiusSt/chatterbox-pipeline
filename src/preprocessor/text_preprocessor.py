@@ -95,7 +95,6 @@ class TextPreprocessor:
             replacements = [
                 ("...", ", "),
                 ("…", ", "),
-                (":", ","),
                 (" - ", ", "),
                 (";", "."),
                 ("—", "-"),
@@ -171,7 +170,34 @@ def _convert_years_to_words(text: str, language: str, year_min: int, year_max: i
             try:
                 year = int(m.group(1))
                 if year_min <= year <= year_max:
-                    return _N2W(year, lang=language)  # type: ignore
+                    # German-specific year wording: 18xx/19xx → "achtzehnhundert..."/"neunzehnhundert...",
+                    # 20xx → "zweitausend..."; remainder composed without spaces/hyphens.
+                    if language == "de":
+                        try:
+                            # Prefer common year phrasing
+                            if 1800 <= year <= 1999:
+                                century_word = "achtzehn" if year // 100 == 18 else "neunzehn"
+                                base = f"{century_word}hundert"
+                                rest = year % 100
+                                if rest == 0:
+                                    return base.capitalize()
+                                rest_words = _N2W(rest, lang="de")  # type: ignore
+                                rest_words = rest_words.replace(" ", "").replace("-", "")
+                                return (base + rest_words).capitalize()
+                            if 2000 <= year <= 2099:
+                                base = "zweitausend"
+                                rest = year % 1000
+                                if rest == 0:
+                                    return base.capitalize()
+                                rest_words = _N2W(rest, lang="de")  # type: ignore
+                                rest_words = rest_words.replace(" ", "").replace("-", "")
+                                return (base + rest_words).capitalize()
+                        except Exception:
+                            # Fallback to generic conversion if anything fails
+                            pass
+                        # Generic German fallback
+                        return _N2W(year, lang=language).capitalize()  # type: ignore
+                    return _N2W(year, lang=language).capitalize()  # type: ignore
                 return m.group(0)
             except Exception:
                 return m.group(0)
@@ -179,82 +205,4 @@ def _convert_years_to_words(text: str, language: str, year_min: int, year_max: i
         return year_re.sub(repl, text)
     except Exception:
         return text
-
-    def validate_processed_text(
-        self, processed_text_path: Path, run_config_path: Optional[Path] = None
-    ) -> bool:
-        """
-        Validate that processed text exists and is valid.
-        Regenerate if needed using run configuration.
-
-        """
-        if not processed_text_path.exists():
-            logger.warning(f"⚠️ Processed text file missing: {processed_text_path}")
-            return False
-
-        try:
-            with open(processed_text_path, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            if not content.strip():
-                logger.warning(f"⚠️ Processed text file is empty: {processed_text_path}")
-                return False
-
-            logger.info(
-                f"✅ Processed text validation passed: {len(content)} characters"
-            )
-            return True
-
-        except Exception as e:
-            logger.error(f"❌ Error validating processed text: {e}")
-            return False
-
-    def regenerate_processed_text(
-        self,
-        output_dir: Path,
-        text_base_name: str,
-        run_config_path: Optional[Path] = None,
-    ) -> bool:
-        """
-        Regenerate processed text from input copy using run configuration.
-
-        Returns:
-            True if regeneration successful
-        """
-        logger.info("🔄 Regenerating processed text...")
-
-        # Check if input copy exists
-        input_copy_path = output_dir / f"{text_base_name}_input.txt"
-        if not input_copy_path.exists():
-            logger.error(f"❌ Input copy not found for regeneration: {input_copy_path}")
-            return False
-
-        # Load preprocessing config from run config if available
-        preprocessing_config = self.config
-        if run_config_path and run_config_path.exists():
-            try:
-                import yaml
-
-                with open(run_config_path, "r") as f:
-                    run_config = yaml.safe_load(f)
-                preprocessing_config = run_config.get("preprocessing", self.config)
-                logger.info("📄 Loaded preprocessing config from run configuration")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not load run config, using default: {e}")
-
-        # Create new preprocessor with run-specific config
-        regeneration_preprocessor = TextPreprocessor(preprocessing_config)
-
-        # Load input text and reprocess
-        with open(input_copy_path, "r", encoding="utf-8") as f:
-            input_text = f.read()
-
-        processed_text = regeneration_preprocessor._process_text_content(input_text)
-
-        # Save regenerated processed text
-        processed_text_path = output_dir / f"{text_base_name}_processed.txt"
-        with open(processed_text_path, "w", encoding="utf-8") as f:
-            f.write(processed_text)
-
-        logger.info(f"✅ Regenerated processed text: {len(processed_text)} characters")
-        return True
+        

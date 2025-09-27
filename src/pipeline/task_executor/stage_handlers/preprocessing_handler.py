@@ -63,6 +63,26 @@ class PreprocessingHandler:
             preprocessing_config = self.config.get("preprocessing", {})
             preprocessing_enabled = preprocessing_config.get("enabled", True)
             
+            # Inject generation default language for year conversion if needed
+            if preprocessing_config.get("convert_years_to_words", False):
+                gen_config = self.config.get("generation", {})
+                default_lang = gen_config.get("default_language", "en")
+                
+                # Fallback to default speaker's language if no explicit default_language
+                if default_lang == "en":  # Only override if still English (assume en is default)
+                    try:
+                        default_speaker_id = self.file_manager.get_default_speaker_id()
+                        speakers = gen_config.get("speakers", [])
+                        for speaker in speakers:
+                            if speaker.get("id") == default_speaker_id:
+                                default_lang = speaker.get("language", "en")
+                                break
+                    except Exception:
+                        logger.debug("Could not resolve default speaker language, using 'en'")
+                
+                preprocessing_config["_generation_default_language"] = default_lang
+                logger.debug(f"Injected _generation_default_language: {default_lang} for preprocessing")
+            
             if preprocessing_enabled:
                 logger.info("🔄 Text preprocessing enabled - applying transformations")
                 text_preprocessor = TextPreprocessor(preprocessing_config)

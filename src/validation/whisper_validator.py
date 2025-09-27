@@ -129,15 +129,18 @@ class WhisperValidator:
         Returns:
             Model name to use
         """
-        # Map language codes to optimal model types
-        language_models = {
-            "en": f"{self.model_size}.en",  # English-only models are more accurate for English
-            "de": self.model_size,          # Use multilingual model for German
-            "fr": self.model_size,          # Use multilingual model for French  
-            "es": self.model_size,          # Use multilingual model for Spanish
-        }
-        
-        return language_models.get(language, self.model_size)
+        # For English, prefer the English-only model variant when available.
+        # For all other languages, use the multilingual model.
+        lang = (language or "en").lower()
+        if lang == "en":
+            # Only these sizes have dedicated ".en" variants in Whisper
+            sizes_with_en_variant = {"tiny", "base", "small", "medium"}
+            if self.model_size in sizes_with_en_variant:
+                return f"{self.model_size}.en"
+            # e.g., "large" has no ".en" variant
+            return self.model_size
+
+        return self.model_size
 
     def transcribe_audio(
         self,
@@ -187,9 +190,9 @@ class WhisperValidator:
             if initial_prompt:
                 kwargs["initial_prompt"] = initial_prompt
 
-            result = model.transcribe(audio_np, **kwargs)
+            result: Dict[str, Any] = model.transcribe(audio_np, **kwargs)
 
-            transcription = result["text"].strip()
+            transcription = str(result.get("text", "")).strip()
 
             duration = (datetime.now() - start_time).total_seconds()
             self.logger.debug(
@@ -231,6 +234,9 @@ class WhisperValidator:
 
             # Guard language against None or empty strings
             safe_language = language or "en"
+
+            if candidate.audio_tensor is None:
+                raise ValueError("AudioCandidate.audio_tensor is None; cannot transcribe")
 
             transcription = self.transcribe_audio(
                 candidate.audio_tensor,
