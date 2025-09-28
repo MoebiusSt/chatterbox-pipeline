@@ -288,12 +288,48 @@ class TaskExecutor:
                     "whisper_chunk" in comp for comp in task_state.missing_components
                 )
 
+                # Detect incomplete selected_candidates even when candidates/whisper look complete
+                try:
+                    chunks_for_selection = self.file_manager.get_chunks()
+                    metrics_for_selection = self.file_manager.get_metrics() or {}
+                    selected_for_selection = metrics_for_selection.get("selected_candidates", {})
+                    missing_selection_indices_force = [
+                        idx for idx in range(len(chunks_for_selection)) if str(idx) not in selected_for_selection
+                    ]
+                except Exception:
+                    missing_selection_indices_force = []
+
                 if has_missing_candidates or has_missing_whisper:
                     logger.info(
                         "Missing data detected, will regenerate before final assembly"
                     )
                     # Continue with normal pipeline execution to fill gaps
                     # Do NOT return here - let it flow through to _execute_stages_from_state
+                elif missing_selection_indices_force:
+                    # We have all files/whispers, but selections are incomplete.
+                    # Fill selections via selective validation without overwriting existing ones.
+                    logger.info(
+                        f"🧩 Incomplete selected_candidates detected for chunks: {[i+1 for i in missing_selection_indices_force]} - performing selective validation to complete selections"
+                    )
+                    if self.run_logger:
+                        self.run_logger.add_event("stage_start", {"stage": "validation", "selective": True, "reason": "complete_selections"})
+                    self._tick_runtime()
+                    if not self.validation_handler.execute_selective_validation(
+                        chunks_to_validate=missing_selection_indices_force
+                    ):
+                        if self.run_logger:
+                            self.run_logger.add_event("stage_end", {"stage": "validation", "success": False})
+                        return TaskResult(
+                            task_config=self.task_config,
+                            success=False,
+                            completion_stage=task_state.completion_stage,
+                            error_message="Selective validation to complete selections failed",
+                            execution_time=time.time() - start_time,
+                            total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
+                        )
+                    if self.run_logger:
+                        self.run_logger.add_event("stage_end", {"stage": "validation", "success": True})
+                    self._tick_runtime()
                 else:
                     # Jump directly to assembly if no missing data
                     if self.run_logger:
@@ -325,6 +361,9 @@ class TaskExecutor:
                             final_files, key=lambda f: f.stat().st_mtime
                         )
 
+                    # Finalize session BEFORE creating result to include final tick in totals
+                    if self.run_logger:
+                        self.run_logger.end_session(True, final_audio_path=final_audio_path)
                     result = TaskResult(
                         task_config=self.task_config,
                         success=True,
@@ -333,8 +372,6 @@ class TaskExecutor:
                         total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
                         final_audio_path=final_audio_path,
                     )
-                    if self.run_logger:
-                        self.run_logger.end_session(True, final_audio_path=final_audio_path)
                     return result
 
             # Execute stages based on current state
@@ -359,6 +396,9 @@ class TaskExecutor:
             if final_files:
                 final_audio_path = max(final_files, key=lambda f: f.stat().st_mtime)
 
+            # Finalize session BEFORE creating result to include final tick in totals
+            if self.run_logger:
+                self.run_logger.end_session(True, final_audio_path=final_audio_path)
             result = TaskResult(
                 task_config=self.task_config,
                 success=True,
@@ -367,8 +407,6 @@ class TaskExecutor:
                 total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
                 final_audio_path=final_audio_path,
             )
-            if self.run_logger:
-                self.run_logger.end_session(True, final_audio_path=final_audio_path)
             return result
 
         except Exception as e:
@@ -397,10 +435,22 @@ class TaskExecutor:
             "whisper_chunk" in comp for comp in task_state.missing_components
         )
         has_existing_metrics = bool(self.file_manager.get_metrics())
+        # Detect incomplete selected_candidates to trigger gap-filling path as well
+        missing_selection_indices = []
+        try:
+            chunks_sel = self.file_manager.get_chunks()
+            metrics_sel = self.file_manager.get_metrics() or {}
+            selected_sel = metrics_sel.get("selected_candidates", {})
+            missing_selection_indices = [
+                idx for idx in range(len(chunks_sel)) if str(idx) not in selected_sel
+            ]
+        except Exception:
+            missing_selection_indices = []
+        has_missing_selections = len(missing_selection_indices) > 0
 
         is_gap_filling = (
             has_existing_metrics
-            and (has_missing_candidates or has_missing_whisper)
+            and (has_missing_candidates or has_missing_whisper or has_missing_selections)
             and self.task_config.force_final_generation
         )
 
@@ -436,6 +486,12 @@ class TaskExecutor:
                         logger.warning(
                             f"Could not extract chunk index from component: {comp}"
                         )
+
+            # Also include chunks that have no selected_candidates yet
+            if missing_selection_indices:
+                for idx in missing_selection_indices:
+                    if idx not in missing_chunk_indices:
+                        missing_chunk_indices.append(idx)
 
         # Execute stages in order based on what's missing
         if task_state.completion_stage in [

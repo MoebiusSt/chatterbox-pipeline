@@ -30,14 +30,72 @@ class AssemblyHandler:
         try:
             # Load metrics to get selected candidates
             metrics = self.file_manager.get_metrics()
-            if not metrics or "selected_candidates" not in metrics:
-                logger.error("No metrics or selected candidates found for assembly")
+            if not metrics:
+                logger.error("No metrics found for assembly")
                 return False
 
-            selected_candidates = metrics["selected_candidates"]
+            selected_candidates = metrics.get("selected_candidates", {})
             logger.info(
                 f"Assembling audio from {len(selected_candidates)} selected candidates"
             )
+
+            # Ensure selected_candidates covers all chunks without overwriting user choices
+            try:
+                chunks = self.file_manager.get_chunks()
+                total_chunks = len(chunks)
+                if total_chunks == 0:
+                    logger.error("No chunks found for assembly")
+                    return False
+
+                missing_selection_indices = [
+                    idx for idx in range(total_chunks) if str(idx) not in selected_candidates
+                ]
+
+                if missing_selection_indices:
+                    logger.info(
+                        f"🧩 Completing missing selected_candidates for chunks: {[i+1 for i in missing_selection_indices]}"
+                    )
+                    chunks_metrics = metrics.get("chunks", {})
+                    additions: Dict[str, int] = {}
+                    for idx in missing_selection_indices:
+                        key = str(idx)
+                        best_idx = None
+                        best_score = float("-inf")
+
+                        if key in chunks_metrics:
+                            cand_map = chunks_metrics[key].get("candidates", {})
+                            for cand_key, cand_val in cand_map.items():
+                                try:
+                                    cand_idx_int = int(cand_key)
+                                except Exception:
+                                    continue
+                                score = 0.0
+                                if isinstance(cand_val, dict):
+                                    score = float(cand_val.get("overall_quality_score", cand_val.get("final_score", 0.0)))
+                                if score > best_score:
+                                    best_score = score
+                                    best_idx = cand_idx_int
+
+                        if best_idx is None:
+                            best_idx = 0
+
+                        additions[key] = int(best_idx)
+
+                    if "selected_candidates" not in metrics:
+                        metrics["selected_candidates"] = {}
+                    for k, v in additions.items():
+                        if k not in metrics["selected_candidates"]:
+                            metrics["selected_candidates"][k] = v
+
+                    try:
+                        self.file_manager.save_metrics(metrics)
+                    except Exception:
+                        logger.warning("Failed to persist completed selected_candidates; continuing with in-memory selections")
+
+                    selected_candidates = metrics["selected_candidates"]
+
+            except Exception as e:
+                logger.warning(f"Failed to complete selected_candidates: {e}")
 
             # Load audio segments
             audio_segments = self.file_manager.get_audio_segments(selected_candidates)
