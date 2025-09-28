@@ -330,6 +330,47 @@ class TaskExecutor:
                     if self.run_logger:
                         self.run_logger.add_event("stage_end", {"stage": "validation", "success": True})
                     self._tick_runtime()
+
+                    # Proceed directly to assembly in forced flow to honor overwrite intent
+                    if self.run_logger:
+                        self.run_logger.add_event("stage_start", {"stage": "assembly", "forced": True, "reason": "complete_selections"})
+                    self._tick_runtime()
+                    if not self.assembly_handler.execute_assembly():
+                        if self.run_logger:
+                            self.run_logger.add_event("stage_end", {"stage": "assembly", "success": False})
+                            try:
+                                self.run_logger.end_session(False, error_message="Final assembly failed")
+                            except Exception:
+                                pass
+                        return TaskResult(
+                            task_config=self.task_config,
+                            success=False,
+                            completion_stage=task_state.completion_stage,
+                            error_message="Final assembly failed",
+                            execution_time=time.time() - start_time,
+                            total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
+                        )
+                    if self.run_logger:
+                        self.run_logger.add_event("stage_end", {"stage": "assembly", "success": True})
+
+                    # Find the actual final audio file path
+                    final_audio_path = None
+                    final_files = list(self.file_manager.final_dir.glob("*_final.wav"))
+                    if final_files:
+                        final_audio_path = max(final_files, key=lambda f: f.stat().st_mtime)
+
+                    # Finalize session BEFORE creating result to include final tick in totals
+                    if self.run_logger:
+                        self.run_logger.end_session(True, final_audio_path=final_audio_path)
+                    result = TaskResult(
+                        task_config=self.task_config,
+                        success=True,
+                        completion_stage=CompletionStage.COMPLETE,
+                        execution_time=time.time() - start_time,
+                        total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
+                        final_audio_path=final_audio_path,
+                    )
+                    return result
                 else:
                     # Jump directly to assembly if no missing data
                     if self.run_logger:
@@ -457,6 +498,7 @@ class TaskExecutor:
         if (
             task_state.completion_stage == CompletionStage.COMPLETE
             and not is_gap_filling
+            and not self.task_config.force_final_generation
         ):
             logger.info("Task already complete")
             return True
