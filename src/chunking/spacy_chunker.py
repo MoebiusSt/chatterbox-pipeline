@@ -515,6 +515,12 @@ class SpaCyChunker(BaseChunker):
         if prev_stripped_soft.endswith("\n\n"):
             return "paragraph"
 
+        # If immediately AFTER the tag a blank line starts, also treat as paragraph
+        # (two newlines after optional spaces)
+        import re as _re
+        if _re.match(r"^[ \t]*\n[ \t]*\n", next_text or ""):
+            return "paragraph"
+
         # Determine the last non-whitespace character in the previous text
         j = len(prev_text) - 1
         while j >= 0 and prev_text[j].isspace():
@@ -528,6 +534,11 @@ class SpaCyChunker(BaseChunker):
         sentence_enders = {".", "!", "?", '"', "]"}
 
         if last_char in sentence_enders or last_char == "\n":
+            return "normal"
+
+        # If immediately AFTER the tag there is exactly one line break (no blank line),
+        # we consider it a line-end within the paragraph → normal pause.
+        if _re.match(r"^[ \t]*\n(?![ \t]*\n)", next_text or ""):
             return "normal"
 
         # Characters typically used inside sentences; prefer no extra pause
