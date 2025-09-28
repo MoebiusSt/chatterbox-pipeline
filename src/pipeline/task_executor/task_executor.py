@@ -16,6 +16,7 @@ from utils.config_manager import ConfigManager, TaskConfig
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.state_analyzer import CompletionStage, TaskState
 from utils.progress_tracker import ProgressTracker
+from utils.task_run_logger import TaskRunLogger
 from validation.quality_scorer import QualityScorer
 from validation.whisper_validator import WhisperValidator
 
@@ -38,6 +39,7 @@ class TaskResult:
     completion_stage: CompletionStage
     error_message: Optional[str] = None
     execution_time: float = 0.0
+    total_execution_time: float = 0.0
     final_audio_path: Optional[Path] = None
 
 
@@ -70,6 +72,25 @@ class TaskExecutor:
 
         # Initialize progress tracking
         self.progress_tracker = None
+        # Persistent runtime logger
+        try:
+            self.run_logger = TaskRunLogger(self.file_manager.task_directory)
+        except Exception:
+            # Fail-safe: do not break pipeline
+            self.run_logger = None
+        # Expose to file_manager for downstream optional usage
+        try:
+            setattr(self.file_manager, "run_logger", self.run_logger)
+        except Exception:
+            pass
+
+    # Safe helper to tick persistent runtime
+    def _tick_runtime(self) -> None:
+        try:
+            if self.run_logger:
+                self.run_logger.tick()
+        except Exception:
+            pass
 
         # Initialize components (lazy loading)
         self._chunker = None
@@ -95,6 +116,12 @@ class TaskExecutor:
                 max_limit=chunking_config.get("max_chunk_limit", 600),
                 min_length=chunking_config.get("min_chunk_length", 50),
                 force_paragraph_chunks=chunking_config.get("force_paragraph_chunks", False),
+                refinement_enabled=chunking_config.get("refinement_enabled", True),
+                micro_chunk_max_chars=chunking_config.get("micro_chunk_max_chars", None),
+                short_par_chars=chunking_config.get("short_par_chars", None),
+                respect_headings_in_speaker_mode=chunking_config.get(
+                    "respect_headings_in_speaker_mode", True
+                ),
             )
         return self._chunker
 
@@ -203,21 +230,44 @@ class TaskExecutor:
         try:
             logger.debug(f"Task directory: {self.task_config.base_output_dir}")
 
+            # Start persistent runtime session
+            run_info = {
+                "rerender_all": bool(self.task_config.rerender_all),
+                "force_final_generation": bool(self.task_config.force_final_generation),
+            }
+            if self.run_logger:
+                self.run_logger.start_session(run_info)
+
             # Check if we need to delete all candidates and start fresh
             if self.task_config.rerender_all:
                 logger.info(
                     "🔄 Re-rendering all candidates from scratch - deleting existing candidates and validation data"
                 )
+                if self.run_logger:
+                    self.run_logger.add_event("rerender_all", {"enabled": True})
                 self._delete_all_candidates_and_validation()
+                self._tick_runtime()
 
             # Analyze current state
             task_state = self.file_manager.analyze_task_state()
             logger.info(
                 f"Current completion stage: {task_state.completion_stage.value}"
             )
+            if self.run_logger:
+                self.run_logger.add_event(
+                    "analyzed_state",
+                    {
+                        "stage": task_state.completion_stage.value,
+                        "missing_components": task_state.missing_components,
+                    },
+                )
+            self._tick_runtime()
 
             # Migrate existing whisper files to enhanced metrics format
             self.file_manager.migrate_whisper_to_enhanced_metrics()
+            if self.run_logger:
+                self.run_logger.add_event("migrated_whisper_metrics", {})
+            self._tick_runtime()
 
             if task_state.missing_components:
                 logger.debug(
@@ -228,6 +278,8 @@ class TaskExecutor:
             force_final = self.task_config.force_final_generation
             if force_final and task_state.completion_stage == CompletionStage.COMPLETE:
                 logger.info("🔄 Forcing final audio regeneration")
+                if self.run_logger:
+                    self.run_logger.add_event("force_final_regeneration", {})
 
                 has_missing_candidates = any(
                     "candidates_chunk" in comp for comp in task_state.missing_components
@@ -244,14 +296,26 @@ class TaskExecutor:
                     # Do NOT return here - let it flow through to _execute_stages_from_state
                 else:
                     # Jump directly to assembly if no missing data
+                    if self.run_logger:
+                        self.run_logger.add_event("stage_start", {"stage": "assembly", "forced": True})
+                    self._tick_runtime()
                     if not self.assembly_handler.execute_assembly():
+                        if self.run_logger:
+                            self.run_logger.add_event("stage_end", {"stage": "assembly", "success": False})
+                            try:
+                                self.run_logger.end_session(False, error_message="Final assembly failed")
+                            except Exception:
+                                pass
                         return TaskResult(
                             task_config=self.task_config,
                             success=False,
                             completion_stage=task_state.completion_stage,
                             error_message="Final assembly failed",
                             execution_time=time.time() - start_time,
+                            total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
                         )
+                    if self.run_logger:
+                        self.run_logger.add_event("stage_end", {"stage": "assembly", "success": True})
 
                     # Find the actual final audio file path
                     final_audio_path = None
@@ -261,22 +325,32 @@ class TaskExecutor:
                             final_files, key=lambda f: f.stat().st_mtime
                         )
 
-                    return TaskResult(
+                    result = TaskResult(
                         task_config=self.task_config,
                         success=True,
                         completion_stage=CompletionStage.COMPLETE,
                         execution_time=time.time() - start_time,
+                        total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
                         final_audio_path=final_audio_path,
                     )
+                    if self.run_logger:
+                        self.run_logger.end_session(True, final_audio_path=final_audio_path)
+                    return result
 
             # Execute stages based on current state
             if not self._execute_stages_from_state(task_state):
+                if self.run_logger:
+                    try:
+                        self.run_logger.end_session(False, error_message="Pipeline execution failed")
+                    except Exception:
+                        pass
                 return TaskResult(
                     task_config=self.task_config,
                     success=False,
                     completion_stage=task_state.completion_stage,
                     error_message="Pipeline execution failed",
                     execution_time=time.time() - start_time,
+                    total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
                 )
 
             # Success - get final audio file path
@@ -285,22 +359,32 @@ class TaskExecutor:
             if final_files:
                 final_audio_path = max(final_files, key=lambda f: f.stat().st_mtime)
 
-            return TaskResult(
+            result = TaskResult(
                 task_config=self.task_config,
                 success=True,
                 completion_stage=CompletionStage.COMPLETE,
                 execution_time=time.time() - start_time,
+                total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
                 final_audio_path=final_audio_path,
             )
+            if self.run_logger:
+                self.run_logger.end_session(True, final_audio_path=final_audio_path)
+            return result
 
         except Exception as e:
             logger.error(f"Task execution failed: {e}", exc_info=True)
+            if self.run_logger:
+                try:
+                    self.run_logger.end_session(False, error_message=str(e))
+                except Exception:
+                    pass
             return TaskResult(
                 task_config=self.task_config,
                 success=False,
                 completion_stage=CompletionStage.NOT_STARTED,
                 error_message=str(e),
                 execution_time=time.time() - start_time,
+                total_execution_time=(self.run_logger.total_execution_seconds if self.run_logger else time.time() - start_time),
             )
 
     def _execute_stages_from_state(self, task_state: TaskState) -> bool:

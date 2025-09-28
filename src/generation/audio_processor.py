@@ -22,16 +22,19 @@ class AudioProcessor:
         sample_rate: int = 24000,
         normal_silence_duration: float = 0.20,
         paragraph_silence_duration: float = 0.20,
+        long_silence_duration: float = 0.60,
         device: str = "cpu",
     ):
         self.sample_rate = sample_rate
         self.normal_silence_duration = normal_silence_duration
         self.paragraph_silence_duration = paragraph_silence_duration
+        self.long_silence_duration = long_silence_duration
         self.device = device
 
         # Pre-calculate silence tensors
         self.normal_silence = self._create_silence_tensor(normal_silence_duration)
         self.paragraph_silence = self._create_silence_tensor(paragraph_silence_duration)
+        self.long_silence = self._create_silence_tensor(long_silence_duration)
 
         logger.info(f"AudioProcessor initialized: sr={sample_rate}, device={device}")
 
@@ -102,6 +105,8 @@ class AudioProcessor:
                     pause_type = boundary_pause_types[i]
                     if pause_type == "paragraph":
                         processed_segments.append(self.paragraph_silence)
+                    elif pause_type == "long":
+                        processed_segments.append(self.long_silence)
                     elif pause_type == "none":
                         processed_segments.append(torch.zeros((1, 0), device=self.device))
                     else:  # 'normal' or unknown

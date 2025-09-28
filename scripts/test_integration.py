@@ -42,7 +42,7 @@ class TestPipelineIntegration:
             },
             "audio": {
                 "sample_rate": 24000,  # ChatterboxTTS native sample rate
-                "silence_duration": {"normal": 0.1, "paragraph": 0.2},
+                "silence_duration": {"normal": 0.1, "paragraph": 0.2, "long": 0.6},
             },
         }
 
@@ -133,6 +133,7 @@ class TestPipelineIntegration:
             sample_rate=config["audio"]["sample_rate"],
             normal_silence_duration=config["audio"]["silence_duration"]["normal"],
             paragraph_silence_duration=config["audio"]["silence_duration"]["paragraph"],
+            long_silence_duration=config["audio"]["silence_duration"]["long"],
             device=device,
         )
 
@@ -217,6 +218,7 @@ class TestPipelineIntegration:
             sample_rate=config["audio"]["sample_rate"],
             normal_silence_duration=config["audio"]["silence_duration"]["normal"],
             paragraph_silence_duration=config["audio"]["silence_duration"]["paragraph"],
+            long_silence_duration=config["audio"]["silence_duration"]["long"],
             device=device,
         )
 

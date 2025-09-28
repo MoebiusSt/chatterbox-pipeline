@@ -54,6 +54,7 @@ class ChunkIOHandler:
                         "idx": chunk.idx,
                         "text_length": len(chunk.text),
                         "is_paragraph_break": chunk.has_paragraph_break,
+                        "paragraph_break_type": getattr(chunk, "paragraph_break_type", None),
                         "filename": f"chunk_{chunk.idx+1:03d}.txt",
                         # Speaker-System Metadaten
                         "speaker_id": chunk.speaker_id,
@@ -112,6 +113,9 @@ class ChunkIOHandler:
             is_paragraph_break = (
                 chunk_meta.get("is_paragraph_break", False) if chunk_meta else False
             )
+            paragraph_break_type = (
+                chunk_meta.get("paragraph_break_type") if chunk_meta else None
+            )
 
             # Speaker-System Metadaten
             # Use correct default_speaker_id instead of hardcoded "default"
@@ -139,6 +143,7 @@ class ChunkIOHandler:
                 start_pos=0,  # Not tracked in saved chunks
                 end_pos=len(text),  # Not tracked in saved chunks
                 has_paragraph_break=is_paragraph_break,
+                paragraph_break_type=paragraph_break_type,
                 estimated_tokens=len(text.split()),
                 is_fallback_split=False,
                 speaker_id=speaker_id,

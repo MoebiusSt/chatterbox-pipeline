@@ -53,7 +53,12 @@ class AssemblyHandler:
             for i in range(len(chunks) - 1):
                 # Priority: explicit paragraph break after chunk i
                 if chunks[i].has_paragraph_break:
-                    boundary_pause_types.append("paragraph")
+                    # Support long paragraph breaks if marked
+                    pbt = getattr(chunks[i], "paragraph_break_type", None)
+                    if pbt == "long":
+                        boundary_pause_types.append("long")
+                    else:
+                        boundary_pause_types.append("paragraph")
                     continue
 
                 # If next chunk starts with a speaker transition, use its context
@@ -136,6 +141,7 @@ class AssemblyHandler:
         silence_config = self.config.get("audio", {}).get("silence_duration", {})
         normal_silence = int(sample_rate * silence_config.get("normal", 0.2))
         paragraph_silence = int(sample_rate * silence_config.get("paragraph", 0.8))
+        long_silence = int(sample_rate * silence_config.get("long", 1.5))
 
         assembled_segments = []
 
@@ -147,6 +153,8 @@ class AssemblyHandler:
                 pause_type = boundary_pause_types[i] if i < len(boundary_pause_types) else "normal"
                 if pause_type == "paragraph":
                     silence = torch.zeros(paragraph_silence)
+                elif pause_type == "long":
+                    silence = torch.zeros(long_silence)
                 elif pause_type == "none":
                     silence = torch.zeros(0)
                 else:  # "normal" or fallback

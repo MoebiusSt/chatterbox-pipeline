@@ -94,11 +94,22 @@ class SpaCyChunker(BaseChunker):
         max_limit: int = 600,
         min_length: int = 200,
         force_paragraph_chunks: bool = False,
+        # Refinement and heading behavior
+        refinement_enabled: bool = True,
+        micro_chunk_max_chars: Optional[int] = None,
+        short_par_chars: Optional[int] = None,
+        respect_headings_in_speaker_mode: bool = True,
     ):
         self.target_limit = target_limit
         self.max_limit = max_limit
         self.min_length = min_length
         self.force_paragraph_chunks = force_paragraph_chunks
+        # Refinement configuration
+        self.refinement_enabled = refinement_enabled
+        # If not explicitly provided, default thresholds derive from min_length
+        self.micro_chunk_max_chars = micro_chunk_max_chars if micro_chunk_max_chars is not None else self.min_length
+        self.short_par_chars = short_par_chars if short_par_chars is not None else self.min_length
+        self.respect_headings_in_speaker_mode = respect_headings_in_speaker_mode
         try:
             self.nlp = spacy.load(model_name)
         except OSError:
@@ -193,7 +204,7 @@ class SpaCyChunker(BaseChunker):
         primary_splits = self._create_speaker_splits(text, clean_text, transitions)
 
         # 2. Apply normal chunking logic to each speaker section
-        all_chunks = []
+        all_chunks: List[TextChunk] = []
         for speaker_section in primary_splits:
             section_chunks = self._chunk_speaker_section(speaker_section)
             all_chunks.extend(section_chunks)
@@ -219,7 +230,7 @@ class SpaCyChunker(BaseChunker):
         paragraph_sections = text.split('\n\n')
         logger.debug(f"Split text into {len(paragraph_sections)} paragraph sections")
         
-        all_chunks = []
+        all_chunks: List[TextChunk] = []
         current_position = 0
         
         for section_idx, section in enumerate(paragraph_sections):
@@ -248,7 +259,12 @@ class SpaCyChunker(BaseChunker):
                 is_last_chunk_in_section = chunk_idx == len(section_chunks) - 1
                 if is_last_chunk_in_section and not is_last_section:
                     # Force paragraph break for last chunk of non-final sections
+                    # Determine precise break type from trailing newlines
+                    break_type = self._get_paragraph_break_type(chunk.text)
+                    if break_type is None:
+                        break_type = "paragraph"
                     chunk.has_paragraph_break = True
+                    chunk.paragraph_break_type = break_type
                     logger.debug(f"Forced paragraph break for chunk {len(all_chunks)} (last in section {section_idx})")
                     
             all_chunks.extend(section_chunks)
@@ -381,7 +397,14 @@ class SpaCyChunker(BaseChunker):
         Returns:
             Finalized list of TextChunk objects
         """
-        # Adjust leading closing punctuation at chunk boundaries
+        # First pass: adjust closing punctuation at boundaries
+        chunks = self._fix_leading_closing_punctuation(chunks)
+
+        # Refinement pass: split short headings and merge micro-chunks
+        if getattr(self, "refinement_enabled", True):
+            chunks = self._refine_chunks(chunks)
+
+        # Second pass: re-adjust punctuation after potential merges/splits
         chunks = self._fix_leading_closing_punctuation(chunks)
 
         # Set correct indices
@@ -390,6 +413,31 @@ class SpaCyChunker(BaseChunker):
 
         logger.debug(f"Finalized {len(chunks)} chunks with speaker information")
         return chunks
+
+    def _get_paragraph_break_type(self, text: str) -> Optional[str]:
+        """
+        Determine paragraph break type at the END of the given text.
+
+        Returns:
+            'long' if text ends with >= 3 newlines (i.e., two or more empty lines)
+            'paragraph' if text ends with exactly 2 newlines (one empty line)
+            None otherwise
+        """
+        if not text:
+            return None
+        # Preserve trailing newlines; strip only spaces/tabs/CR
+        t = text.rstrip(" \t\r")
+        # Count consecutive trailing newlines
+        n = 0
+        j = len(t) - 1
+        while j >= 0 and t[j] == "\n":
+            n += 1
+            j -= 1
+        if n >= 3:
+            return "long"
+        if n >= 2:
+            return "paragraph"
+        return None
 
     def _fix_leading_closing_punctuation(self, chunks: List[TextChunk]) -> List[TextChunk]:
         """
@@ -550,18 +598,15 @@ class SpaCyChunker(BaseChunker):
                         first_part = split_chunks[
                             0
                         ].lstrip()  # Only strip leading whitespace
+                        break_type_fp = self._get_paragraph_break_type(first_part)
                         chunks.append(
                             TextChunk(
                                 text=first_part,
                                 start_pos=sent.start_char,  # Approximate
-                                end_pos=sent.start_char
-                                + len(first_part),  # Approximate
-                                has_paragraph_break=self._ends_with_paragraph_break(
-                                    first_part
-                                ),
-                                estimated_tokens=self._estimate_token_length(
-                                    first_part
-                                ),
+                                end_pos=sent.start_char + len(first_part),  # Approximate
+                                has_paragraph_break=(break_type_fp is not None),
+                                paragraph_break_type=break_type_fp,
+                                estimated_tokens=self._estimate_token_length(first_part),
                                 is_fallback_split=True,
                                 speaker_id=self.default_speaker_id,  # Use configured default speaker
                                 speaker_transition=False,  # No speaker transition in traditional chunking
@@ -574,18 +619,15 @@ class SpaCyChunker(BaseChunker):
                             1
                         ].lstrip()  # Only strip leading whitespace
                         if second_part.strip():  # Check if chunk has content
+                            break_type_sp = self._get_paragraph_break_type(second_part)
                             chunks.append(
                                 TextChunk(
                                     text=second_part,
-                                    start_pos=sent.start_char
-                                    + len(first_part),  # Approximate
+                                    start_pos=sent.start_char + len(first_part),  # Approximate
                                     end_pos=sent.end_char,  # Approximate
-                                    has_paragraph_break=self._ends_with_paragraph_break(
-                                        second_part
-                                    ),
-                                    estimated_tokens=self._estimate_token_length(
-                                        second_part
-                                    ),
+                                    has_paragraph_break=(break_type_sp is not None),
+                                    paragraph_break_type=break_type_sp,
+                                    estimated_tokens=self._estimate_token_length(second_part),
                                     is_fallback_split=True,
                                     speaker_id=self.default_speaker_id,  # Use configured default speaker
                                     speaker_transition=False,  # No speaker transition in traditional chunking
@@ -632,14 +674,14 @@ class SpaCyChunker(BaseChunker):
                 # Only strip leading whitespace, preserve trailing for paragraph break detection
                 final_chunk_text = final_chunk_text.lstrip()
 
+                break_type = self._get_paragraph_break_type(final_chunk_text)
                 chunks.append(
                     TextChunk(
                         text=final_chunk_text,
                         start_pos=start_char,
                         end_pos=end_char,
-                        has_paragraph_break=self._ends_with_paragraph_break(
-                            final_chunk_text
-                        ),
+                        has_paragraph_break=(break_type is not None),
+                        paragraph_break_type=break_type,
                         estimated_tokens=self._estimate_token_length(final_chunk_text),
                         is_fallback_split=False,  # Regular chunks are not fallback splits
                         speaker_id=self.default_speaker_id,  # Use configured default speaker
@@ -649,6 +691,173 @@ class SpaCyChunker(BaseChunker):
                 )
 
         return chunks
+
+    def _refine_chunks(self, chunks: List[TextChunk]) -> List[TextChunk]:
+        """
+        Refinement pass to improve chunk boundaries by:
+        1) Splitting short headings before internal paragraph breaks ("\n\n").
+        2) Merging micro-chunks into the previous chunk when safe.
+
+        Speaker transitions always have priority and are preserved.
+        """
+        if not chunks:
+            return chunks
+
+        # Step 1: split chunks at heading-like paragraph breaks
+        refined: List[TextChunk] = []
+        for original in chunks:
+            # Work list for potential multiple splits within one chunk
+            work_list: List[TextChunk] = [original]
+            i = 0
+            while i < len(work_list):
+                ch = work_list[i]
+                text = ch.text or ""
+                # Find internal paragraph breaks
+                # We consider sequences of two or more newlines
+                match_found = False
+                j = 0
+                while j < len(text):
+                    # find next occurrence of "\n\n"
+                    idx = text.find("\n\n", j)
+                    if idx == -1:
+                        break
+                    # Determine length of newline sequence starting at idx
+                    k = idx + 2
+                    while k < len(text) and text[k] == "\n":
+                        k += 1
+                    # Only consider internal breaks (not at the very end)
+                    if k < len(text):
+                        # Identify last line before the break
+                        prev_nl = text.rfind("\n", 0, idx)
+                        heading_start = prev_nl + 1 if prev_nl != -1 else 0
+                        heading_line = text[heading_start:idx].strip()
+                        if len(heading_line) > 0 and len(heading_line) <= self.short_par_chars:
+                            # Split at this break; left includes the full newline group
+                            left_text = text[:k]
+                            right_text = text[k:]
+
+                            # Compute paragraph break type from newline count
+                            newline_count = k - idx
+                            break_type = "long" if newline_count >= 3 else "paragraph"
+
+                            # Build left chunk (inherits speaker metadata)
+                            left_chunk = TextChunk(
+                                text=left_text,
+                                start_pos=ch.start_pos,
+                                end_pos=ch.start_pos + len(left_text),
+                                has_paragraph_break=True,
+                                paragraph_break_type=break_type,
+                                estimated_tokens=self._estimate_token_length(left_text),
+                                is_fallback_split=ch.is_fallback_split,
+                                idx=ch.idx,
+                                speaker_id=ch.speaker_id,
+                                speaker_transition=ch.speaker_transition,
+                                original_markup=ch.original_markup,
+                                speaker_transition_context=ch.speaker_transition_context,
+                                language_id=ch.language_id,
+                            )
+
+                            # Build right chunk (no speaker transition)
+                            right_break_type = self._get_paragraph_break_type(right_text)
+                            right_chunk = TextChunk(
+                                text=right_text,
+                                start_pos=left_chunk.end_pos,
+                                end_pos=ch.end_pos,
+                                has_paragraph_break=(right_break_type is not None),
+                                paragraph_break_type=right_break_type,
+                                estimated_tokens=self._estimate_token_length(right_text),
+                                is_fallback_split=ch.is_fallback_split,
+                                idx=ch.idx,
+                                speaker_id=ch.speaker_id,
+                                speaker_transition=False,
+                                original_markup=None,
+                                speaker_transition_context=None,
+                                language_id=ch.language_id,
+                            )
+
+                            # Replace current element with left and insert right after
+                            work_list[i] = left_chunk
+                            work_list.insert(i + 1, right_chunk)
+                            match_found = True
+                            break
+                    # Advance search after this break
+                    j = k
+
+                if not match_found:
+                    i += 1
+
+            refined.extend(work_list)
+
+        # Step 2: merge micro-chunks when safe
+        merged: List[TextChunk] = []
+        i = 0
+        while i < len(refined):
+            ch = refined[i]
+            # Determine if this is a micro-chunk (based on character length)
+            is_micro = len(ch.text.strip()) > 0 and len(ch.text.strip()) <= self.micro_chunk_max_chars
+
+            if (
+                is_micro
+                and not ch.speaker_transition
+                and not ch.has_paragraph_break
+                and not ch.is_fallback_split
+                and len(merged) > 0
+            ):
+                prev = merged[-1]
+                # Do not merge into a previous chunk that starts with a speaker transition
+                if prev.speaker_transition:
+                    merged.append(ch)
+                    i += 1
+                    continue
+                # Preserve paragraph break boundaries in previous chunk
+                if prev.has_paragraph_break:
+                    merged.append(ch)
+                    i += 1
+                    continue
+                # Special case: if next chunk starts with a speaker transition, prefer merging
+                next_starts_speaker = False
+                if i + 1 < len(refined):
+                    next_starts_speaker = bool(refined[i + 1].speaker_transition)
+                # Check length constraint
+                if len(prev.text) + len(ch.text) <= self.max_limit and (next_starts_speaker or True):
+                    # Merge ch into prev
+                    new_text = prev.text + ch.text
+                    # Merge paragraph break information (should remain False because ch.has_paragraph_break was False)
+                    # But keep severity if any (unlikely in this branch)
+                    paragraph_break_type = prev.paragraph_break_type
+                    if ch.paragraph_break_type == "long" or prev.paragraph_break_type == "long":
+                        paragraph_break_type = "long"
+                    elif ch.paragraph_break_type == "paragraph" or prev.paragraph_break_type == "paragraph":
+                        paragraph_break_type = "paragraph"
+
+                    merged[-1] = TextChunk(
+                        text=new_text,
+                        start_pos=prev.start_pos,
+                        end_pos=ch.end_pos,
+                        has_paragraph_break=prev.has_paragraph_break or ch.has_paragraph_break,
+                        paragraph_break_type=paragraph_break_type,
+                        estimated_tokens=self._estimate_token_length(new_text),
+                        is_fallback_split=prev.is_fallback_split or ch.is_fallback_split,
+                        idx=prev.idx,
+                        speaker_id=prev.speaker_id,
+                        speaker_transition=prev.speaker_transition,
+                        original_markup=prev.original_markup,
+                        speaker_transition_context=prev.speaker_transition_context,
+                        language_id=prev.language_id,
+                    )
+                    # Skip adding ch, move to next
+                    i += 1
+                    continue
+                else:
+                    # Cannot merge due to length; keep as is
+                    merged.append(ch)
+                    i += 1
+                    continue
+            else:
+                merged.append(ch)
+                i += 1
+
+        return merged
 
     def _estimate_token_length(self, text: str) -> int:
         """

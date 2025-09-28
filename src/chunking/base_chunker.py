@@ -14,6 +14,8 @@ class TextChunk:
     has_paragraph_break: bool
     # This is an estimate, not a precise count.
     estimated_tokens: int
+    # Type of paragraph break to control silence insertion: None | 'paragraph' | 'long'
+    paragraph_break_type: Optional[str] = None
     # Flag to indicate this chunk was created by fallback splitting of a very long sentence
     is_fallback_split: bool = False
     # Index for ordering chunks (set by pipeline)

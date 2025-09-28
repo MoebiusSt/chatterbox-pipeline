@@ -190,8 +190,9 @@ validation:
 
 audio:
   silence_duration:
-    normal: 0.40  # inserted between chunks if split was between sentences
-    normal: 0.80  # inserted if split was before paragraph break blank line
+    normal: 0.10  # inserted between chunks if split was between sentences
+    paragraph: 0.80  # inserted if split was before paragraph break blank line
+    long: 1.50  # inserted for explicit long paragraph breaks (>= 2 empty lines)
   sample_rate: 24000
 
   # ChatterboxTTS native sample rate - NOT a user setting!

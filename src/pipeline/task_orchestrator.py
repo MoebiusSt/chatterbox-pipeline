@@ -79,15 +79,11 @@ class TaskOrchestrator:
         return task_executor.execute_task()
     
     def _format_execution_time(self, seconds: float) -> str:
-        """Format execution time as HH:MM:SS or MM:SS."""
-        hours, remainder = divmod(int(seconds), 3600)
-        minutes, seconds = divmod(remainder, 60)
-        
-        return (
-            f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            if hours > 0
-            else f"{minutes:02d}:{seconds:02d}"
-        )
+        """Format execution time as HH:MM:SS (always)."""
+        total_seconds = max(0, int(seconds))
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, secs = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     
     def _log_summary_header(self, title: str) -> None:
         logger.info("=" * 50)
@@ -96,12 +92,14 @@ class TaskOrchestrator:
     def _log_single_task_summary(self, result: TaskResult):
         """Log single task summary with execution time."""
         formatted_time = self._format_execution_time(result.execution_time)
+        total_formatted = self._format_execution_time(getattr(result, "total_execution_time", result.execution_time))
         status = "✅ SUCCESS" if result.success else "❌ FAILED"
         
         self._log_summary_header("TASK EXECUTION SUMMARY")
         logger.info(f"  Status: {status}")
         logger.info(f"  Task: {result.task_config.job_name}:{result.task_config.task_name}")
-        logger.info(f"  Execution time: {formatted_time}")
+        logger.info(f"  Task Execution Time: {formatted_time}")
+        logger.info(f"  Total cumulative Task Execution Time: {total_formatted}")
         if result.final_audio_path:
             logger.info(f"  Final audio: {result.final_audio_path}")
         if result.error_message:
@@ -122,7 +120,7 @@ class TaskOrchestrator:
         logger.info(f"  Successful: {successful_tasks}")
         logger.info(f"  Failed: {failed_tasks}")
         logger.info(f"  Success rate: {(successful_tasks/total_tasks)*100:.1f}%")
-        logger.info(f"  Total time: {formatted_time}")
+        logger.info(f"  Batch Execution Time: {formatted_time}")
         logger.info("=" * 50)
     
     def get_exit_code(self, results: List[TaskResult]) -> int:

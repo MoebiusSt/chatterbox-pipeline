@@ -314,27 +314,42 @@ class TTSGenerator:
             if not log_text:
                 return flags
 
-            lt_true = re.search(r"long_tail\s*=\s*tensor\(True\)|long_tail\s*=\s*True", log_text)
-            ar_true = re.search(r"alignment_repetition\s*=\s*tensor\(True\)|alignment_repetition\s*=\s*True", log_text)
-            tr_true = re.search(r"token_repetition\s*=\s*tensor\(True\)|token_repetition\s*=\s*True", log_text)
-            forcing = "forcing EOS token" in log_text
-            eos_ok = "EOS token detected" in log_text
+            # Evaluate only the LAST occurrence of a "forcing EOS token" line within this attempt.
+            # Earlier we searched the entire log blob which could contain both True and False,
+            # and any True would force a retry. Here we restrict to the last forcing line.
+            last_forcing_line: Optional[str] = None
+            eos_ok: bool = False
 
-            flags["long_tail"] = bool(lt_true)
-            flags["alignment_repetition"] = bool(ar_true)
-            flags["token_repetition"] = bool(tr_true)
-            flags["forcing_eos"] = forcing
+            for line in log_text.split("\n"):
+                if "EOS token detected" in line:
+                    eos_ok = True
+                if "forcing EOS token" in line:
+                    last_forcing_line = line
+
+            def _extract_bool(name: str, text: str) -> Optional[bool]:
+                # Matches: name=tensor(True|False) or name=True|False
+                m = re.search(rf"{name}\\s*=\\s*(tensor\\((True|False)\\)|True|False)", text)
+                if not m:
+                    return None
+                raw = m.group(1)
+                return "True" in raw
+
+            if last_forcing_line is not None:
+                lt = _extract_bool("long_tail", last_forcing_line)
+                ar = _extract_bool("alignment_repetition", last_forcing_line)
+                tr = _extract_bool("token_repetition", last_forcing_line)
+
+                flags["long_tail"] = bool(lt) if lt is not None else False
+                flags["alignment_repetition"] = bool(ar) if ar is not None else False
+                flags["token_repetition"] = bool(tr) if tr is not None else False
+                flags["forcing_eos"] = True
+
             flags["eos_success"] = eos_ok
             return flags
 
         def _should_retry(flags: Dict[str, Any]) -> bool:
-            # Retry if any of the problematic flags are True or if EOS was forced
-            return bool(
-                flags.get("forcing_eos")
-                or flags.get("long_tail")
-                or flags.get("alignment_repetition")
-                or flags.get("token_repetition")
-            )
+            # Retry only if long_tail is True (removed other conditions from retry logic)
+            return bool(flags.get("long_tail"))
 
         attempts = 0
         final_flags: Dict[str, Any] = {}
@@ -415,7 +430,7 @@ class TTSGenerator:
             final_flags = flags
 
             # Decide to stop or retry
-            if flags.get("eos_success") and not _should_retry(flags):
+            if not _should_retry(flags):
                 used_params = {
                     "exaggeration": exaggeration,
                     "cfg_weight": cfg_weight,

@@ -512,6 +512,7 @@ audio:
   silence_duration:
     normal: 0.20
     paragraph: 0.80
+    long: 1.50
   # ChatterboxTTS native sample rate - NOT a user setting!
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
   # Only change this if ChatterboxTTS itself changes its output sample rate

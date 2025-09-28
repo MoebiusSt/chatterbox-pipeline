@@ -210,6 +210,7 @@ def main():
         ),  # ChatterboxTTS native sample rate
         normal_silence_duration=silence_config.get("normal", 0.20),
         paragraph_silence_duration=silence_config.get("paragraph", 0.20),
+        long_silence_duration=silence_config.get("long", 0.60),
         device=device,
     )
 
