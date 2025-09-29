@@ -136,9 +136,6 @@ TaskExecutor:
 TextPreprocessor.process_text_file()
  - normalize_line_endings: bool
  - normalize_quotes: bool
- - convert_years_to_words: bool  # non-EN only, 4-digit years within bounds
- - years_language: "auto"|<lang>
- - year_min/year_max: int bounds (default 1000..2099)
 ```
 
 ### 3. Text Processing (`src/chunking/`)

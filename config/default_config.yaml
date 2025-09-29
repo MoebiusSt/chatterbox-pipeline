@@ -9,10 +9,6 @@ preprocessing:
   enabled: true
   normalize_line_endings: true    # Convert \r\n and \r to \n
   normalize_punct: true           # Normalize punctuation (incl. quotes & Chatterbox standards)
-  convert_years_to_words: false    # Convert four-digit years (range below) to words for non-EN jobs
-  years_language: auto            # 'auto' uses generation.default_language; else explicit language code (e.g., 'de')
-  year_min: 1000                  # Inclusive lower bound for year conversion
-  year_max: 2099                  # Inclusive upper bound for year conversion
 
 chunking:
   target_chunk_limit: 380

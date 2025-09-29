@@ -18,7 +18,6 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - **FuzzyMatcher**: Advanced text similarity calculations
 - **QualityScorer**: Multi-criteria evaluation and best candidate selection (best match to input text)
 - - **Numbers Normalization (non-EN)**: Optional normalization to align digits vs. written numbers during validation; modes: off|placeholder|digits|words
-- - **Year-to-Words Preprocessing (non-EN)**: Optional conversion of four-digit years to words within bounds (e.g., 1995 → "neunzehnhundertfünfundneunzig")
 - Complete Error handling and fallback mechanisms and structured logging and progress tracking
 
 #### 🎭 Multi-Speaker System 

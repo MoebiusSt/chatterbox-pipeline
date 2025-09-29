@@ -114,95 +114,9 @@ class TextPreprocessor:
             if len(processed_text) != original_length:
                 logger.info("✅ Normalized punctuation (including Chatterbox standarts)")
 
-        # Optional: Convert four-digit years to words for non-EN
-        if self.config.get("convert_years_to_words", False):
-            try:
-                from validation.number_normalization import normalize_text_for_numbers
-            except Exception:
-                normalize_text_for_numbers = None  # type: ignore
-
-            if normalize_text_for_numbers is not None:
-                # Resolve language for conversion
-                language = str(self.config.get("years_language", "auto")).lower()
-                if language == "auto":
-                    # Fallback to generation.default_language if available
-                    try:
-                        # Expect a higher-level config injection at construction time if needed
-                        # If not provided, default to 'en'
-                        language = (
-                            self.config.get("_generation_default_language")  # type: ignore[attr-defined]
-                            or "en"
-                        )
-                    except Exception:
-                        language = "en"
-
-                if language != "en":
-                    processed_text = _convert_years_to_words(
-                        processed_text,
-                        language=language,
-                        year_min=int(self.config.get("year_min", 1000)),
-                        year_max=int(self.config.get("year_max", 2099)),
-                    )
-
         # Future preprocessing options can be added here:
         # - Extra whitespace removal
         # - Encoding issue fixes
         # - Special character handling
 
         return processed_text
-
-
-def _convert_years_to_words(text: str, language: str, year_min: int, year_max: int) -> str:
-    """Convert four-digit year-like numbers within bounds to words using num2words.
-
-    Falls back gracefully (no change) if num2words is unavailable or conversion fails.
-    """
-    try:
-        from validation.number_normalization import _NUM2WORDS as _N2W
-        import re
-
-        if _N2W is None:
-            return text
-
-        year_re = re.compile(r"\b(\d{4})\b")
-
-        def repl(m: "re.Match[str]") -> str:
-            try:
-                year = int(m.group(1))
-                if year_min <= year <= year_max:
-                    # German-specific year wording: 18xx/19xx → "achtzehnhundert..."/"neunzehnhundert...",
-                    # 20xx → "zweitausend..."; remainder composed without spaces/hyphens.
-                    if language == "de":
-                        try:
-                            # Prefer common year phrasing
-                            if 1800 <= year <= 1999:
-                                century_word = "achtzehn" if year // 100 == 18 else "neunzehn"
-                                base = f"{century_word}hundert"
-                                rest = year % 100
-                                if rest == 0:
-                                    return base.capitalize()
-                                rest_words = _N2W(rest, lang="de")  # type: ignore
-                                rest_words = rest_words.replace(" ", "").replace("-", "")
-                                return (base + rest_words).capitalize()
-                            if 2000 <= year <= 2099:
-                                base = "zweitausend"
-                                rest = year % 1000
-                                if rest == 0:
-                                    return base.capitalize()
-                                rest_words = _N2W(rest, lang="de")  # type: ignore
-                                rest_words = rest_words.replace(" ", "").replace("-", "")
-                                return (base + rest_words).capitalize()
-                        except Exception:
-                            # Fallback to generic conversion if anything fails
-                            pass
-                        # Generic German fallback
-                        return _N2W(year, lang=language).capitalize()  # type: ignore
-                    return _N2W(year, lang=language).capitalize()  # type: ignore
-                return m.group(0)
-            except Exception:
-                return m.group(0)
-
-        return year_re.sub(repl, text)
-    except Exception:
-        return text
-        
