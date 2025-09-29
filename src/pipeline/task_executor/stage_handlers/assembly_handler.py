@@ -1,6 +1,7 @@
 """Assembly stage handler."""
 
 import logging
+import math
 from typing import Any, Dict, List
 
 import torch
@@ -197,26 +198,80 @@ class AssemblyHandler:
 
         sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
         silence_config = self.config.get("audio", {}).get("silence_duration", {})
+        trim_config = self.config.get("audio", {}).get("silence_trim", {})
+        trim_enabled = bool(trim_config.get("enabled", False))
+        trim_threshold = float(trim_config.get("threshold", 0.01))
+        min_silence_duration = float(trim_config.get("min_silence_duration", 0.05))
+        min_silence_samples = int(sample_rate * min_silence_duration)
         normal_silence = int(sample_rate * silence_config.get("normal", 0.2))
         paragraph_silence = int(sample_rate * silence_config.get("paragraph", 0.8))
         long_silence = int(sample_rate * silence_config.get("long", 1.5))
 
         assembled_segments = []
 
+        def _create_tone(num_samples: int, device: torch.device, dtype: torch.dtype,
+                         freq_hz: float = 220.0, amplitude: float = 0.1) -> torch.Tensor:
+            """Create a mono sine tone of given length, frequency and amplitude."""
+            if num_samples <= 0:
+                return torch.zeros(0, device=device, dtype=dtype)
+            t = torch.arange(num_samples, device=device, dtype=torch.float32) / float(sample_rate)
+            tone = torch.sin(2.0 * math.pi * freq_hz * t) * float(amplitude)
+            return tone.to(device=device, dtype=dtype)
+
+        def _trim_edges(wave: torch.Tensor, threshold: float, min_preserve_samples: int) -> torch.Tensor:
+            """Trim leading and trailing samples with |amp| <= threshold, but preserve minimum silence."""
+            if wave is None or wave.numel() == 0:
+                return wave
+            # Ensure 1D
+            if wave.ndim > 1:
+                wave_1d = wave.squeeze()
+            else:
+                wave_1d = wave
+            try:
+                mask = torch.abs(wave_1d) > threshold
+                if not torch.any(mask):
+                    # All silent; keep as-is to avoid removing content entirely
+                    return wave
+                nonzero_indices = torch.nonzero(mask).squeeze(-1)
+                content_start = int(nonzero_indices[0].item())
+                content_end = int(nonzero_indices[-1].item()) + 1
+                
+                # Preserve minimum silence at start and end
+                trim_start = max(0, content_start - min_preserve_samples)
+                trim_end = min(len(wave_1d), content_end + min_preserve_samples)
+                
+                trimmed = wave_1d[trim_start:trim_end]
+                # Restore dimensionality if original had extra dims
+                if wave.ndim > 1:
+                    trimmed = trimmed.unsqueeze(0)
+                return trimmed
+            except Exception:
+                # On any failure, return original
+                return wave
+
         for i, segment in enumerate(audio_segments):
-            assembled_segments.append(segment)
+            # Boundary-aware trimming: remove leading/trailing silence from segments
+            seg = segment
+            if trim_enabled:
+                seg = _trim_edges(seg, trim_threshold, min_silence_samples)
+            assembled_segments.append(seg)
 
             # Add silence between segments (except after the last one)
             if i < len(audio_segments) - 1:
                 pause_type = boundary_pause_types[i] if i < len(boundary_pause_types) else "normal"
+                # Default behavior: insert digital silence
                 if pause_type == "paragraph":
                     silence = torch.zeros(paragraph_silence)
+                    # pause = _create_tone(paragraph_silence, device=segment.device, dtype=segment.dtype)
                 elif pause_type == "long":
                     silence = torch.zeros(long_silence)
+                    # pause = _create_tone(long_silence, device=segment.device, dtype=segment.dtype)
                 elif pause_type == "none":
                     silence = torch.zeros(0)
+                    # pause = torch.zeros(0, device=segment.device, dtype=segment.dtype)
                 else:  # "normal" or fallback
                     silence = torch.zeros(normal_silence)
+                    # pause = _create_tone(normal_silence, device=segment.device, dtype=segment.dtype)
                 assembled_segments.append(silence)
 
         return torch.cat(assembled_segments)

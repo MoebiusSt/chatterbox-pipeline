@@ -9,7 +9,7 @@ preprocessing:
   enabled: true
   normalize_line_endings: true    # Convert \r\n and \r to \n
   normalize_punct: true           # Normalize punctuation (incl. quotes & Chatterbox standards)
-  convert_years_to_words: true    # Convert four-digit years (range below) to words for non-EN jobs
+  convert_years_to_words: false    # Convert four-digit years (range below) to words for non-EN jobs
   years_language: auto            # 'auto' uses generation.default_language; else explicit language code (e.g., 'de')
   year_min: 1000                  # Inclusive lower bound for year conversion
   year_max: 2099                  # Inclusive upper bound for year conversion
@@ -19,7 +19,7 @@ chunking:
   max_chunk_limit: 460
   min_chunk_length: 80
   spacy_model: en_core_web_sm
-  force_paragraph_chunks: false  # double newlines force chunking; ensures added paragraph break silence
+  force_paragraph_chunks: true  # double newlines force chunking; ensures added paragraph break silence
 
 generation:
   num_candidates: 2
@@ -190,10 +190,16 @@ validation:
 
 audio:
   silence_duration:
-    normal: 0.10  # inserted between chunks if split was between sentences
+    normal: 0.20  # inserted between chunks if split was between sentences
     paragraph: 0.80  # inserted if split was before paragraph break blank line
     long: 1.50  # inserted for explicit long paragraph breaks (>= 2 empty lines)
   sample_rate: 24000
+
+  # Optional trimming of leading/trailing silence on segment boundaries during assembly
+  silence_trim:
+    enabled: true   # if true, trim low-amplitude leading/trailing samples at boundaries
+    threshold: 0.01  # absolute amplitude threshold used for trimming
+    min_silence_duration: 0.08  # minimum silence duration (seconds) to preserve at start/end
 
   # ChatterboxTTS native sample rate - NOT a user setting!
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)

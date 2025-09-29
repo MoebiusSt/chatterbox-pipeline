@@ -284,14 +284,15 @@ class WhisperIOHandler:
                     "best_score": 0.0,
                 }
 
-            # Update candidate data in enhanced metrics
+            # Update candidate data in enhanced metrics - minimal structure
             candidate_key = str(candidate_idx)
+            quality_details = result.get("quality_details", {})
+            individual_scores = quality_details.get("individual_scores", {})
+            overall_score = individual_scores.get("overall_score", 0.0)
+
             new_candidate_data = {
                 "transcription": result.get("transcription", ""),
-                "similarity_score": result.get("similarity_score", 0.0),
-                "validation_score": result.get("quality_score", 0.0),
-                "overall_quality_score": result.get("overall_quality_score", 0.0),
-                "quality_details": result.get("quality_details", {}),
+                "quality_details": quality_details,
                 "is_valid": result.get("is_valid", False),
             }
 
@@ -301,13 +302,12 @@ class WhisperIOHandler:
                 merged = existing_candidate.copy()
                 merged.update(new_candidate_data)
                 # Ensure final_score is present and consistent
-                if "final_score" not in merged and "overall_quality_score" in merged:
-                    merged["final_score"] = merged["overall_quality_score"]
+                if "final_score" not in merged:
+                    merged["final_score"] = overall_score
                 metrics["chunks"][chunk_key]["candidates"][candidate_key] = merged
             else:
                 # Ensure final_score on fresh insert
-                if "final_score" not in new_candidate_data:
-                    new_candidate_data["final_score"] = new_candidate_data["overall_quality_score"]
+                new_candidate_data["final_score"] = overall_score
                 metrics["chunks"][chunk_key]["candidates"][candidate_key] = new_candidate_data
 
             # Save updated metrics back
@@ -346,13 +346,18 @@ class WhisperIOHandler:
                 candidate_key = str(candidate_idx)
                 if candidate_key in candidates:
                     candidate_data = candidates[candidate_key]
-                    # Convert back to whisper format - use original is_valid from validation
-                    # Don't recalculate is_valid here, use the stored value from original validation
+                    # Extract from quality_details to match new structure
+                    quality_details = candidate_data.get("quality_details", {})
+                    individual_scores = quality_details.get("individual_scores", {}) if isinstance(quality_details, dict) else {}
+                    validation_metrics = quality_details.get("validation_metrics", {}) if isinstance(quality_details, dict) else {}
+
+                    similarity_score = individual_scores.get("similarity_score", 0.0)
+                    quality_score = validation_metrics.get("whisper_quality", 0.0)
+                    overall_quality_score = individual_scores.get("overall_score", 0.0)
+
                     original_is_valid = candidate_data.get("is_valid", False)
                     if "is_valid" not in candidate_data:
                         # Fallback: recalculate with proper thresholds only if not stored
-                        similarity_score = candidate_data.get("similarity_score", 0.0)
-                        quality_score = candidate_data.get("validation_score", 0.0)
                         # Use config thresholds instead of hardcoded values
                         original_is_valid = (
                             similarity_score >= 0.85 and quality_score >= 0.6
@@ -361,14 +366,12 @@ class WhisperIOHandler:
                     results[candidate_idx] = {
                         "is_valid": original_is_valid,
                         "transcription": candidate_data.get("transcription", ""),
-                        "similarity_score": candidate_data.get("similarity_score", 0.0),
-                        "quality_score": candidate_data.get("validation_score", 0.0),
+                        "similarity_score": similarity_score,
+                        "quality_score": quality_score,
                         "validation_time": 0.0,  # Not stored in enhanced metrics
                         "error_message": None,
-                        "overall_quality_score": candidate_data.get(
-                            "overall_quality_score", 0.0
-                        ),
-                        "quality_details": candidate_data.get("quality_details", {}),
+                        "overall_quality_score": overall_quality_score,
+                        "quality_details": quality_details,
                     }
             else:
                 # Get all candidates for chunk

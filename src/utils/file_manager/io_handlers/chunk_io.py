@@ -46,6 +46,26 @@ class ChunkIOHandler:
                 with open(chunk_path, "w", encoding="utf-8") as f:
                     f.write(chunk.text)
 
+            # Helper: excerpt for human-readable overview (≥24 chars and ≥4 words)
+            def _build_excerpt(text: str, min_chars: int = 24, min_words: int = 4, max_chars: int = 160) -> str:
+                if not text:
+                    return ""
+                words = text.strip().split()
+                if not words:
+                    return ""
+                excerpt_words = []
+                char_len = 0
+                for w in words:
+                    next_len = char_len + (len(w) if char_len == 0 else len(w) + 1)
+                    excerpt_words.append(w)
+                    char_len = next_len
+                    if (char_len >= min_chars and len(excerpt_words) >= min_words) or char_len >= max_chars:
+                        break
+                excerpt = " ".join(excerpt_words)
+                if len(excerpt_words) < len(words):
+                    excerpt += " …"
+                return excerpt
+
             # Save chunk metadata
             chunk_metadata = {
                 "total_chunks": len(chunks),
@@ -53,6 +73,7 @@ class ChunkIOHandler:
                     {
                         "idx": chunk.idx,
                         "text_length": len(chunk.text),
+                        "excerpt": _build_excerpt(chunk.text),
                         "is_paragraph_break": chunk.has_paragraph_break,
                         "paragraph_break_type": getattr(chunk, "paragraph_break_type", None),
                         "filename": f"chunk_{chunk.idx+1:03d}.txt",

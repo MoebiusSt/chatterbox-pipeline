@@ -170,15 +170,15 @@ class FileManager:
         
         # If a backup already exists for this task, reuse it and do not overwrite
         if target_path.exists():
-            logger.info(f"Bestehendes Input-Text-Backup gefunden und wird verwendet: {target_path}")
+            logger.info(f"Existing input text backup found and will be used: {target_path}")
             return
 
         # Otherwise create the backup once for new tasks
         if source_path.exists():
             shutil.copy2(source_path, target_path)
-            logger.info(f"Backup-Kopie des Input-Texts erstellt: {target_path}")
+            logger.info(f"Backup copy of input text created: {target_path}")
         else:
-            logger.warning(f"Input-Text-Datei nicht gefunden, keine Backup-Kopie erstellt: {source_path}")
+            logger.warning(f"Input text file not found, no backup copy created: {source_path}")
 
     # Input Operations
     def get_input_text(self) -> str:

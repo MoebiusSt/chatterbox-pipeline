@@ -7,7 +7,7 @@ import logging
 
 # Use absolute imports to avoid relative import issues
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -42,15 +42,15 @@ class QualityScore:
     overall_score: float
     similarity_score: float
     length_score: float
-    validation_score: float
     penalty_score: float
-    details: Dict[str, Any]
+    details: Dict[str, Any] = field(default_factory=dict)
 
     def __str__(self) -> str:
         return (
             f"QualityScore(overall={self.overall_score:.3f}, "
-            f"similarity={self.similarity_score:.3f}, "
-            f"length={self.length_score:.3f})"
+            f"sim={self.similarity_score:.3f}, "
+            f"length={self.length_score:.3f}, "
+            f"penalty={self.penalty_score:.3f})"
         )
 
 
@@ -124,15 +124,13 @@ class QualityScorer:
                 penalty_score,
             )
 
-            # Create detailed score object
+            # Create detailed score object without redundant weights
             quality_score = QualityScore(
                 overall_score=overall_score,
                 similarity_score=similarity_score,
                 length_score=length_score,
-                validation_score=0.0,  # No longer used - purely based on similarity + length
                 penalty_score=penalty_score,
                 details={
-                    "weights": self.weights.copy(),
                     "candidate_id": f"chunk_{candidate.chunk_idx}_candidate_{candidate.candidate_idx}",
                     "audio_duration": self._get_audio_duration(candidate),
                     "expected_duration": expected_duration,
@@ -162,10 +160,15 @@ class QualityScorer:
             return quality_score
 
         except Exception as e:
-            self.logger.error(
-                f"Scoring failed for candidate chunk_{candidate.chunk_idx}_candidate_{candidate.candidate_idx}: {e}"
+            self.logger.error(f"Failed to score candidate: {e}")
+            # Return minimal score on error
+            return QualityScore(
+                overall_score=0.0,
+                similarity_score=0.0,
+                length_score=0.0,
+                penalty_score=1.0,
+                details={},
             )
-            return self._create_failed_score(candidate, str(e))
 
     def _calculate_similarity_score(
         self,
@@ -279,7 +282,6 @@ class QualityScorer:
             overall_score=0.0,
             similarity_score=0.0,
             length_score=0.0,
-            validation_score=0.0,
             penalty_score=1.0,
             details={
                 "error": error,
@@ -292,7 +294,7 @@ class QualityScorer:
         self,
         candidates: List[AudioCandidate],
         validation_results: List[ValidationResult],
-        match_results: Optional[List[MatchResult]] = None,
+        match_results: Optional[List[Optional[MatchResult]]] = None,  # Updated annotation
         expected_durations: Optional[List[float]] = None,
     ) -> List[Tuple[AudioCandidate, QualityScore]]:
         """
@@ -314,7 +316,7 @@ class QualityScorer:
             raise ValueError("Number of candidates must match validation results")
 
         # Prepare optional parameters
-        match_results = match_results or [None] * len(candidates)
+        match_results = match_results or [None] * len(candidates)  # Now compatible with annotation
         expected_durations = expected_durations or [None] * len(candidates)
 
         # Score all candidates
@@ -332,22 +334,35 @@ class QualityScorer:
         )
 
         # Get chunk info for better logging
-        chunk_idx = candidates[0].chunk_idx if candidates else "?"
-        best_score = scored_candidates[0][1].overall_score
-        worst_score = scored_candidates[-1][1].overall_score
-        best_candidate = scored_candidates[0][0]
+        if candidates:
+            chunk_idx = candidates[0].chunk_idx
+            chunk_num = chunk_idx + 1
+        else:
+            chunk_idx = -1
+            chunk_num = 'unknown'
 
-        # Get TTS parameters from best candidate
-        best_params = best_candidate.generation_params or {}
+        best_score = scored_candidates[0][1].overall_score if scored_candidates else 0.0
+        worst_score = scored_candidates[-1][1].overall_score if scored_candidates else 0.0
+
+        # Get TTS parameters from best candidate if available
+        if scored_candidates:
+            best_candidate = scored_candidates[0][0]
+            best_params = best_candidate.generation_params or {}
+        else:
+            best_candidate = None
+            best_params = {}
+            best_idx = 0
+
         exaggeration = best_params.get("exaggeration", 0.0)
         cfg_weight = best_params.get("cfg_weight", 0.0)
         temperature = best_params.get("temperature", 0.0)
         min_p = best_params.get("min_p", 0.05)
         top_p = best_params.get("top_p", 0.95)
-        best_idx = best_candidate.candidate_idx + 1  # Display as 1-based
+        best_idx = best_candidate.candidate_idx + 1 if best_candidate else 1  # Display as 1-based
 
+        chunk_str = f"{chunk_num:02d}" if isinstance(chunk_num, int) else str(chunk_num)
         self.logger.info(
-            f"Chunk_{chunk_idx + 1:02d} - "
+            f"Chunk_{chunk_str} - "
             f"Best candidate: {best_idx} of {len(candidates)} (score: {best_score:.3f} worst: {worst_score:.3f}) "
             f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}, min_p: {min_p:.2f}, top_p: {top_p:.2f}"
         )

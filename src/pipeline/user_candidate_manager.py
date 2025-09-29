@@ -341,20 +341,22 @@ class UserCandidateManager:
                     exaggeration = cfg_weight = temperature = 0.0
                     candidate_type = "UNKNOWN"
 
-                # Derive realistic length_score from metrics if available
-                sim_score = candidate_data.get("similarity_score", 0.0)
-                val_score = candidate_data.get("validation_score", 0.0)
-                overall = candidate_data.get("overall_quality_score", 0.0)
+                # Derive scores from quality_details to avoid redundancy
+                quality_details = candidate_data.get("quality_details", {})
+                individual_scores = quality_details.get("individual_scores", {}) if isinstance(quality_details, dict) else {}
+                validation_metrics = quality_details.get("validation_metrics", {}) if isinstance(quality_details, dict) else {}
+
+                sim_score = individual_scores.get("similarity_score", 0.0)
+                val_score = validation_metrics.get("whisper_quality", 0.0)
+                overall = individual_scores.get("overall_score", 0.0)
 
                 # If quality_details contain individual length score, prefer it
-                quality_details = candidate_data.get("quality_details", {})
-                individual = quality_details.get("individual_scores", {}) if isinstance(quality_details, dict) else {}
-                length_score = individual.get("length_score")
+                length_score = individual_scores.get("length_score", 0.0)
                 if length_score is None:
                     # Fallback: approximate length_score from overall and sim weights when possible
-                    # Default weights in QualityScorer: similarity 0.7, length 0.3 (if unchanged)
+                    # Default weights in QualityScorer: similarity 0.75, length 0.25 (updated)
                     try:
-                        approx = (overall - 0.7 * sim_score) / 0.3
+                        approx = (overall - 0.75 * sim_score) / 0.25
                         length_score = max(0.0, min(1.0, approx))
                     except Exception:
                         length_score = 0.0
@@ -396,7 +398,7 @@ class UserCandidateManager:
                     is_selected=(candidate_idx == current_selected),
                 )
 
-                # Attach validation_score dynamically for printing
+                # Attach validation_score dynamically for printing from val_score
                 setattr(info, "validation_score", float(val_score))
 
                 candidate_infos.append(info)

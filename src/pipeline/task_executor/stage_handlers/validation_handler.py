@@ -342,17 +342,25 @@ class ValidationHandler:
         logger.info("")
         logger.info("🔍 Create enhanced metrics")
 
-        for chunk in chunks:
-            chunk_candidates = candidates.get(chunk.idx, [])
-            chunk_validation = validation_results.get(chunk.idx, {})
+        for chunk_idx, chunk in enumerate(chunks):
+            chunk_key = str(chunk_idx)
+            chunk_metrics = {
+                "text": chunk.text,
+                "speaker_id": chunk.speaker_id,
+                "start_pos": chunk.start_pos,
+                "end_pos": chunk.end_pos,
+                "candidates": {},
+            }
+            candidates_list = candidates.get(chunk_idx, [])
+            chunk_validation = validation_results.get(chunk_idx, {})
 
-            if not chunk_validation or not chunk_candidates:
+            if not chunk_validation or not candidates_list:
                 continue
 
             validation_results_list = []
-            candidates_list = []
+            filtered_candidates_list = []
 
-            for candidate in chunk_candidates:
+            for candidate in candidates_list:
                 if candidate.candidate_idx in chunk_validation:
                     result_dict = chunk_validation[candidate.candidate_idx]
 
@@ -366,9 +374,9 @@ class ValidationHandler:
                     )
 
                     validation_results_list.append(validation_result)
-                    candidates_list.append(candidate)
+                    filtered_candidates_list.append(candidate)
 
-            if not candidates_list:
+            if not filtered_candidates_list:
                 continue
 
             try:
@@ -376,9 +384,12 @@ class ValidationHandler:
                 best_candidate_idx = None
                 best_score_value = -1.0
 
-                for candidate in candidates_list:
+                for candidate in filtered_candidates_list:
                     result_dict = chunk_validation[candidate.candidate_idx]
-                    candidate_score = result_dict.get("overall_quality_score", 0.0)
+                    # Use overall from details to avoid redundancy
+                    quality_details = result_dict.get("quality_details", {})
+                    individual_scores = quality_details.get("individual_scores", {})
+                    candidate_score = individual_scores.get("overall_score", 0.0)
 
                     if candidate_score > best_score_value:
                         best_score_value = candidate_score
@@ -398,19 +409,19 @@ class ValidationHandler:
                 }
 
                 candidate_scores = []
-                for candidate in candidates_list:
+                for candidate in filtered_candidates_list:
                     result_dict = chunk_validation[candidate.candidate_idx]
-                    candidate_score = result_dict.get("overall_quality_score", 0.0)
+                    # Use overall from details to avoid redundancy
+                    quality_details = result_dict.get("quality_details", {})
+                    individual_scores = quality_details.get("individual_scores", {})
+                    candidate_score = individual_scores.get("overall_score", 0.0)
                     candidate_scores.append(candidate_score)
 
                     # Use string keys for candidate indices to avoid int/str duplicates in JSON
                     cand_key = str(candidate.candidate_idx)
                     chunk_metrics["candidates"][cand_key] = {
                         "transcription": result_dict.get("transcription", ""),
-                        "similarity_score": result_dict.get("similarity_score", 0.0),
-                        "validation_score": result_dict.get("quality_score", 0.0),
-                        "overall_quality_score": candidate_score,
-                        "quality_details": result_dict.get("quality_details", {}),
+                        "quality_details": quality_details,
                         "final_score": candidate_score,
                         "is_valid": result_dict.get("is_valid", False),
                     }
@@ -428,7 +439,7 @@ class ValidationHandler:
                         best_candidate_obj = next(
                             (
                                 c
-                                for c in candidates_list
+                                for c in filtered_candidates_list
                                 if c.candidate_idx == best_candidate_idx
                             ),
                             None,
@@ -447,7 +458,7 @@ class ValidationHandler:
 
                     logger.info(
                         f"Chunk_{chunk.idx + 1:02d} - "
-                        f"Best candidate: {best_candidate_display} of {len(candidates_list)} (score: {best_score_value:.3f}) "
+                        f"Best candidate: {best_candidate_display} of {len(filtered_candidates_list)} (score: {best_score_value:.3f}) "
                         f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}, min_p: {min_p:.2f}, top_p: {top_p:.2f}"
                     )
 
@@ -461,9 +472,9 @@ class ValidationHandler:
                 logger.warning(
                     f"Failed to select best candidate for chunk {chunk.idx}: {e}"
                 )
-                if candidates_list:
+                if filtered_candidates_list:
                     selected_candidates_dict = metrics["selected_candidates"]
-                    selected_candidates_dict[chunk.idx] = candidates_list[
+                    selected_candidates_dict[chunk.idx] = filtered_candidates_list[
                         0
                     ].candidate_idx
 
@@ -744,7 +755,10 @@ class ValidationHandler:
 
                     for candidate in candidates_list:
                         result_dict = chunk_validation[candidate.candidate_idx]
-                        candidate_score = result_dict.get("overall_quality_score", 0.0)
+                        # Use overall from details to avoid redundancy
+                        quality_details = result_dict.get("quality_details", {})
+                        individual_scores = quality_details.get("individual_scores", {})
+                        candidate_score = individual_scores.get("overall_score", 0.0)
 
                         if candidate_score > best_score_value:
                             best_score_value = candidate_score
@@ -764,17 +778,15 @@ class ValidationHandler:
                     candidate_scores = []
                     for candidate in candidates_list:
                         result_dict = chunk_validation[candidate.candidate_idx]
-                        candidate_score = result_dict.get("overall_quality_score", 0.0)
+                        # Use overall from details to avoid redundancy
+                        quality_details = result_dict.get("quality_details", {})
+                        individual_scores = quality_details.get("individual_scores", {})
+                        candidate_score = individual_scores.get("overall_score", 0.0)
                         candidate_scores.append(candidate_score)
 
                         chunk_metrics["candidates"][candidate.candidate_idx] = {
                             "transcription": result_dict.get("transcription", ""),
-                            "similarity_score": result_dict.get(
-                                "similarity_score", 0.0
-                            ),
-                            "validation_score": result_dict.get("quality_score", 0.0),
-                            "overall_quality_score": candidate_score,
-                            "quality_details": result_dict.get("quality_details", {}),
+                            "quality_details": quality_details,
                             "final_score": candidate_score,
                         }
 
