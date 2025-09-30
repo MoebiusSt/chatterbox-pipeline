@@ -140,7 +140,10 @@ class UserCandidateManager:
             task_info: Task information for display
 
         Returns:
-            Selected candidate index (0-based), or -1 for cancel
+            Selected candidate index (0-based), or:
+            -1 for cancel/return
+            -2 for next chunk
+            -3 for previous chunk
         """
         try:
             chunks = self.file_manager.get_chunks()
@@ -198,6 +201,10 @@ class UserCandidateManager:
             print()
             print("Select action:")
             print(f"1-{len(candidate_infos):<2} - Select candidate")
+            if chunk_idx < len(chunks) - 1:
+                print("n       - Next Chunk")
+            if chunk_idx > 0:
+                print("p       - Previous Chunk")
             print("c       - Return")
 
             while True:
@@ -205,6 +212,10 @@ class UserCandidateManager:
 
                 if choice.lower() == "c":
                     return -1
+                elif choice.lower() == "n" and chunk_idx < len(chunks) - 1:
+                    return -2  # Signal next chunk
+                elif choice.lower() == "p" and chunk_idx > 0:
+                    return -3  # Signal previous chunk
                 elif choice.isdigit():
                     candidate_num = int(choice)
                     if 1 <= candidate_num <= len(candidate_infos):
@@ -268,6 +279,10 @@ class UserCandidateManager:
                             print()
                             print("Select action:")
                             print(f"1-{len(candidate_infos):<2} - Select candidate")
+                            if chunk_idx < len(chunks) - 1:
+                                print("n       - Next Chunk")
+                            if chunk_idx > 0:
+                                print("p       - Previous Chunk")
                             print("c       - Return")
                         else:
                             print("Failed to save selection. Please try again.")

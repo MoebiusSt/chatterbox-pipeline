@@ -77,6 +77,7 @@ venv\Scripts\activate
 ```bash
 # Basic dependencies
 pip install -r requirements.txt
+# Note: Uses stable chatterbox v0.1.3 (faster branches have CUDA graph stability issues)
 
 # Download SpaCy model
 python -m spacy download en_core_web_sm
@@ -184,6 +185,38 @@ python src/cbpipe.py --device cuda               # Device selection: Force GPU e
 ```bash
 python src/cbpipe.py radio-broadcast.yaml
 ```
+
+## Additional Tools
+
+### 🎛️ Chatterbox TTS Tester
+
+A standalone GUI tool for rapid parameter tuning and voice optimization.
+
+**Purpose**: Quickly experiment with different TTS parameters, models, and reference audio to find optimal settings before integrating into cbpipe configurations.
+
+**Start the tool** (WSL/Linux):
+```bash
+# Install tkinter (one-time setup)
+sudo apt-get install python3-tk
+
+# Optional: Install ffmpeg for better audio playback in WSL
+sudo apt-get install ffmpeg
+
+# Run the tester
+source venv/bin/activate
+python chatterbox_tester.py
+```
+
+**Features**:
+- Parameter adjustment with manual REFRESH button
+- Model switching (classic/multilanguage) with 24 languages
+- Seed control for reproducibility (with random seed button)
+- Audio playback with timeline scrubbing (uses ffplay/aplay if available)
+- Save generated audio to file with metadata YAML (cbpipe-ready format)
+- Automatic settings persistence (restored on restart)
+- Export settings as YAML for cbpipe configs
+
+See [CHATTERBOX_TESTER.md](CHATTERBOX_TESTER.md) for detailed documentation.
 
 
 ## License

@@ -344,9 +344,17 @@ class MenuOrchestrator:
                     chunks = file_manager.get_chunks()
 
                     if 0 <= chunk_idx < len(chunks):
-                        candidate_manager.show_candidate_selector(
-                            chunk_idx, task_info
-                        )
+                        # Navigate through chunks based on return value
+                        while 0 <= chunk_idx < len(chunks):
+                            result = candidate_manager.show_candidate_selector(
+                                chunk_idx, task_info
+                            )
+                            if result == -2:  # Next chunk
+                                chunk_idx += 1
+                            elif result == -3:  # Previous chunk
+                                chunk_idx -= 1
+                            else:  # Return to overview (-1) or other
+                                break
                     else:
                         print(
                             f"Invalid chunk number. Please enter 1-{len(chunks)} or 'c'"
