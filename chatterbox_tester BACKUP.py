@@ -66,8 +66,6 @@ class ChatterboxTester:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Chatterbox TTS Tester")
-        
-        # Set initial size (position will be set after loading settings)
         self.root.geometry("500x900")
         
         # Audio state
@@ -79,28 +77,6 @@ class ChatterboxTester:
         self.temp_audio_file: Optional[str] = None
         self.update_timer: Optional[str] = None
         self.external_player_process = None
-        
-        # A/B state comparison system
-        self.active_state: int = 1  # 1 or 2
-        self.state_a: Dict[str, Any] = {
-            'audio': None,
-            'temp_file': None,
-            'text': '',
-            'seed': '12345',
-            'params': {},
-            'needs_refresh': True
-        }
-        self.state_b: Dict[str, Any] = {
-            'audio': None,
-            'temp_file': None,
-            'text': '',
-            'seed': '12345',
-            'params': {},
-            'needs_refresh': True
-        }
-        
-        # Track if current UI matches rendered audio
-        self.needs_refresh: bool = True
         
         # Model and generation state
         self.device = self._detect_device()
@@ -121,7 +97,6 @@ class ChatterboxTester:
         self.history_position: int = -1
         self.is_restoring_state: bool = False  # Flag to prevent history recording during restore
         self._slider_save_timer: Optional[str] = None  # Timer for delayed slider history save
-        self._text_save_timer: Optional[str] = None  # Timer for delayed text history save
         
         self._build_ui()
         self._load_settings()  # Load saved settings first
@@ -136,9 +111,6 @@ class ChatterboxTester:
         
         # Save initial state to history after UI is built and settings loaded
         self._save_state_to_history()
-        
-        # Set initial refresh button color
-        self._update_refresh_button_color()
         
     def _detect_device(self) -> str:
         """Detect available device for inference."""
@@ -194,7 +166,7 @@ class ChatterboxTester:
             font=("Arial", 12)
         )
         self.ref_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self.ref_dropdown.bind('<<ComboboxSelected>>', lambda e: (self._on_text_change(), self._mark_needs_refresh()))
+        self.ref_dropdown.bind('<<ComboboxSelected>>', lambda e: self._save_state_to_history())
         
         # Refresh button for reference audio files
         ref_refresh_btn = tk.Button(
@@ -242,7 +214,7 @@ class ChatterboxTester:
             font=("Arial", 12)
         )
         self.lang_dropdown.pack(fill=tk.X, padx=10, pady=5)
-        self.lang_dropdown.bind('<<ComboboxSelected>>', lambda e: (self._on_text_change(), self._mark_needs_refresh()))
+        self.lang_dropdown.bind('<<ComboboxSelected>>', lambda e: self._save_state_to_history())
         
         # Seed Input
         seed_frame = tk.Frame(self.root)
@@ -258,15 +230,14 @@ class ChatterboxTester:
             width=15
         )
         seed_entry.pack(side=tk.LEFT, padx=5)
-        seed_entry.bind('<FocusOut>', lambda e: (self._on_text_change(), self._mark_needs_refresh()))
-        seed_entry.bind('<Return>', lambda e: (self._on_text_change(), self._mark_needs_refresh()))
+        seed_entry.bind('<FocusOut>', lambda e: self._save_state_to_history())
+        seed_entry.bind('<Return>', lambda e: self._save_state_to_history())
         
         # Random seed button
         def randomize_seed():
             import random
             self.seed_var.set(str(random.randint(1, 999999)))
-            self._on_text_change()
-            self._mark_needs_refresh()
+            self._save_state_to_history()
         
         tk.Button(
             seed_frame,
@@ -289,10 +260,8 @@ class ChatterboxTester:
         text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.text_widget.config(yscrollcommand=text_scrollbar.set)
         
-        # Bind text changes to history (with delayed save to batch with other changes)
-        self.text_widget.bind('<FocusOut>', lambda e: self._on_text_change())
-        # Track text changes in real-time for needs_refresh AND idle-based history save
-        self.text_widget.bind('<KeyRelease>', lambda e: self._on_text_keypress())
+        # Bind text changes to history (with debounce via FocusOut)
+        self.text_widget.bind('<FocusOut>', lambda e: self._save_state_to_history())
         
         # Bind Ctrl+A to select all text
         self.text_widget.bind('<Control-a>', self._text_select_all)
@@ -316,68 +285,6 @@ class ChatterboxTester:
         )
         self.char_count_label.pack(anchor=tk.W)
         
-        # A/B State Tabs (moved here, above refresh button)
-        state_tabs_frame = tk.Frame(self.root, bg="#e0e0e0")
-        state_tabs_frame.pack(fill=tk.X, padx=10, pady=(10, 0))
-        
-        self.state_a_btn = tk.Button(
-            state_tabs_frame,
-            text="1",
-            font=("Arial", 14, "bold"),
-            command=lambda: self._switch_state(1),
-            bg="#ffffff",
-            fg="#000000",
-            relief=tk.SUNKEN,
-            borderwidth=2,
-            width=8,
-            cursor="hand2"
-        )
-        self.state_a_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        # Copy A to B button
-        self.copy_a_to_b_btn = tk.Button(
-            state_tabs_frame,
-            text="→",
-            font=("Arial", 12, "bold"),
-            command=self._copy_a_to_b,
-            bg="#d0d0d0",
-            fg="#000000",
-            relief=tk.RAISED,
-            borderwidth=1,
-            width=2,
-            cursor="hand2"
-        )
-        self.copy_a_to_b_btn.pack(side=tk.LEFT, padx=2)
-        
-        # Copy B to A button
-        self.copy_b_to_a_btn = tk.Button(
-            state_tabs_frame,
-            text="←",
-            font=("Arial", 12, "bold"),
-            command=self._copy_b_to_a,
-            bg="#d0d0d0",
-            fg="#000000",
-            relief=tk.RAISED,
-            borderwidth=1,
-            width=2,
-            cursor="hand2"
-        )
-        self.copy_b_to_a_btn.pack(side=tk.LEFT, padx=2)
-        
-        self.state_b_btn = tk.Button(
-            state_tabs_frame,
-            text="2",
-            font=("Arial", 14, "bold"),
-            command=lambda: self._switch_state(2),
-            bg="#e0e0e0",
-            fg="#000000",
-            relief=tk.RAISED,
-            borderwidth=2,
-            width=8,
-            cursor="hand2"
-        )
-        self.state_b_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
         # Refresh Button
         refresh_frame = tk.Frame(self.root)
         refresh_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -387,7 +294,7 @@ class ChatterboxTester:
             text="⟳ REFRESH - Generate Audio",
             font=("", 14, "bold"),
             command=self._on_refresh,
-            bg="#4CAF50",  # Bright green by default (needs refresh)
+            bg="#4CAF50",
             fg="white",
             activebackground="#45a049",
             relief=tk.RAISED,
@@ -559,7 +466,6 @@ class ChatterboxTester:
     def _load_settings(self):
         """Load saved settings from file."""
         if not self.settings_file.exists():
-            self._center_window()
             return
         
         try:
@@ -581,113 +487,43 @@ class ChatterboxTester:
             if settings.get('language'):
                 self.lang_var.set(settings['language'])
             
-            # Restore active state
-            if settings.get('active_state'):
-                self.active_state = settings['active_state']
-            
-            # Restore state A
-            if settings.get('state_a'):
-                state_a_data = settings['state_a']
-                self.state_a['text'] = state_a_data.get('text', '')
-                self.state_a['seed'] = state_a_data.get('seed', '12345')
-                self.state_a['params'] = state_a_data.get('params', {})
-                self.state_a['needs_refresh'] = state_a_data.get('needs_refresh', True)
-                # Note: audio and temp_file are not persisted
-            
-            # Restore state B
-            if settings.get('state_b'):
-                state_b_data = settings['state_b']
-                self.state_b['text'] = state_b_data.get('text', '')
-                self.state_b['seed'] = state_b_data.get('seed', '12345')
-                self.state_b['params'] = state_b_data.get('params', {})
-                self.state_b['needs_refresh'] = state_b_data.get('needs_refresh', True)
-                # Note: audio and temp_file are not persisted
-            
-            # Load active state into UI
-            active_state = self.state_a if self.active_state == 1 else self.state_b
-            
             # Restore seed
-            self.seed_var.set(str(active_state.get('seed', '12345')))
+            if settings.get('seed'):
+                self.seed_var.set(str(settings['seed']))
             
             # Restore text
-            text = active_state.get('text', '')
-            if text:
+            if settings.get('text'):
                 self.text_widget.delete("1.0", tk.END)
-                self.text_widget.insert("1.0", text)
+                self.text_widget.insert("1.0", settings['text'])
             
             # Restore parameters
-            params = active_state.get('params', {})
+            params = settings.get('params', {})
             for param_name, value in params.items():
                 if param_name in self.param_vars:
                     self.param_vars[param_name].set(value)
                     self.param_labels[param_name].config(text=f"{value:.2f}")
             
-            # Update state buttons
-            if self.active_state == 1:
-                self.state_a_btn.config(relief=tk.SUNKEN, bg="#ffffff")
-                self.state_b_btn.config(relief=tk.RAISED, bg="#e0e0e0")
-            else:
-                self.state_a_btn.config(relief=tk.RAISED, bg="#e0e0e0")
-                self.state_b_btn.config(relief=tk.SUNKEN, bg="#ffffff")
-            
-            # Restore window position
-            if settings.get('window_x') is not None and settings.get('window_y') is not None:
-                x = settings['window_x']
-                y = settings['window_y']
-                # Ensure window is on screen (basic validation)
-                if x >= -100 and y >= -100 and x < 3000 and y < 3000:
-                    self.root.geometry(f"500x900+{x}+{y}")
-                    print(f"Settings loaded successfully (Active state: {self.active_state}, Position: {x},{y})")
-                else:
-                    self._center_window()
-                    print(f"Settings loaded successfully (Active state: {self.active_state}, Position: centered)")
-            else:
-                self._center_window()
-                print(f"Settings loaded successfully (Active state: {self.active_state}, Position: centered)")
+            print("Settings loaded successfully")
         except Exception as e:
             print(f"Could not load settings: {e}")
-            self._center_window()
     
     def _save_settings(self):
         """Save current settings to file."""
         try:
             import json
-            
-            # Save current UI to active state first
-            current_state = self.state_a if self.active_state == 1 else self.state_b
-            current_ui = self._get_current_ui_state()
-            current_state['text'] = current_ui['text']
-            current_state['seed'] = current_ui['seed']
-            current_state['params'] = current_ui['params']
-            
-            # Get current window position
-            self.root.update_idletasks()  # Ensure geometry is current
-            geometry = self.root.geometry()
-            # Parse geometry string: "widthxheight+x+y"
-            parts = geometry.split('+')
-            window_x = int(parts[1]) if len(parts) > 1 else None
-            window_y = int(parts[2]) if len(parts) > 2 else None
-            
             settings = {
                 'reference_audio': self.ref_audio_var.get(),
                 'model_type': self.model_var.get(),
                 'language': self.lang_var.get(),
-                'active_state': self.active_state,
-                'window_x': window_x,
-                'window_y': window_y,
-                'state_a': {
-                    'text': self.state_a.get('text', ''),
-                    'seed': self.state_a.get('seed', '12345'),
-                    'params': self.state_a.get('params', {}),
-                    'needs_refresh': self.state_a.get('needs_refresh', True)
-                    # Note: audio and temp_file are not persisted
-                },
-                'state_b': {
-                    'text': self.state_b.get('text', ''),
-                    'seed': self.state_b.get('seed', '12345'),
-                    'params': self.state_b.get('params', {}),
-                    'needs_refresh': self.state_b.get('needs_refresh', True)
-                    # Note: audio and temp_file are not persisted
+                'seed': int(self.seed_var.get()) if self.seed_var.get().isdigit() else 12345,
+                'text': self.text_widget.get("1.0", tk.END).strip(),
+                'params': {
+                    'exaggeration': self.param_vars['exaggeration'].get(),
+                    'cfg_weight': self.param_vars['cfg_weight'].get(),
+                    'temperature': self.param_vars['temperature'].get(),
+                    'repetition_penalty': self.param_vars['repetition_penalty'].get(),
+                    'min_p': self.param_vars['min_p'].get(),
+                    'top_p': self.param_vars['top_p'].get(),
                 }
             }
             
@@ -696,25 +532,6 @@ class ChatterboxTester:
             
         except Exception as e:
             print(f"Could not save settings: {e}")
-    
-    def _center_window(self):
-        """Center the window on the screen."""
-        self.root.update_idletasks()
-        
-        # Get window size
-        window_width = 500
-        window_height = 900
-        
-        # Get screen size
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        
-        # Calculate center position
-        x = (screen_width - window_width) // 2
-        y = (screen_height - window_height) // 2
-        
-        # Set geometry
-        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     
     def _load_initial_model(self):
         """Load the initial model."""
@@ -745,9 +562,8 @@ class ChatterboxTester:
         # Load new model
         self._load_model(model_type)
         
-        # Save to history and mark needs refresh (with delay)
-        self._on_text_change()
-        self._mark_needs_refresh()
+        # Save to history
+        self._save_state_to_history()
     
     def _text_select_all(self, event):
         """Select all text in the text widget (Ctrl+A)."""
@@ -770,41 +586,14 @@ class ChatterboxTester:
             # Insert at current cursor position
             self.text_widget.insert(tk.INSERT, clipboard_text)
             
-            # Save to history after paste (with delay)
-            self._on_text_change()
-            self._mark_needs_refresh()
+            # Save to history after paste
+            self._save_state_to_history()
             
         except tk.TclError:
             # Clipboard is empty or unavailable
             pass
         
         return 'break'  # Prevent default behavior
-    
-    def _on_text_keypress(self):
-        """Handle text keypress - mark needs refresh and schedule history save after idle."""
-        # Mark needs refresh immediately for button color update
-        self._mark_needs_refresh()
-        
-        # Cancel any existing text save timer
-        if hasattr(self, '_text_save_timer') and self._text_save_timer:
-            self.root.after_cancel(self._text_save_timer)
-        
-        # Schedule save after 1000ms idle time (1 second after last keypress)
-        self._text_save_timer = self.root.after(1000, self._save_text_after_idle)
-    
-    def _save_text_after_idle(self):
-        """Save history after text typing idle period."""
-        print("[TEXT] Saved after 1s idle")
-        self._save_state_to_history()
-    
-    def _on_text_change(self):
-        """Handle text change with delayed history save to batch with other UI changes."""
-        # Cancel any existing text save timer
-        if hasattr(self, '_text_save_timer') and self._text_save_timer:
-            self.root.after_cancel(self._text_save_timer)
-        
-        # Schedule save after 500ms delay (allows batching with slider changes)
-        self._text_save_timer = self.root.after(500, self._save_state_to_history)
     
     def _update_char_count(self):
         """Update character count display."""
@@ -828,8 +617,6 @@ class ChatterboxTester:
     def _on_slider_change(self, param_name: str, value: str):
         """Handle slider change with history tracking."""
         self._update_slider_label(param_name)
-        # Mark needs refresh immediately
-        self._mark_needs_refresh()
         # Only save to history when slider is released (on every change would be too much)
         # We'll use a delayed save approach
         if hasattr(self, '_slider_save_timer') and self._slider_save_timer:
@@ -854,31 +641,23 @@ class ChatterboxTester:
             }
         }
     
-    def _save_state_to_history(self, force: bool = False):
-        """Save current state to history.
-        
-        Args:
-            force: If True, save even if state hasn't changed
-        """
+    def _save_state_to_history(self):
+        """Save current state to history."""
         # Don't save during restore operation
         if self.is_restoring_state:
-            print(f"[HISTORY] Skipping save (is_restoring_state=True)")
             return
         
         current_state = self._get_current_state()
         
-        # Check if state is different from last saved state (unless forced)
-        if not force and self.history and self.history_position >= 0:
+        # Check if state is different from last saved state
+        if self.history and self.history_position >= 0:
             last_state = self.history[self.history_position]
             if current_state == last_state:
-                print(f"[HISTORY] Skipping save (no change)")
                 return  # No change, don't save
         
         # Remove any states after current position (when user made changes after undo)
         if self.history_position < len(self.history) - 1:
-            removed_count = len(self.history) - self.history_position - 1
             self.history = self.history[:self.history_position + 1]
-            print(f"[HISTORY] Removed {removed_count} redo states")
         
         # Add new state
         self.history.append(current_state)
@@ -889,7 +668,6 @@ class ChatterboxTester:
             self.history.pop(0)
             self.history_position -= 1
         
-        print(f"[HISTORY] Saved state {self.history_position + 1}/{len(self.history)} (force={force}, seed={current_state.get('seed')}, text_len={len(current_state.get('text', ''))})")
         self._update_history_buttons()
     
     def _restore_state(self, state: Dict[str, Any]):
@@ -938,12 +716,9 @@ class ChatterboxTester:
         if self.history_position > 0:
             self.history_position -= 1
             state = self.history[self.history_position]
-            print(f"[UNDO] Undoing to state {self.history_position + 1}/{len(self.history)}, seed={state.get('seed')}")
             self._restore_state(state)
             self._update_history_buttons()
-            self._mark_needs_refresh()
-        else:
-            print(f"[UNDO] Cannot undo (history_position={self.history_position})")
+            print(f"Undo: restored state {self.history_position + 1}/{len(self.history)}")
     
     def _redo(self):
         """Redo to next state."""
@@ -952,213 +727,21 @@ class ChatterboxTester:
             state = self.history[self.history_position]
             self._restore_state(state)
             self._update_history_buttons()
-            self._mark_needs_refresh()
             print(f"Redo: restored state {self.history_position + 1}/{len(self.history)}")
     
     def _update_history_buttons(self):
         """Update undo/redo button states."""
         # Enable undo if we can go back
-        can_undo = self.history_position > 0
-        can_redo = self.history_position < len(self.history) - 1
-        
-        if can_undo:
+        if self.history_position > 0:
             self.undo_btn.config(state=tk.NORMAL)
         else:
             self.undo_btn.config(state=tk.DISABLED)
         
         # Enable redo if we can go forward
-        if can_redo:
+        if self.history_position < len(self.history) - 1:
             self.redo_btn.config(state=tk.NORMAL)
         else:
             self.redo_btn.config(state=tk.DISABLED)
-        
-        print(f"[HISTORY] Updated buttons: Undo={'ON' if can_undo else 'OFF'}, Redo={'ON' if can_redo else 'OFF'} (pos={self.history_position + 1}/{len(self.history)})")
-    
-    def _get_current_ui_state(self) -> Dict[str, Any]:
-        """Get current UI state for comparison (only state-specific params)."""
-        return {
-            'text': self.text_widget.get("1.0", tk.END).strip(),
-            'seed': self.seed_var.get(),
-            'params': {
-                'exaggeration': self.param_vars['exaggeration'].get(),
-                'cfg_weight': self.param_vars['cfg_weight'].get(),
-                'temperature': self.param_vars['temperature'].get(),
-                'repetition_penalty': self.param_vars['repetition_penalty'].get(),
-                'min_p': self.param_vars['min_p'].get(),
-                'top_p': self.param_vars['top_p'].get(),
-            }
-        }
-    
-    def _mark_needs_refresh(self):
-        """Mark that UI has changed and needs refresh."""
-        active_state = self.state_a if self.active_state == 1 else self.state_b
-        active_state['needs_refresh'] = True
-        self._update_refresh_button_color()
-    
-    def _update_refresh_button_color(self):
-        """Update refresh button color based on whether refresh is needed."""
-        active_state = self.state_a if self.active_state == 1 else self.state_b
-        
-        if active_state['needs_refresh']:
-            # Bright green - needs refresh
-            self.refresh_btn.config(bg="#4CAF50")
-        else:
-            # Pale green - audio matches UI
-            self.refresh_btn.config(bg="#677867")
-    
-    def _switch_state(self, state_num: int):
-        """Switch between state A and state B."""
-        if state_num == self.active_state:
-            print(f"[SWITCH] Already in state {state_num}, ignoring")
-            return  # Already in this state
-        
-        print(f"[SWITCH] Switching from state {self.active_state} to {state_num}")
-        
-        # Save current UI to current state before switching
-        current_state = self.state_a if self.active_state == 1 else self.state_b
-        current_ui = self._get_current_ui_state()
-        current_state['text'] = current_ui['text']
-        current_state['seed'] = current_ui['seed']
-        current_state['params'] = current_ui['params']
-        
-        # Switch active state
-        self.active_state = state_num
-        new_state = self.state_a if state_num == 1 else self.state_b
-        
-        print(f"[SWITCH] Loading state {state_num}: seed={new_state.get('seed')}, text_len={len(new_state.get('text', ''))}")
-        
-        # Update UI button states
-        if state_num == 1:
-            self.state_a_btn.config(relief=tk.SUNKEN, bg="#ffffff")
-            self.state_b_btn.config(relief=tk.RAISED, bg="#e0e0e0")
-        else:
-            self.state_a_btn.config(relief=tk.RAISED, bg="#e0e0e0")
-            self.state_b_btn.config(relief=tk.SUNKEN, bg="#ffffff")
-        
-        # Stop current playback
-        self._stop_playback()
-        
-        # Load new state into UI (without triggering history save)
-        self.is_restoring_state = True
-        try:
-            # Restore text
-            self.text_widget.delete("1.0", tk.END)
-            self.text_widget.insert("1.0", new_state.get('text', ''))
-            
-            # Restore seed
-            self.seed_var.set(new_state.get('seed', '12345'))
-            
-            # Restore parameters
-            params = new_state.get('params', {})
-            for param_name, value in params.items():
-                if param_name in self.param_vars:
-                    self.param_vars[param_name].set(value)
-                    self.param_labels[param_name].config(text=f"{value:.2f}")
-            
-            # Load audio for this state
-            self.current_audio = new_state.get('audio')
-            self.temp_audio_file = new_state.get('temp_file')
-            
-            if self.current_audio is not None and self.temp_audio_file:
-                # Calculate duration
-                self.audio_duration = len(self.current_audio) / self.sample_rate
-                self.timeline.config(to=self.audio_duration * 1000)
-                self.timeline_var.set(0)
-                self.playback_position = 0.0
-                self.save_btn.config(state=tk.NORMAL)
-            else:
-                # No audio in this state
-                self.audio_duration = 0.0
-                self.timeline.config(to=100)
-                self.timeline_var.set(0)
-                self.playback_position = 0.0
-                self.save_btn.config(state=tk.DISABLED)
-        
-        finally:
-            self.is_restoring_state = False
-        
-        # Update refresh button color
-        self._update_refresh_button_color()
-        
-        print(f"[SWITCH] Switched to state {state_num}, calling _update_history_buttons()")
-        # IMPORTANT: Update history buttons after switching
-        self._update_history_buttons()
-    
-    def _copy_state(self, from_state_num: int, to_state_num: int):
-        """Copy state from one to another."""
-        print(f"[COPY] Starting copy {from_state_num} → {to_state_num} (active_state={self.active_state})")
-        
-        # Save current UI to active state first
-        current_state = self.state_a if self.active_state == 1 else self.state_b
-        current_ui = self._get_current_ui_state()
-        current_state['text'] = current_ui['text']
-        current_state['seed'] = current_ui['seed']
-        current_state['params'] = current_ui['params']
-        
-        # If currently in target state, save current state BEFORE copying (for undo)
-        if self.active_state == to_state_num:
-            print(f"[COPY] Saving current state before copy (we're in target state {to_state_num})")
-            self._save_state_to_history(force=True)
-        else:
-            print(f"[COPY] Not in target state (active={self.active_state}, target={to_state_num}), no pre-save")
-        
-        # Get source and target states
-        source = self.state_a if from_state_num == 1 else self.state_b
-        
-        # Copy source to target
-        copied_state = {
-            'audio': source.get('audio'),
-            'temp_file': source.get('temp_file'),
-            'text': source.get('text', ''),
-            'seed': source.get('seed', '12345'),
-            'params': source.get('params', {}).copy(),
-            'needs_refresh': source.get('needs_refresh', True)
-        }
-        
-        if to_state_num == 1:
-            self.state_a = copied_state
-        else:
-            self.state_b = copied_state
-        
-        print(f"[COPY] Copied: seed={copied_state.get('seed')}, text_len={len(copied_state.get('text', ''))}")
-        
-        # If currently in target state, update UI (switch_state will restore from state)
-        if self.active_state == to_state_num:
-            print(f"[COPY] Updating UI for target state {to_state_num}")
-            # Disable history saving during UI update
-            self.is_restoring_state = True
-            try:
-                # Restore text
-                self.text_widget.delete("1.0", tk.END)
-                self.text_widget.insert("1.0", copied_state.get('text', ''))
-                
-                # Restore seed
-                self.seed_var.set(copied_state.get('seed', '12345'))
-                
-                # Restore parameters
-                params = copied_state.get('params', {})
-                for param_name, value in params.items():
-                    if param_name in self.param_vars:
-                        self.param_vars[param_name].set(value)
-                        self.param_labels[param_name].config(text=f"{value:.2f}")
-                
-                # Update refresh button
-                self._update_refresh_button_color()
-            finally:
-                self.is_restoring_state = False
-                print(f"[COPY] UI update complete")
-        else:
-            print(f"[COPY] Not updating UI (not in target state)")
-        
-        print(f"[COPY] Copy complete: {from_state_num} → {to_state_num}")
-    
-    def _copy_a_to_b(self):
-        """Copy state A to state B."""
-        self._copy_state(1, 2)
-    
-    def _copy_b_to_a(self):
-        """Copy state B to state A."""
-        self._copy_state(2, 1)
     
     def _on_refresh(self):
         """Handle refresh button click."""
@@ -1262,25 +845,6 @@ class ChatterboxTester:
             self.timeline.config(to=self.audio_duration * 1000)  # Convert to ms
             self.timeline_var.set(0)
             self.playback_position = 0.0
-            
-            # Save audio to active state
-            active_state = self.state_a if self.active_state == 1 else self.state_b
-            active_state['audio'] = audio_int16
-            active_state['temp_file'] = self.temp_audio_file
-            active_state['text'] = text
-            active_state['seed'] = self.seed_var.get()
-            active_state['params'] = {
-                'exaggeration': self.param_vars['exaggeration'].get(),
-                'cfg_weight': self.param_vars['cfg_weight'].get(),
-                'temperature': self.param_vars['temperature'].get(),
-                'repetition_penalty': self.param_vars['repetition_penalty'].get(),
-                'min_p': self.param_vars['min_p'].get(),
-                'top_p': self.param_vars['top_p'].get(),
-            }
-            active_state['needs_refresh'] = False
-            
-            # Update refresh button color to pale green
-            self.root.after(0, self._update_refresh_button_color)
             
             # Enable save button
             self.root.after(0, lambda: self.save_btn.config(state=tk.NORMAL))
@@ -1627,9 +1191,8 @@ class ChatterboxTester:
                 self.insert_btn.config(text=f"✓ Loaded {len(updated_params)} parameters!")
                 print(f"Parameters loaded from clipboard: {', '.join(updated_params)}")
                 self.root.after(2000, lambda: self.insert_btn.config(text=original_text))
-                # Save to history after clipboard insert (with delay)
-                self._on_text_change()
-                self._mark_needs_refresh()
+                # Save to history after clipboard insert
+                self._save_state_to_history()
             else:
                 raise ValueError("No valid parameters found in YAML")
                 
