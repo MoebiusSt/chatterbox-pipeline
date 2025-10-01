@@ -95,61 +95,9 @@ class ChatterboxModelCache:
 
     @classmethod
     def _optimize_cached_model(cls, model, device: str):
-        """Optimize a cached model with mixed precision for better performance."""
-        import torch
-        
-        # Only optimize CUDA models
-        if device != "cuda":
-            return model
-            
-        try:
-            # Try to access model parameters (handle Chatterbox composite models)
-            first_param = None
-            
-            # Method 1: Direct parameters() method
-            if hasattr(model, 'parameters'):
-                try:
-                    first_param = next(model.parameters(), None)
-                except:
-                    pass
-            
-            # Method 2: Try sub-models for Chatterbox (s3gen, t3, ve, etc.)
-            if first_param is None:
-                for attr_name in ['s3gen', 't3', 've', 'model', 'llm', 'transformer', 'encoder', 'decoder']:
-                    if hasattr(model, attr_name):
-                        sub_model = getattr(model, attr_name)
-                        if hasattr(sub_model, 'parameters'):
-                            try:
-                                first_param = next(sub_model.parameters(), None)
-                                logger.debug(f"🔧 Found parameters in model.{attr_name}")
-                                break
-                            except:
-                                continue
-            
-            # Method 3: Try to convert whole model (if it has .to() method)
-            if first_param is None:
-                if hasattr(model, 'to'):
-                    logger.debug("🔧 No direct parameters found, but model has .to() method - trying conversion")
-                    # We'll try the conversion below without checking dtype
-                    current_dtype = torch.float32  # Assume fp32
-                else:
-                    logger.debug("🔧 Model has no parameters or .to() method, skipping optimization")
-                    return model
-            else:
-                current_dtype = first_param.dtype
-                logger.debug(f"🔧 Current model dtype: {current_dtype}")
-            
-            # Note: rsxdalv/chatterbox@faster-multi (v0.2.1+) has built-in CUDA graph optimizations
-            # No additional optimization needed - the model handles it internally with:
-            # - Automatic CUDA graph capturing for different sequence lengths
-            # - StaticCache for KV cache optimization
-            # - Optimized sampling loops
-            logger.debug("ℹ️ Using chatterbox faster-multi branch with built-in CUDA graph optimizations")
-            return model
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Error during model optimization: {e}")
-            return model
+        """Return model as-is for standard ChatterboxTTS (no optimization needed)."""
+        # Standard ChatterboxTTS models are already optimized
+        return model
 
     @classmethod
     def _detect_device(cls) -> str:
@@ -195,80 +143,10 @@ class ChatterboxModelCache:
                     from chatterbox.tts import ChatterboxTTS as ModelClass
                     model_name = "ChatterboxTTS"
 
-                # ==== SPEED OPTIMIZATION WITH BF16/FP16 ====
-                # Determine optimal dtype for ~2x speed boost on GPU
-                # bf16 (bfloat16) is faster and available on newer GPUs (Ampere+)
-                # fp16 (float16) is faster on older GPUs
-                torch_dtype = None
-                logger.info(f"🔧 DEBUG: Device is '{device}', CUDA available: {torch.cuda.is_available()}")
-                
-                if device == "cuda":
-                    try:
-                        capability = torch.cuda.get_device_capability()
-                        logger.info(f"🔧 DEBUG: CUDA capability: {capability}")
-                        # Check if bfloat16 is supported (CUDA capability >= 8.0, Ampere+)
-                        if torch.cuda.is_available() and capability[0] >= 8:
-                            torch_dtype = torch.bfloat16
-                            logger.info("🚀 Using bfloat16 precision for ~2x speed boost (RTX 30xx/40xx+)")
-                        else:
-                            torch_dtype = torch.float16
-                            logger.info("🚀 Using float16 precision for speed optimization (older GPUs)")
-                    except Exception as e:
-                        logger.warning(f"🔧 DEBUG: Could not get CUDA capability: {e}, falling back to fp32")
-                else:
-                    logger.info(f"🔧 DEBUG: Not using CUDA (device={device}), staying with fp32")
-                
-                # Try to pass attn_implementation and torch_dtype – fallback gracefully if the
-                # model signature does not yet support the kwargs.
-                try:
-                    # Use "eager" attention implementation to silence the warning
-                    if torch_dtype:
-                        model = ModelClass.from_pretrained(
-                            device=device, 
-                            attn_implementation="eager",
-                            torch_dtype=torch_dtype
-                        )
-                    else:
-                        model = ModelClass.from_pretrained(
-                            device=device, 
-                            attn_implementation="eager"
-                        )
-                except TypeError:
-                    # Older library version – ignore kwargs and log info
-                    logger.info(f"🔧 DEBUG: {model_name} doesn't support torch_dtype in from_pretrained(), trying manual conversion")
-                    if torch_dtype:
-                        try:
-                            model = ModelClass.from_pretrained(device=device, torch_dtype=torch_dtype)
-                            logger.info(f"🔧 DEBUG: torch_dtype parameter accepted")
-                        except:
-                            model = ModelClass.from_pretrained(device=device)
-                            logger.info(f"🔧 DEBUG: torch_dtype parameter failed, loading in fp32 then converting")
-                    else:
-                        model = ModelClass.from_pretrained(device=device)
-                
-                # Manual dtype conversion if the from_pretrained didn't accept torch_dtype
-                if torch_dtype and hasattr(model, 'to'):
-                    try:
-                        logger.info(f"🔧 DEBUG: Converting model to {torch_dtype} manually...")
-                        model = model.to(dtype=torch_dtype)
-                        logger.info(f"✅ Successfully converted model to {torch_dtype}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Manual dtype conversion failed: {e}, staying with fp32")
+                # Load model with standard settings
+                device_obj = torch.device(device)
+                model = ModelClass.from_pretrained(device=device_obj)
 
-                # ==== OLD CODE (BACKUP - UNCOMMENT TO ROLLBACK) ====
-                # # Try to pass attn_implementation – fallback gracefully if the
-                # # model signature does not yet support the kwarg.
-                # try:
-                #     # Use "eager" attention implementation to silence the warning
-                #     model = ModelClass.from_pretrained(
-                #         device=device, attn_implementation="eager"
-                #     )
-                # except TypeError:
-                #     # Older library version – ignore kwarg and log info
-                #     logger.debug(
-                #         f"{model_name}.from_pretrained() does not accept attn_implementation – falling back without it"
-                #     )
-                #     model = ModelClass.from_pretrained(device=device)
 
             logger.debug(
                 f"{model_name} model loaded successfully for device: {device}"

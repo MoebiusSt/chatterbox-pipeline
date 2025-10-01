@@ -1587,20 +1587,40 @@ class ChatterboxTester:
         self.root.after(2000, lambda: self.copy_btn.config(text=original_text))
     
     def _insert_from_clipboard(self):
-        """Insert parameters from YAML clipboard content."""
+        """Insert parameters from YAML clipboard content (flexible parsing)."""
         try:
             # Get clipboard content
             clipboard_text = self.root.clipboard_get()
             
+            # Clean up clipboard text: remove leading whitespace from each line
+            # This handles cases where user copies indented YAML from config files
+            lines = clipboard_text.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                # Remove leading spaces/tabs but preserve the line structure
+                cleaned_line = line.lstrip()
+                if cleaned_line:  # Skip empty lines
+                    cleaned_lines.append(cleaned_line)
+            
+            cleaned_text = '\n'.join(cleaned_lines)
+            print(f"[CLIPBOARD] Cleaned text:\n{cleaned_text}")
+            
             # Parse YAML
             import yaml
-            data = yaml.safe_load(clipboard_text)
+            data = yaml.safe_load(cleaned_text)
             
-            # Check if tts_params exists
-            if not isinstance(data, dict) or 'tts_params' not in data:
-                raise ValueError("No 'tts_params' section found in clipboard YAML")
+            if not isinstance(data, dict):
+                raise ValueError("Clipboard content is not valid YAML dict")
             
-            tts_params = data['tts_params']
+            updated_items = []
+            
+            # Try to get tts_params (either as section or directly in root)
+            # If tts_params exists as a key, use it; otherwise search in root
+            if 'tts_params' in data and isinstance(data['tts_params'], dict):
+                tts_params = data['tts_params']
+            else:
+                # No tts_params section, use root dict
+                tts_params = data
             
             # Map of expected parameters
             param_mapping = {
@@ -1613,19 +1633,60 @@ class ChatterboxTester:
             }
             
             # Update parameters if they exist in clipboard YAML
-            updated_params = []
             for yaml_key, ui_key in param_mapping.items():
                 if yaml_key in tts_params:
-                    value = float(tts_params[yaml_key])
-                    self.param_vars[ui_key].set(value)
-                    self.param_labels[ui_key].config(text=f"{value:.2f}")
-                    updated_params.append(ui_key)
+                    try:
+                        # Only process if value is a number (not a dict or other structure)
+                        value = float(tts_params[yaml_key])
+                        self.param_vars[ui_key].set(value)
+                        self.param_labels[ui_key].config(text=f"{value:.2f}")
+                        updated_items.append(f"{ui_key}={value:.2f}")
+                        print(f"[CLIPBOARD] Loaded {ui_key} = {value:.2f}")
+                    except (ValueError, TypeError) as e:
+                        print(f"[CLIPBOARD] Skipping {yaml_key} (not a valid number): {e}")
+            
+            # Check for reference_audio (with error handling)
+            if 'reference_audio' in data:
+                try:
+                    ref_audio = str(data['reference_audio'])
+                    # Extract just the filename if it's a path
+                    if '/' in ref_audio:
+                        ref_audio = ref_audio.split('/')[-1]
+                    
+                    # Check if this audio file exists in our list
+                    if ref_audio in self.reference_audio_files:
+                        self.ref_audio_var.set(ref_audio)
+                        updated_items.append(f"ref_audio={ref_audio}")
+                        print(f"[CLIPBOARD] Loaded reference_audio = {ref_audio}")
+                    else:
+                        print(f"[CLIPBOARD] Warning: reference_audio '{ref_audio}' not found in available files")
+                except Exception as e:
+                    print(f"[CLIPBOARD] Error processing reference_audio: {e}")
+            
+            # Check for language (with error handling)
+            if 'language' in data:
+                try:
+                    lang_code = str(data['language'])
+                    # Find the language by code
+                    lang_found = False
+                    for lang_display, code in self.LANGUAGES.items():
+                        if code == lang_code:
+                            self.lang_var.set(lang_display)
+                            updated_items.append(f"language={lang_display}")
+                            print(f"[CLIPBOARD] Loaded language = {lang_display} ({lang_code})")
+                            lang_found = True
+                            break
+                    
+                    if not lang_found:
+                        print(f"[CLIPBOARD] Warning: language '{lang_code}' not found in available languages")
+                except Exception as e:
+                    print(f"[CLIPBOARD] Error processing language: {e}")
             
             # Visual feedback
-            if updated_params:
+            if updated_items:
                 original_text = "📥 Insert from Clipboard"
-                self.insert_btn.config(text=f"✓ Loaded {len(updated_params)} parameters!")
-                print(f"Parameters loaded from clipboard: {', '.join(updated_params)}")
+                self.insert_btn.config(text=f"✓ Loaded {len(updated_items)} items!")
+                print(f"[CLIPBOARD] Successfully loaded: {', '.join(updated_items)}")
                 self.root.after(2000, lambda: self.insert_btn.config(text=original_text))
                 # Save to history after clipboard insert (with delay)
                 self._on_text_change()
@@ -1638,19 +1699,19 @@ class ChatterboxTester:
             original_text = "📥 Insert from Clipboard"
             self.insert_btn.config(text="✗ Clipboard is empty")
             self.root.after(2000, lambda: self.insert_btn.config(text=original_text))
-            print("Error: Clipboard is empty")
+            print("[CLIPBOARD] Error: Clipboard is empty")
         except yaml.YAMLError as e:
             # YAML parsing error
             original_text = "📥 Insert from Clipboard"
             self.insert_btn.config(text="✗ Invalid YAML format")
             self.root.after(2000, lambda: self.insert_btn.config(text=original_text))
-            print(f"Error: Invalid YAML format - {e}")
+            print(f"[CLIPBOARD] Error: Invalid YAML format - {e}")
         except Exception as e:
             # Other errors
             original_text = "📥 Insert from Clipboard"
             self.insert_btn.config(text="✗ Error loading parameters")
             self.root.after(2000, lambda: self.insert_btn.config(text=original_text))
-            print(f"Error loading parameters from clipboard: {e}")
+            print(f"[CLIPBOARD] Error loading parameters: {e}")
     
     def _save_audio(self):
         """Save current audio to file with metadata YAML."""
