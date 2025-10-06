@@ -29,24 +29,37 @@ class TTSGenerator:
     Uses direct model access without thread safety for sequential execution.
     """
 
-    def __init__(self, config: Dict[str, Any], device: str = "auto", seed: int = 12345):
+    def __init__(self, config: Dict[str, Any], device: str = "auto", seed: Optional[int] = None):
         """
         Initializes the TTSGenerator.
 
         Args:
             config: Configuration dictionary with generation settings.
             device: The device to run inference on (cuda, mps, cpu).
-            seed: Random seed for reproducibility.
+            seed: Random seed for reproducibility. If None, uses global_seed from config.
         """
         self.config = config
         self.device = device if device != "auto" else self._detect_device()
-        self.seed = seed
+        
+        # Get seed from config if not provided
+        if seed is None:
+            generation_config = config.get("generation", {})
+            self.global_seed = generation_config.get("global_seed", 0)
+        else:
+            self.global_seed = seed
+            
+        self.seed = self.global_seed
 
         # Set task-global seed once for consistent generation
-        torch.manual_seed(seed)
-        logger.info("")
-        logger.info(f"🎲 Task-global seed set to {seed}")
-        logger.info("")
+        if self.seed > 0:
+            torch.manual_seed(self.seed)
+            logger.info("")
+            logger.info(f"🎲 Task-global seed set to {self.seed}")
+            logger.info("")
+        else:
+            logger.info("")
+            logger.info("🎲 Using random seed per generation (global_seed = 0)")
+            logger.info("")
         # Get model type and default language from config
         generation_config = config.get("generation", {})
         self.model_type = generation_config.get("model_type", "standard")
@@ -75,6 +88,40 @@ class TTSGenerator:
         logger.debug(
             f"TTSGenerator initialized on device: {self.device} with {len(self.speakers_config)} speakers, using {model_name}"
         )
+
+    def get_speaker_seed(self, speaker_id: str) -> int:
+        """
+        Get the effective seed for a specific speaker.
+        
+        Args:
+            speaker_id: The speaker ID to get seed for
+            
+        Returns:
+            The effective seed for this speaker (speaker-specific or global)
+        """
+        # Find speaker configuration
+        speaker_config = None
+        for speaker in self.speakers_config:
+            if speaker.get("id") == speaker_id:
+                speaker_config = speaker
+                break
+        
+        if speaker_config is None:
+            logger.warning(f"Speaker '{speaker_id}' not found in config, using global seed")
+            return self.global_seed
+            
+        # Get speaker-specific seed
+        speaker_seed = speaker_config.get("seed")
+        
+        # If speaker_seed is None (not defined), use global_seed
+        if speaker_seed is None:
+            return self.global_seed
+        # If speaker_seed is 0, use random seed (0)
+        elif speaker_seed == 0:
+            return 0
+        # If speaker_seed is > 0, use speaker-specific seed
+        else:
+            return speaker_seed
 
     def _detect_device(self) -> str:
         """Detect the best available device."""
@@ -479,6 +526,7 @@ class TTSGenerator:
         tts_params: Optional[Dict[str, Any]] = None,
         reference_audio_path: Optional[str] = None,
         language_id: Optional[str] = None,
+        speaker_id: Optional[str] = None,
         **kwargs,
     ) -> List[AudioCandidate]:
         """
@@ -496,6 +544,15 @@ class TTSGenerator:
         - num_candidates>1 + conservative_enabled=false → N expressive (1 exact + N-1 ramped)
         """
         candidates = []
+        
+        # Get speaker-specific seed if speaker_id is provided
+        effective_seed = self.seed
+        if speaker_id is not None:
+            effective_seed = self.get_speaker_seed(speaker_id)
+            if effective_seed != self.seed:
+                logger.debug(f"Using speaker-specific seed {effective_seed} for speaker '{speaker_id}'")
+        elif effective_seed == 0:
+            logger.debug("Using random seed per generation (seed = 0)")
 
         # Get parameters from config if not provided
         if tts_params is None:
@@ -544,7 +601,7 @@ class TTSGenerator:
                 "Single candidate mode with conservative enabled - generating only conservative candidate"
             )
             try:
-                candidate_seed = self.seed + hash(text) % 10000
+                candidate_seed = effective_seed + hash(text) % 10000
 
                 # Use conservative parameters
                 var_exaggeration = conservative_config.get("exaggeration", 0.4)
@@ -639,7 +696,7 @@ class TTSGenerator:
         for i in range(num_candidates):
             try:
                 # Set unique seed for this candidate
-                candidate_seed = self.seed + (i * 1000) + hash(text) % 10000
+                candidate_seed = effective_seed + (i * 1000) + hash(text) % 10000
 
                 # Check if this should be a conservative candidate (always last)
                 is_conservative = is_conservative_enabled and (i + 1) == num_candidates
@@ -849,6 +906,7 @@ class TTSGenerator:
         total_candidates: int = 5,
         reference_audio_path: Optional[str] = None,
         language_id: Optional[str] = None,
+        speaker_id: Optional[str] = None,
         **kwargs,
     ) -> List[AudioCandidate]:
         """
@@ -875,6 +933,15 @@ class TTSGenerator:
         )
 
         candidates: List[AudioCandidate] = []
+        
+        # Get speaker-specific seed if speaker_id is provided
+        effective_seed = self.seed
+        if speaker_id is not None:
+            effective_seed = self.get_speaker_seed(speaker_id)
+            if effective_seed != self.seed:
+                logger.debug(f"Using speaker-specific seed {effective_seed} for speaker '{speaker_id}'")
+        elif effective_seed == 0:
+            logger.debug("Using random seed per generation (seed = 0)")
 
         # Get parameters from config if not provided
         if tts_params is None:
@@ -914,7 +981,7 @@ class TTSGenerator:
         for i in candidate_indices:
             try:
                 # Set unique seed for this candidate
-                candidate_seed = self.seed + (i * 1000) + hash(text) % 10000
+                candidate_seed = effective_seed + (i * 1000) + hash(text) % 10000
 
                 # Check if this should be a conservative candidate (always last)
                 is_conservative = (
@@ -1252,7 +1319,7 @@ class TTSGenerator:
                 exaggeration=core_exaggeration,
                 cfg_weight=core_cfg_weight,
                 temperature=core_temperature,
-                base_seed=self.seed + (i * 1000) + hash(text) % 10000,
+                base_seed=self.get_speaker_seed(speaker_id) + (i * 1000) + hash(text) % 10000,
                 language_id=language_id,
                 additional_params=additional_params,
                 reference_audio_path=str(reference_audio_path),

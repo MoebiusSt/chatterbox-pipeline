@@ -649,12 +649,13 @@ class ConfigManager:
         all_params: Dict[str, Any] = {
             "reference_audio": None,
             "language": None,
+            "seed": None,
             "tts_params": {},
             "conservative_candidate": {}
         }
 
         # Check and inherit top-level parameters
-        for param_name in ["reference_audio", "language"]:
+        for param_name in ["reference_audio", "language", "seed"]:
             if not target_speaker.get(param_name):
                 for source_name, source_speaker in fallback_sources:
                     source_value = source_speaker.get(param_name)
