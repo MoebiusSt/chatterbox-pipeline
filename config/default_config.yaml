@@ -22,7 +22,7 @@ generation:
   max_retries: 1
   model_type: standard  # Options: "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
   default_speaker: stephan_moebius_1
-  global_seed: 0  # Global seed for all TTS generations. 0 = random seed per generation
+  global_seed: 12345  # Global seed for all TTS generations. 0 = random seed per generation
   
   # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!
 
@@ -30,7 +30,6 @@ generation:
     - id: stephan_moebius_1                     # use any string you like
       reference_audio: stephan_moebius_1.wav   # file in data/input/reference_audio folder
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
         # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
@@ -63,7 +62,6 @@ generation:
     - id: stephan_moebius_2
       reference_audio: stephan_moebius_2.wav
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         exaggeration: 0.45
         exaggeration_max_deviation: 0.20
@@ -83,7 +81,6 @@ generation:
     - id: stephan_moebius_3
       reference_audio: stephan_moebius_3.wav
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.20
@@ -103,7 +100,6 @@ generation:
     - id: stephan_moebius_4
       reference_audio: stephan_moebius_4.wav
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         exaggeration: 0.55
         exaggeration_max_deviation: 0.20
@@ -123,7 +119,6 @@ generation:
     - id: stephan_moebius_5
       reference_audio: stephan_moebius_5.wav
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.15
@@ -143,7 +138,6 @@ generation:
     - id: test1
       reference_audio: stephan_moebius_6.wav
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.0
@@ -159,7 +153,6 @@ generation:
     - id: test2
       reference_audio: stephan_moebius_6.wav
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         exaggeration: 0.80  #only ramp down exaggeration, evaluate effect of exaggeration
         exaggeration_max_deviation: 0.5
@@ -173,7 +166,6 @@ generation:
     - id: test3
       reference_audio: stephan_moebius_6.wav
       language: en
-      seed: 0  # Speaker-specific seed. 0 = use global_seed, >0 = override global_seed for this speaker
       tts_params:
         exaggeration: 0.40
         exaggeration_max_deviation: 0.0
