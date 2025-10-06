@@ -20,12 +20,13 @@ import numpy as np
 import soundfile as sf
 import torch
 import tempfile
+import subprocess
 
-# Initialize pygame mixer early
+# Initialize pygame mixer early (disabled for WSL2 compatibility)
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "1"
 import pygame.mixer as mixer
-# Use larger buffer for smoother playback, 24kHz sample rate, 16-bit signed audio
-mixer.init(frequency=24000, size=-16, channels=1, buffer=2048)
+# Disable pygame mixer initialization for WSL2 - use ffplay instead
+# mixer.init(frequency=24000, size=-16, channels=1, buffer=2048)
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -794,7 +795,6 @@ class ChatterboxTester:
     
     def _save_text_after_idle(self):
         """Save history after text typing idle period."""
-        print("[TEXT] Saved after 1s idle")
         self._save_state_to_history()
     
     def _on_text_change(self):
@@ -862,7 +862,6 @@ class ChatterboxTester:
         """
         # Don't save during restore operation
         if self.is_restoring_state:
-            print(f"[HISTORY] Skipping save (is_restoring_state=True)")
             return
         
         current_state = self._get_current_state()
@@ -871,14 +870,12 @@ class ChatterboxTester:
         if not force and self.history and self.history_position >= 0:
             last_state = self.history[self.history_position]
             if current_state == last_state:
-                print(f"[HISTORY] Skipping save (no change)")
                 return  # No change, don't save
         
         # Remove any states after current position (when user made changes after undo)
         if self.history_position < len(self.history) - 1:
             removed_count = len(self.history) - self.history_position - 1
             self.history = self.history[:self.history_position + 1]
-            print(f"[HISTORY] Removed {removed_count} redo states")
         
         # Add new state
         self.history.append(current_state)
@@ -889,7 +886,6 @@ class ChatterboxTester:
             self.history.pop(0)
             self.history_position -= 1
         
-        print(f"[HISTORY] Saved state {self.history_position + 1}/{len(self.history)} (force={force}, seed={current_state.get('seed')}, text_len={len(current_state.get('text', ''))})")
         self._update_history_buttons()
     
     def _restore_state(self, state: Dict[str, Any]):
@@ -938,13 +934,11 @@ class ChatterboxTester:
         if self.history_position > 0:
             self.history_position -= 1
             state = self.history[self.history_position]
-            print(f"[UNDO] Undoing to state {self.history_position + 1}/{len(self.history)}, seed={state.get('seed')}")
             self._restore_state(state)
             self._update_history_buttons()
             self._mark_needs_refresh()
         else:
-            print(f"[UNDO] Cannot undo (history_position={self.history_position})")
-    
+            pass
     def _redo(self):
         """Redo to next state."""
         if self.history_position < len(self.history) - 1:
@@ -953,7 +947,6 @@ class ChatterboxTester:
             self._restore_state(state)
             self._update_history_buttons()
             self._mark_needs_refresh()
-            print(f"Redo: restored state {self.history_position + 1}/{len(self.history)}")
     
     def _update_history_buttons(self):
         """Update undo/redo button states."""
@@ -972,7 +965,6 @@ class ChatterboxTester:
         else:
             self.redo_btn.config(state=tk.DISABLED)
         
-        print(f"[HISTORY] Updated buttons: Undo={'ON' if can_undo else 'OFF'}, Redo={'ON' if can_redo else 'OFF'} (pos={self.history_position + 1}/{len(self.history)})")
     
     def _get_current_ui_state(self) -> Dict[str, Any]:
         """Get current UI state for comparison (only state-specific params)."""
@@ -1009,10 +1001,8 @@ class ChatterboxTester:
     def _switch_state(self, state_num: int):
         """Switch between state A and state B."""
         if state_num == self.active_state:
-            print(f"[SWITCH] Already in state {state_num}, ignoring")
             return  # Already in this state
         
-        print(f"[SWITCH] Switching from state {self.active_state} to {state_num}")
         
         # Save current UI to current state before switching
         current_state = self.state_a if self.active_state == 1 else self.state_b
@@ -1025,7 +1015,6 @@ class ChatterboxTester:
         self.active_state = state_num
         new_state = self.state_a if state_num == 1 else self.state_b
         
-        print(f"[SWITCH] Loading state {state_num}: seed={new_state.get('seed')}, text_len={len(new_state.get('text', ''))}")
         
         # Update UI button states
         if state_num == 1:
@@ -1060,6 +1049,11 @@ class ChatterboxTester:
             self.temp_audio_file = new_state.get('temp_file')
             
             if self.current_audio is not None and self.temp_audio_file:
+                # Stop any running position updates before resetting timeline
+                if self.update_timer:
+                    self.root.after_cancel(self.update_timer)
+                    self.update_timer = None
+                
                 # Calculate duration
                 self.audio_duration = len(self.current_audio) / self.sample_rate
                 self.timeline.config(to=self.audio_duration * 1000)
@@ -1067,6 +1061,11 @@ class ChatterboxTester:
                 self.playback_position = 0.0
                 self.save_btn.config(state=tk.NORMAL)
             else:
+                # Stop any running position updates before resetting timeline
+                if self.update_timer:
+                    self.root.after_cancel(self.update_timer)
+                    self.update_timer = None
+                
                 # No audio in this state
                 self.audio_duration = 0.0
                 self.timeline.config(to=100)
@@ -1080,13 +1079,11 @@ class ChatterboxTester:
         # Update refresh button color
         self._update_refresh_button_color()
         
-        print(f"[SWITCH] Switched to state {state_num}, calling _update_history_buttons()")
         # IMPORTANT: Update history buttons after switching
         self._update_history_buttons()
     
     def _copy_state(self, from_state_num: int, to_state_num: int):
         """Copy state from one to another."""
-        print(f"[COPY] Starting copy {from_state_num} → {to_state_num} (active_state={self.active_state})")
         
         # Save current UI to active state first
         current_state = self.state_a if self.active_state == 1 else self.state_b
@@ -1097,11 +1094,9 @@ class ChatterboxTester:
         
         # If currently in target state, save current state BEFORE copying (for undo)
         if self.active_state == to_state_num:
-            print(f"[COPY] Saving current state before copy (we're in target state {to_state_num})")
             self._save_state_to_history(force=True)
         else:
-            print(f"[COPY] Not in target state (active={self.active_state}, target={to_state_num}), no pre-save")
-        
+            pass
         # Get source and target states
         source = self.state_a if from_state_num == 1 else self.state_b
         
@@ -1120,11 +1115,9 @@ class ChatterboxTester:
         else:
             self.state_b = copied_state
         
-        print(f"[COPY] Copied: seed={copied_state.get('seed')}, text_len={len(copied_state.get('text', ''))}")
         
         # If currently in target state, update UI (switch_state will restore from state)
         if self.active_state == to_state_num:
-            print(f"[COPY] Updating UI for target state {to_state_num}")
             # Disable history saving during UI update
             self.is_restoring_state = True
             try:
@@ -1146,11 +1139,8 @@ class ChatterboxTester:
                 self._update_refresh_button_color()
             finally:
                 self.is_restoring_state = False
-                print(f"[COPY] UI update complete")
         else:
-            print(f"[COPY] Not updating UI (not in target state)")
-        
-        print(f"[COPY] Copy complete: {from_state_num} → {to_state_num}")
+            pass
     
     def _copy_a_to_b(self):
         """Copy state A to state B."""
@@ -1182,8 +1172,8 @@ class ChatterboxTester:
         # Disable refresh button
         self.root.after(0, lambda: self.refresh_btn.config(state=tk.DISABLED, text="⏳ Generating..."))
         
-        # Stop current playback
-        self._stop_playback()
+        # Don't stop current playback immediately - let it continue during generation
+        # Audio will be stopped only when new audio is ready to play
         
         # Get current parameters
         text = self.text_widget.get("1.0", tk.END).strip()
@@ -1258,6 +1248,11 @@ class ChatterboxTester:
             # Calculate duration
             self.audio_duration = len(audio_int16) / self.sample_rate
             
+            # Stop any running position updates before resetting timeline
+            if self.update_timer:
+                self.root.after_cancel(self.update_timer)
+                self.update_timer = None
+            
             # Reset timeline
             self.timeline.config(to=self.audio_duration * 1000)  # Convert to ms
             self.timeline_var.set(0)
@@ -1285,7 +1280,8 @@ class ChatterboxTester:
             # Enable save button
             self.root.after(0, lambda: self.save_btn.config(state=tk.NORMAL))
             
-            # Auto-play new audio (will stop old audio automatically)
+            # Stop current playback and play new audio
+            self._stop_playback()
             self._play_audio()
             
         except Exception as e:
@@ -1327,15 +1323,8 @@ class ChatterboxTester:
         self.playback_position = new_position
         
         # If currently playing, restart from new position
-        # Note: External players (ffplay/aplay) don't support seeking easily
-        # So we only support scrubbing with pygame for now
-        if self.is_playing and not self.external_player_process:
-            # Using pygame, can restart at new position
-            mixer.music.stop()
-            mixer.music.play(start=self.playback_position)
-        elif self.is_playing and self.external_player_process:
-            # External player active - stop and restart
-            # This provides basic scrubbing support
+        if self.is_playing:
+            # Stop current playback and restart from new position
             self._stop_playback()
             self._play_audio()
     
@@ -1348,6 +1337,13 @@ class ChatterboxTester:
         if self.is_playing:
             self._stop_playback()
         
+        # Ensure clean state before starting
+        self.is_playing = False
+        self.external_player_process = None
+        
+        # Wait a moment to ensure previous process is fully cleaned up
+        time.sleep(0.1)
+        
         self.is_playing = True
         self.play_btn.config(state=tk.DISABLED, bg="#90EE90")  # Light green when playing
         self.pause_btn.config(state=tk.NORMAL, bg="#f0f0f0")
@@ -1359,9 +1355,17 @@ class ChatterboxTester:
             import shutil
             
             if shutil.which('ffplay'):
-                # Use ffplay (from ffmpeg) - best quality
+                # Use ffplay (from ffmpeg) - best quality with seeking support
+                ffplay_cmd = ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet']
+                
+                # Add seeking parameter if playback_position > 0
+                if self.playback_position > 0:
+                    ffplay_cmd.extend(['-ss', str(self.playback_position)])
+                
+                ffplay_cmd.append(self.temp_audio_file)
+                
                 self.external_player_process = subprocess.Popen(
-                    ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', self.temp_audio_file],
+                    ffplay_cmd,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
@@ -1378,52 +1382,56 @@ class ChatterboxTester:
                 # Start position update loop
                 self._update_position()
                 return
-        except:
-            pass
+        except Exception as e:
+            print(f"Error starting audio player: {e}")
         
-        # Fallback to pygame
-        mixer.music.load(self.temp_audio_file)
-        mixer.music.play(start=self.playback_position)
-        
-        # Start position update loop
-        self._update_position()
+        # Fallback to pygame (disabled for WSL2)
+        print("Warning: No external audio player available. Audio playback disabled.")
+        print("Install ffmpeg for audio support: sudo apt install ffmpeg")
+        self.is_playing = False
+        self.play_btn.config(state=tk.NORMAL, bg="#f0f0f0")
+        self.pause_btn.config(state=tk.DISABLED, bg="#f0f0f0")
     
     def _update_position(self):
         """Update timeline position during playback."""
+        # Double-check is_playing state to prevent race conditions
         if not self.is_playing:
             return
         
-        # Check if external player is still running
+        # Cancel any existing timer first to prevent accumulation
+        if self.update_timer:
+            self.root.after_cancel(self.update_timer)
+            self.update_timer = None
+        
+        # Check if external player process exists and is running
         if self.external_player_process:
-            if self.external_player_process.poll() is None:
-                # Process still running, estimate position
-                self.playback_position += 0.1
+            poll_result = self.external_player_process.poll()
+            if poll_result is None:
+                # Process still running, estimate position more accurately
+                self.playback_position += 0.05  # 50ms increments
+                
+                # Check if we've reached or exceeded the duration
                 if self.playback_position >= self.audio_duration:
                     self._on_playback_finished()
                     return
                 
+                # Update timeline position
                 position_ms = self.playback_position * 1000
                 self.timeline_var.set(position_ms)
                 
-                # Schedule next update
-                self.update_timer = self.root.after(100, self._update_position)
+                # Schedule next update only if still playing
+                if self.is_playing:
+                    self.update_timer = self.root.after(50, self._update_position)
             else:
-                # Process finished
-                self._on_playback_finished()
-        # Check pygame mixer
-        elif mixer.music.get_busy():
-            # Update position (pygame doesn't provide exact position, so we estimate)
-            self.playback_position += 0.1
-            if self.playback_position >= self.audio_duration:
-                self._on_playback_finished()
-                return
-            
-            position_ms = self.playback_position * 1000
-            self.timeline_var.set(position_ms)
-            
-            # Schedule next update
-            self.update_timer = self.root.after(100, self._update_position)
+                # Process finished - check if we're close to end
+                if self.playback_position >= self.audio_duration - 0.1:  # Close to end
+                    self._on_playback_finished()
+                else:
+                    # Process finished early - force finish
+                    print(f"Warning: ffplay process finished early at {self.playback_position:.2f}s of {self.audio_duration:.2f}s")
+                    self._on_playback_finished()
         else:
+            # No external player process - finish playback
             self._on_playback_finished()
     
     def _pause_playback(self):
@@ -1431,9 +1439,11 @@ class ChatterboxTester:
         if not self.is_playing:
             return
         
-        # For pygame, we can pause
+        # For pygame, we can pause (disabled for WSL2)
         if not self.external_player_process:
-            mixer.music.pause()
+            # mixer.music.pause() disabled for WSL2
+            self._stop_playback()
+            return
         else:
             # For external players, we need to stop (no pause support)
             self._stop_playback()
@@ -1449,29 +1459,44 @@ class ChatterboxTester:
     
     def _stop_playback(self):
         """Stop audio playback."""
+        # Stop position updates first to prevent race conditions
         if self.update_timer:
             self.root.after_cancel(self.update_timer)
             self.update_timer = None
         
+        # Set playing state to False
+        self.is_playing = False
+        
         # Stop external player process if running
         if self.external_player_process:
             try:
+                # Try graceful termination first
                 self.external_player_process.terminate()
-                self.external_player_process.wait(timeout=1)
+                # Wait longer for graceful shutdown (especially important for ffplay)
+                self.external_player_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                # Force kill if graceful termination fails
+                try:
+                    print("Warning: ffplay process did not terminate gracefully, forcing kill")
+                    self.external_player_process.kill()
+                    self.external_player_process.wait(timeout=2)
+                except:
+                    pass
             except:
+                # Handle other exceptions
                 try:
                     self.external_player_process.kill()
                 except:
                     pass
-            self.external_player_process = None
+            finally:
+                self.external_player_process = None
         
-        # Stop pygame music playback
+        # Stop pygame music playback (disabled for WSL2)
         try:
-            mixer.music.stop()
+            # mixer.music.stop() disabled for WSL2
+            pass
         except:
             pass
-        
-        self.is_playing = False
         
         # Reset button states and colors
         self.play_btn.config(state=tk.NORMAL, bg="#f0f0f0")
@@ -1479,16 +1504,39 @@ class ChatterboxTester:
     
     def _on_playback_finished(self):
         """Handle playback finished."""
-        self.is_playing = False
-        self.play_btn.config(state=tk.NORMAL, bg="#f0f0f0")
-        self.pause_btn.config(state=tk.DISABLED, bg="#f0f0f0")
-        
+        # Stop position updates first to prevent race conditions
         if self.update_timer:
             self.root.after_cancel(self.update_timer)
             self.update_timer = None
         
-        # Clean up external player process
-        self.external_player_process = None
+        # Set playing state to False
+        self.is_playing = False
+        
+        # Update UI
+        self.play_btn.config(state=tk.NORMAL, bg="#f0f0f0")
+        self.pause_btn.config(state=tk.DISABLED, bg="#f0f0f0")
+        
+        # Properly clean up external player process
+        if self.external_player_process:
+            try:
+                # Try graceful termination first
+                self.external_player_process.terminate()
+                self.external_player_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                # Force kill if graceful termination fails
+                try:
+                    self.external_player_process.kill()
+                    self.external_player_process.wait(timeout=1)
+                except:
+                    pass
+            except:
+                # Handle other exceptions
+                try:
+                    self.external_player_process.kill()
+                except:
+                    pass
+            finally:
+                self.external_player_process = None
         
         # Set position to end
         self.playback_position = self.audio_duration
@@ -1778,6 +1826,23 @@ tts_params:
         """Cleanup temporary files and save settings."""
         # Stop any playing audio
         self._stop_playback()
+        
+        # Additional cleanup for external player processes
+        if self.external_player_process:
+            try:
+                self.external_player_process.terminate()
+                self.external_player_process.wait(timeout=2)
+            except:
+                try:
+                    self.external_player_process.kill()
+                except:
+                    pass
+            self.external_player_process = None
+        
+        # Cancel any pending timers
+        if self.update_timer:
+            self.root.after_cancel(self.update_timer)
+            self.update_timer = None
         
         # Save settings before closing
         self._save_settings()
