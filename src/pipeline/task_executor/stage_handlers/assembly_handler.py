@@ -213,13 +213,30 @@ class AssemblyHandler:
         trim_config = self.config.get("audio", {}).get("silence_trim", {})
         trim_enabled = bool(trim_config.get("enabled", False))
         trim_threshold = float(trim_config.get("threshold", 0.01))
-        min_silence_duration = float(trim_config.get("min_silence_duration", 0.05))
-        min_silence_samples = int(sample_rate * min_silence_duration)
+        # Backward compatibility: support both fade_duration and min_silence_duration
+        fade_duration = float(trim_config.get("fade_duration", trim_config.get("min_silence_duration", 0.05)))
+        fade_samples = int(sample_rate * fade_duration)
         normal_silence = int(sample_rate * silence_config.get("normal", 0.2))
         paragraph_silence = int(sample_rate * silence_config.get("paragraph", 0.8))
         long_silence = int(sample_rate * silence_config.get("long", 1.5))
 
         assembled_segments = []
+
+        def _apply_exponential_fade(audio: torch.Tensor, fade_samples: int, fade_in: bool) -> torch.Tensor:
+            """Apply exponential fade-in or fade-out to audio."""
+            if fade_samples <= 0 or len(audio) < fade_samples:
+                return audio
+            t = torch.linspace(0, 1, fade_samples, device=audio.device, dtype=audio.dtype)
+            # Exponential curve: smooth and natural
+            curve = (1 - torch.exp(-5 * t)) / (1 - torch.exp(torch.tensor(-5.0, device=audio.device, dtype=audio.dtype)))
+            if not fade_in:
+                curve = curve.flip(0)
+            audio_copy = audio.clone()
+            if fade_in:
+                audio_copy[:fade_samples] *= curve
+            else:
+                audio_copy[-fade_samples:] *= curve
+            return audio_copy
 
         def _create_tone(num_samples: int, device: torch.device, dtype: torch.dtype,
                          freq_hz: float = 220.0, amplitude: float = 0.1) -> torch.Tensor:
@@ -230,8 +247,8 @@ class AssemblyHandler:
             tone = torch.sin(2.0 * math.pi * freq_hz * t) * float(amplitude)
             return tone.to(device=device, dtype=dtype)
 
-        def _trim_edges(wave: torch.Tensor, threshold: float, min_preserve_samples: int) -> torch.Tensor:
-            """Trim leading and trailing samples with |amp| <= threshold, but preserve minimum silence."""
+        def _trim_edges(wave: torch.Tensor, threshold: float, fade_samples: int) -> torch.Tensor:
+            """Trim leading and trailing samples with |amp| <= threshold, then apply exponential fades."""
             if wave is None or wave.numel() == 0:
                 return wave
             # Ensure 1D
@@ -248,11 +265,27 @@ class AssemblyHandler:
                 content_start = int(nonzero_indices[0].item())
                 content_end = int(nonzero_indices[-1].item()) + 1
                 
-                # Preserve minimum silence at start and end
-                trim_start = max(0, content_start - min_preserve_samples)
-                trim_end = min(len(wave_1d), content_end + min_preserve_samples)
+                # Preserve fade duration at start and end
+                trim_start = max(0, content_start - fade_samples)
+                trim_end = min(len(wave_1d), content_end + fade_samples)
                 
                 trimmed = wave_1d[trim_start:trim_end]
+                
+                # Apply fades to the preserved silence regions
+                if trim_start < content_start and fade_samples > 0:
+                    # Apply fade-in to the preserved silence at the start
+                    fade_region_start = 0
+                    fade_region_end = min(fade_samples, content_start - trim_start)
+                    if fade_region_end > fade_region_start:
+                        trimmed = _apply_exponential_fade(trimmed, fade_region_end, fade_in=True)
+                
+                if trim_end > content_end and fade_samples > 0:
+                    # Apply fade-out to the preserved silence at the end
+                    fade_region_start = max(0, len(trimmed) - fade_samples)
+                    fade_region_length = len(trimmed) - fade_region_start
+                    if fade_region_length > 0:
+                        trimmed = _apply_exponential_fade(trimmed, fade_region_length, fade_in=False)
+                
                 # Restore dimensionality if original had extra dims
                 if wave.ndim > 1:
                     trimmed = trimmed.unsqueeze(0)
@@ -265,7 +298,7 @@ class AssemblyHandler:
             # Boundary-aware trimming: remove leading/trailing silence from segments
             seg = segment
             if trim_enabled:
-                seg = _trim_edges(seg, trim_threshold, min_silence_samples)
+                seg = _trim_edges(seg, trim_threshold, fade_samples)
             assembled_segments.append(seg)
 
             # Add silence between segments (except after the last one)

@@ -94,43 +94,6 @@ def normalize_audio(
     return audio * gain
 
 
-def apply_fade_in_out(
-    audio: torch.Tensor,
-    fade_in_duration: float = 0.01,
-    fade_out_duration: float = 0.01,
-    sample_rate: Optional[int] = None,
-) -> torch.Tensor:
-    """
-    Apply fade in and fade out to audio.
-
-    Returns:
-        Audio with fades applied
-    """
-    if audio.dim() == 2:
-        audio = audio.squeeze(0)
-
-    if sample_rate is None:
-        raise ValueError(
-            "sample_rate must be provided explicitly. Check pipeline config for 'audio.sample_rate'."
-        )
-
-    fade_in_samples = int(fade_in_duration * sample_rate)
-    fade_out_samples = int(fade_out_duration * sample_rate)
-
-    audio_length = len(audio)
-    faded_audio = audio.clone()
-
-    # Apply fade in
-    if fade_in_samples > 0 and fade_in_samples < audio_length:
-        fade_in_curve = torch.linspace(0, 1, fade_in_samples)
-        faded_audio[:fade_in_samples] *= fade_in_curve
-
-    # Apply fade out
-    if fade_out_samples > 0 and fade_out_samples < audio_length:
-        fade_out_curve = torch.linspace(1, 0, fade_out_samples)
-        faded_audio[-fade_out_samples:] *= fade_out_curve
-
-    return faded_audio
 
 
 def resample_audio(audio: torch.Tensor, orig_freq: int, new_freq: int) -> torch.Tensor:
