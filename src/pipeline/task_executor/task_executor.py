@@ -15,6 +15,7 @@ from generation.tts_generator import TTSGenerator
 from utils.config_manager import ConfigManager, TaskConfig
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.state_analyzer import CompletionStage, TaskState
+from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
 from utils.progress_tracker import ProgressTracker
 from utils.task_run_logger import TaskRunLogger
 from validation.quality_scorer import QualityScorer
@@ -291,10 +292,9 @@ class TaskExecutor:
                 # Detect incomplete selected_candidates even when candidates/whisper look complete
                 try:
                     chunks_for_selection = self.file_manager.get_chunks()
-                    metrics_for_selection = self.file_manager.get_metrics() or {}
-                    selected_for_selection = metrics_for_selection.get("selected_candidates", {})
+                    selected_for_selection = self.file_manager.get_selected_candidates()
                     missing_selection_indices_force = [
-                        idx for idx in range(len(chunks_for_selection)) if str(idx) not in selected_for_selection
+                        idx for idx in range(len(chunks_for_selection)) if idx not in selected_for_selection
                     ]
                 except Exception:
                     missing_selection_indices_force = []
@@ -440,6 +440,14 @@ class TaskExecutor:
             # Finalize session BEFORE creating result to include final tick in totals
             if self.run_logger:
                 self.run_logger.end_session(True, final_audio_path=final_audio_path)
+            
+            # Generate task metrics overview
+            try:
+                task_metrics_generator = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
+                task_metrics_generator.generate_task_metrics()
+            except Exception as e:
+                logger.warning(f"Failed to generate task metrics: {e}")
+            
             result = TaskResult(
                 task_config=self.task_config,
                 success=True,
@@ -480,10 +488,9 @@ class TaskExecutor:
         missing_selection_indices = []
         try:
             chunks_sel = self.file_manager.get_chunks()
-            metrics_sel = self.file_manager.get_metrics() or {}
-            selected_sel = metrics_sel.get("selected_candidates", {})
+            selected_sel = self.file_manager.get_selected_candidates()
             missing_selection_indices = [
-                idx for idx in range(len(chunks_sel)) if str(idx) not in selected_sel
+                idx for idx in range(len(chunks_sel)) if idx not in selected_sel
             ]
         except Exception:
             missing_selection_indices = []
@@ -613,8 +620,8 @@ class TaskExecutor:
                 shutil.rmtree(whisper_dir)
                 whisper_dir.mkdir(parents=True, exist_ok=True)
 
-            # Delete enhanced_metrics.json to start fresh with validation
-            metrics_file = self.file_manager.task_directory / "enhanced_metrics.json"
+            # Delete whisper_metrics.json to start fresh with validation
+            metrics_file = self.file_manager.task_directory / "whisper" / "whisper_metrics.json"
             if metrics_file.exists():
                 logger.info(f"Deleting metrics file: {metrics_file}")
                 metrics_file.unlink()
@@ -631,6 +638,12 @@ class TaskExecutor:
                 for metadata_file in metadata_files:
                     logger.info(f"Deleting final metadata: {metadata_file}")
                     metadata_file.unlink()
+
+            # Delete task metrics to ensure it gets regenerated
+            task_metrics_file = self.file_manager.task_directory / "task_metrics.json"
+            if task_metrics_file.exists():
+                logger.info(f"Deleting task metrics: {task_metrics_file}")
+                task_metrics_file.unlink()
 
             logger.info(
                 "✅ All candidate and validation data deleted - ready for fresh re-rendering"

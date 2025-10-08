@@ -27,7 +27,9 @@ class MetricsIOHandler:
     def save_metrics(self, metrics: dict) -> bool:
         """Save quality metrics and validation results."""
         try:
-            path = self.task_directory / "enhanced_metrics.json"
+            whisper_dir = self.task_directory / "whisper"
+            whisper_dir.mkdir(parents=True, exist_ok=True)
+            path = whisper_dir / "whisper_metrics.json"
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(metrics, f, indent=2, ensure_ascii=False)
             return True
@@ -37,7 +39,7 @@ class MetricsIOHandler:
 
     def get_metrics(self) -> dict:
         """Load quality metrics and validation results."""
-        path = self.task_directory / "enhanced_metrics.json"
+        path = self.task_directory / "whisper" / "whisper_metrics.json"
         if not path.exists():
             logger.debug(f"Metrics file not found: {path}")
             return {}

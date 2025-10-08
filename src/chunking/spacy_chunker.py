@@ -226,25 +226,38 @@ class SpaCyChunker(BaseChunker):
         if not text or not text.strip():
             return []
             
-        # Split text into paragraph sections at double newlines
-        paragraph_sections = text.split('\n\n')
-        logger.debug(f"Split text into {len(paragraph_sections)} paragraph sections")
-        
+        # Split text into paragraph sections while PRESERVING the exact length of newline groups (>= 2)
+        # This allows distinguishing between 'paragraph' (exactly 2 newlines) and 'long' (>= 3 newlines)
+        parts = re.split(r"(\n{2,})", text)
+        # parts pattern: [section0, sep0, section1, sep1, section2, ...]; sepN may be absent for the last section
+        if not parts:
+            return []
+
+        # Build (section, sep) tuples
+        sections_with_separators: List[Tuple[str, str]] = []
+        i = 0
+        while i < len(parts):
+            section_text = parts[i]
+            sep = parts[i + 1] if (i + 1) < len(parts) else ""
+            sections_with_separators.append((section_text, sep))
+            i += 2
+
+        logger.debug(
+            f"Split text into {len(sections_with_separators)} paragraph sections (preserving newline groups)"
+        )
+
         all_chunks: List[TextChunk] = []
         current_position = 0
-        
-        for section_idx, section in enumerate(paragraph_sections):
+
+        for section_idx, (section, sep) in enumerate(sections_with_separators):
+            # If section has no non-whitespace, just advance position by its raw length + separator and continue
             if not section.strip():
-                # Skip empty sections but count their position
-                current_position += len(section) + 2  # +2 for the \n\n delimiter
+                current_position += len(section) + len(sep)
                 continue
-                
-            # Add back the paragraph break to all sections except the last one
-            is_last_section = section_idx == len(paragraph_sections) - 1
-            if not is_last_section:
-                section_with_break = section + '\n\n'
-            else:
-                section_with_break = section
+
+            # Add back the original separator (can be any length >= 2, or empty for last section)
+            is_last_section = (section_idx == len(sections_with_separators) - 1)
+            section_with_break = section + (sep if not is_last_section else "")
                 
             # Chunk this paragraph section using traditional chunking
             section_chunks = self._chunk_text_traditional(section_with_break)
@@ -362,8 +375,11 @@ class SpaCyChunker(BaseChunker):
         Returns:
             List of TextChunk objects
         """
-        # Use traditional chunking for the speaker section
-        base_chunks = self._chunk_text_traditional(section["text"])
+        # Use paragraph-based chunking for the speaker section if configured, otherwise traditional
+        if getattr(self, "force_paragraph_chunks", False):
+            base_chunks = self._chunk_text_by_paragraphs(section["text"])
+        else:
+            base_chunks = self._chunk_text_traditional(section["text"]) 
 
         # Enhance with speaker information
         enhanced_chunks = []
@@ -373,6 +389,7 @@ class SpaCyChunker(BaseChunker):
                 start_pos=chunk.start_pos + section["start_pos"],
                 end_pos=chunk.end_pos + section["start_pos"],
                 has_paragraph_break=chunk.has_paragraph_break,
+                paragraph_break_type=getattr(chunk, "paragraph_break_type", None),
                 estimated_tokens=chunk.estimated_tokens,
                 is_fallback_split=chunk.is_fallback_split,
                 idx=chunk.idx,
@@ -406,6 +423,14 @@ class SpaCyChunker(BaseChunker):
 
         # Second pass: re-adjust punctuation after potential merges/splits
         chunks = self._fix_leading_closing_punctuation(chunks)
+
+        # Remove whitespace-only chunks to avoid downstream validation errors
+        if chunks:
+            before = len(chunks)
+            chunks = [ch for ch in chunks if ch.text and ch.text.strip()]
+            removed = before - len(chunks)
+            if removed > 0:
+                logger.debug(f"Removed {removed} whitespace-only chunks during finalization")
 
         # Set correct indices
         for i, chunk in enumerate(chunks):

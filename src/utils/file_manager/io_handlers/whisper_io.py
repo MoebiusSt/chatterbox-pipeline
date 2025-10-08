@@ -257,9 +257,9 @@ class WhisperIOHandler:
     def _sync_whisper_to_enhanced_metrics(
         self, chunk_idx: int, candidate_idx: int, result: dict
     ) -> bool:
-        """Synchronize whisper result to enhanced_metrics.json if it exists."""
+        """Synchronize whisper result to whisper_metrics.json if it exists."""
         try:
-            metrics_path = self.task_directory / "enhanced_metrics.json"
+            metrics_path = self.task_directory / "whisper" / "whisper_metrics.json"
 
             # Load existing metrics or create new structure
             if metrics_path.exists():
@@ -324,9 +324,9 @@ class WhisperIOHandler:
     def _get_whisper_from_enhanced_metrics(
         self, chunk_idx: int, candidate_idx: Optional[int] = None
     ) -> Dict[int, dict]:
-        """Extract whisper validation results from enhanced_metrics.json."""
+        """Extract whisper validation results from whisper_metrics.json."""
         try:
-            metrics_path = self.task_directory / "enhanced_metrics.json"
+            metrics_path = self.task_directory / "whisper" / "whisper_metrics.json"
             if not metrics_path.exists():
                 return {}
 
@@ -423,9 +423,9 @@ class WhisperIOHandler:
             return False
 
     def _remove_stale_validation_data(self, chunk_idx: int, candidate_idx: int) -> bool:
-        """Remove stale validation data from enhanced_metrics.json when audio file no longer exists."""
+        """Remove stale validation data from whisper_metrics.json when audio file no longer exists."""
         try:
-            metrics_path = self.task_directory / "enhanced_metrics.json"
+            metrics_path = self.task_directory / "whisper" / "whisper_metrics.json"
             if not metrics_path.exists():
                 return True  # Nothing to clean up
 

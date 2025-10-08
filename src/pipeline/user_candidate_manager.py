@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Set
 
 from utils.file_manager.file_manager import FileManager
+from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,11 @@ class UserCandidateManager:
     def _load_initial_data(self) -> None:
         """Load initial candidate data and selections."""
         try:
-            metrics = self.file_manager.get_metrics()
-            self.original_selections = metrics.get("selected_candidates", {}).copy()
-            self.current_selections = metrics.get("selected_candidates", {}).copy()
+            # Load selected candidates from task_metrics.json (0-based)
+            selected_candidates = self.file_manager.get_selected_candidates()
+            # Convert to string keys for compatibility
+            self.original_selections = {str(k): v for k, v in selected_candidates.items()}
+            self.current_selections = {str(k): v for k, v in selected_candidates.items()}
         except Exception as e:
             logger.error(f"Failed to load initial candidate data: {e}")
             self.original_selections = {}
@@ -84,20 +87,18 @@ class UserCandidateManager:
             # Update current selections
             self.current_selections[str(chunk_idx)] = candidate_idx
 
-            # Save to enhanced metrics
-            return self.file_manager._metrics_handler.update_selected_candidates(
+            # Save to task_metrics.json
+            success = self.file_manager.update_selected_candidates(
                 {int(k): v for k, v in self.current_selections.items()}
             )
+            
+            return success
         except Exception as e:
             logger.error(f"Failed to save candidate selection: {e}")
             return False
 
     def show_candidate_overview(self, task_info: Dict) -> None:
         """Display candidate overview prompt."""
-        task_type = task_info.get("task_type", "task")
-        print(
-            f"\nSelected {task_type}: {task_info['job_name']} - {task_info['display_time']}"
-        )
         print("\nCandidates selected as best matching for the final audio assembly:")
         print()
         print("Chunk:  Cand.:  Text:")
@@ -158,12 +159,8 @@ class UserCandidateManager:
                 print(f"No candidates found for chunk {chunk_idx + 1}")
                 return -1
 
-            task_type = task_info.get("task_type", "task")
             print(
-                f"\nSelected {task_type}: {task_info['job_name']} - {task_info['display_time']}"
-            )
-            print(
-                f"\nSelect audio candidate for chunk: {chunk_idx+1:03d}/{len(chunks):03d}"
+                f"\nSelect audio candidate for chunk: {chunk_idx+1:03d} / {len(chunks):03d}"
             )
             print()
             # Clean text for display - remove line breaks and normalize whitespace
@@ -232,12 +229,8 @@ class UserCandidateManager:
                             candidate_infos = self.get_candidate_info(
                                 chunk_idx
                             )  # Refresh data
-                            task_type = task_info.get("task_type", "task")
                             print(
-                                f"\nSelected {task_type}: {task_info['job_name']} - {task_info['display_time']}"
-                            )
-                            print(
-                                f"\nSelect audio candidate for chunk: {chunk_idx+1:03d}/{len(chunks):03d}"
+                                f"\nSelect audio candidate for chunk: {chunk_idx+1:03d} / {len(chunks):03d}"
                             )
                             print()
                             # Clean text for display - remove line breaks and normalize whitespace

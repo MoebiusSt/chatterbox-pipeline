@@ -29,13 +29,14 @@ class AssemblyHandler:
         """Execute assembly stage (audio concatenation and post-processing)."""
         logger.info("🔧 Starting Assembly Stage")
         try:
-            # Load metrics to get selected candidates
-            metrics = self.file_manager.get_metrics()
-            if not metrics:
-                logger.error("No metrics found for assembly")
+            # Load selected candidates from task_metrics.json
+            selected_candidates = self.file_manager.get_selected_candidates()
+            if not selected_candidates:
+                logger.error("No selected candidates found for assembly")
                 return False
-
-            selected_candidates = metrics.get("selected_candidates", {})
+            
+            # Convert to string keys for compatibility
+            selected_candidates = {str(k): v for k, v in selected_candidates.items()}
             logger.info(
                 f"Assembling audio from {len(selected_candidates)} selected candidates"
             )
@@ -56,7 +57,9 @@ class AssemblyHandler:
                     logger.info(
                         f"🧩 Completing missing selected_candidates for chunks: {[i+1 for i in missing_selection_indices]}"
                     )
-                    chunks_metrics = metrics.get("chunks", {})
+                    # Load whisper metrics to get candidate scores
+                    whisper_metrics = self.file_manager.get_metrics()
+                    chunks_metrics = whisper_metrics.get("chunks", {})
                     additions: Dict[str, int] = {}
                     for idx in missing_selection_indices:
                         key = str(idx)
@@ -82,18 +85,17 @@ class AssemblyHandler:
 
                         additions[key] = int(best_idx)
 
-                    if "selected_candidates" not in metrics:
-                        metrics["selected_candidates"] = {}
-                    for k, v in additions.items():
-                        if k not in metrics["selected_candidates"]:
-                            metrics["selected_candidates"][k] = v
-
                     try:
-                        self.file_manager.save_metrics(metrics)
+                        # Save completed selected_candidates to task_metrics.json
+                        self.file_manager.update_selected_candidates(
+                            {int(k): v for k, v in additions.items()}
+                        )
                     except Exception:
                         logger.warning("Failed to persist completed selected_candidates; continuing with in-memory selections")
 
-                    selected_candidates = metrics["selected_candidates"]
+                    # Update selected_candidates with additions
+                    for k, v in additions.items():
+                        selected_candidates[k] = v
 
             except Exception as e:
                 logger.warning(f"Failed to complete selected_candidates: {e}")

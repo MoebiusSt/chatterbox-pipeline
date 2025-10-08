@@ -295,6 +295,19 @@ class FileManager:
         """Load quality metrics and validation results."""
         return self._metrics_handler.get_metrics()
 
+    # Delegated Operations - Task Metrics Handler
+    def get_selected_candidates(self) -> Dict[int, int]:
+        """Get selected candidates from task_metrics.json (0-based indexing)."""
+        from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+        task_metrics_generator = TaskMetricsGenerator(self.task_directory, getattr(self, 'config', None))
+        return task_metrics_generator.get_selected_candidates()
+
+    def update_selected_candidates(self, selections: Dict[int, int]) -> bool:
+        """Update selected candidates in task_metrics.json."""
+        from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+        task_metrics_generator = TaskMetricsGenerator(self.task_directory, getattr(self, 'config', None))
+        return task_metrics_generator.update_selected_candidates(selections)
+
     # Delegated Operations - Final Audio Handler
     def save_final_audio(self, audio, metadata: dict) -> bool:
         """Save final assembled audio with metadata."""
