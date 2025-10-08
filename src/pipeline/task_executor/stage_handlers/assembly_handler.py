@@ -32,8 +32,18 @@ class AssemblyHandler:
             # Load selected candidates from task_metrics.json
             selected_candidates = self.file_manager.get_selected_candidates()
             if not selected_candidates:
-                logger.error("No selected candidates found for assembly")
-                return False
+                # Attempt to generate task_metrics.json from whisper metrics
+                try:
+                    from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+                    tmg = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
+                    tmg.generate_task_metrics()
+                    selected_candidates = self.file_manager.get_selected_candidates()
+                except Exception:
+                    selected_candidates = {}
+
+            if not selected_candidates:
+                logger.warning("No selected candidates found; will attempt to complete from whisper metrics")
+                # Fallback: proceed to complete from whisper metrics later in this method
             
             # Convert to string keys for compatibility
             selected_candidates = {str(k): v for k, v in selected_candidates.items()}

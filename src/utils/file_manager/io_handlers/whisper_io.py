@@ -29,7 +29,7 @@ class WhisperIOHandler:
         self.whisper_dir.mkdir(parents=True, exist_ok=True)
 
     def save_whisper(self, chunk_idx: int, candidate_idx: int, result: dict) -> bool:
-        """Save Whisper validation result to both individual file and enhanced metrics."""
+        """Save Whisper validation result to individual file and sync to whisper metrics (without selections)."""
         try:
             # Save individual file (for Recovery System compatibility)
             filename = (
@@ -40,7 +40,7 @@ class WhisperIOHandler:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)
 
-            # Also sync to enhanced metrics (maintaining dual system consistency)
+            # Also sync to whisper metrics (without any selected_candidates)
             sync_success = self._sync_whisper_to_enhanced_metrics(
                 chunk_idx, candidate_idx, result
             )
@@ -134,8 +134,8 @@ class WhisperIOHandler:
 
     def migrate_whisper_to_enhanced_metrics(self) -> bool:
         """
-        Migrate existing individual whisper files to enhanced_metrics.json format.
-        This ensures backward compatibility and unified data access.
+        Migrate existing individual whisper files into consolidated whisper metrics.
+        Note: No selected_candidates are written into whisper metrics.
 
         Returns:
             True if migration successful
@@ -216,10 +216,10 @@ class WhisperIOHandler:
             logger.debug("🧹 Cleaning up individual whisper files after migration...")
 
             # Verify enhanced metrics exists and has data
-            metrics_path = self.task_directory / "enhanced_metrics.json"
+            metrics_path = self.task_directory / "whisper" / "whisper_metrics.json"
             if not metrics_path.exists():
                 logger.warning(
-                    "Enhanced metrics not found or empty - skipping cleanup for safety"
+                    "Whisper metrics not found or empty - skipping cleanup for safety"
                 )
                 return False
 
@@ -228,7 +228,7 @@ class WhisperIOHandler:
 
             if not metrics or "chunks" not in metrics:
                 logger.warning(
-                    "Enhanced metrics not found or empty - skipping cleanup for safety"
+                    "Whisper metrics not found or empty - skipping cleanup for safety"
                 )
                 return False
 
@@ -257,7 +257,7 @@ class WhisperIOHandler:
     def _sync_whisper_to_enhanced_metrics(
         self, chunk_idx: int, candidate_idx: int, result: dict
     ) -> bool:
-        """Synchronize whisper result to whisper_metrics.json if it exists."""
+        """Synchronize whisper result to whisper_metrics.json (no selections stored)."""
         try:
             metrics_path = self.task_directory / "whisper" / "whisper_metrics.json"
 
@@ -271,7 +271,6 @@ class WhisperIOHandler:
                     "timestamp": 0.0,  # Changed from time.time() to 0.0 as time is removed
                     "total_chunks": 0,
                     "chunks": {},
-                    "selected_candidates": {},
                 }
 
             # Ensure chunk structure exists
@@ -309,6 +308,13 @@ class WhisperIOHandler:
                 # Ensure final_score on fresh insert
                 new_candidate_data["final_score"] = overall_score
                 metrics["chunks"][chunk_key]["candidates"][candidate_key] = new_candidate_data
+
+            # Ensure whisper metrics never contain selected_candidates
+            if isinstance(metrics, dict) and "selected_candidates" in metrics:
+                try:
+                    metrics.pop("selected_candidates", None)
+                except Exception:
+                    pass
 
             # Save updated metrics back
             with open(metrics_path, "w", encoding="utf-8") as f:
@@ -451,16 +457,6 @@ class WhisperIOHandler:
                     metrics["chunks"][chunk_key]["best_score"] = 0.0
                     logger.debug(
                         f"Reset chunk {chunk_idx} best candidate info due to no valid candidates"
-                    )
-
-                # Remove from selected candidates if it was selected
-                if (
-                    chunk_key in metrics.get("selected_candidates", {})
-                    and metrics["selected_candidates"][chunk_key] == candidate_idx
-                ):
-                    del metrics["selected_candidates"][chunk_key]
-                    logger.debug(
-                        f"Removed stale selected candidate for chunk {chunk_idx}"
                     )
 
                 # Save updated metrics

@@ -67,6 +67,59 @@ class TaskMetricsGenerator:
             logger.error(f"Failed to generate task metrics: {e}")
             return False
 
+    def migrate_selected_candidates_from_whisper(self) -> bool:
+        """
+        If whisper_metrics.json contains selected_candidates (legacy),
+        migrate them into task_metrics.json and remove them from whisper metrics.
+
+        Returns:
+            True if migration performed successfully or nothing to do, False on error.
+        """
+        try:
+            whisper_path = self.whisper_dir / "whisper_metrics.json"
+            if not whisper_path.exists():
+                return True
+
+            with open(whisper_path, "r", encoding="utf-8") as f:
+                whisper_metrics = json.load(f)
+
+            legacy_sel = whisper_metrics.get("selected_candidates", {})
+            if not legacy_sel:
+                return True
+
+            # Ensure task_metrics.json exists and is up-to-date
+            if not self.generate_task_metrics():
+                logger.warning("Could not generate task_metrics.json during migration")
+
+            # Convert legacy selections (string->int, 0-based) and persist into task_metrics.json
+            try:
+                selections_0based = {}
+                for k, v in legacy_sel.items():
+                    try:
+                        chunk_idx_0 = int(k)
+                        cand_idx_0 = int(v)
+                        selections_0based[chunk_idx_0] = cand_idx_0
+                    except Exception:
+                        continue
+                if selections_0based:
+                    self.update_selected_candidates(selections_0based)
+            except Exception as e:
+                logger.warning(f"Failed to migrate legacy selected_candidates into task_metrics.json: {e}")
+
+            # Strip selected_candidates from whisper metrics
+            try:
+                whisper_metrics.pop("selected_candidates", None)
+                with open(whisper_path, "w", encoding="utf-8") as f:
+                    json.dump(whisper_metrics, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.warning(f"Failed to strip selected_candidates from whisper metrics: {e}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to migrate selected_candidates from whisper metrics: {e}")
+            return False
+
     def get_selected_candidates(self) -> Dict[int, int]:
         """
         Get selected candidates from task_metrics.json (0-based indexing).
@@ -217,12 +270,9 @@ class TaskMetricsGenerator:
         config: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Build comprehensive task metrics structure."""
-        # Convert 0-based to 1-based indexing for selected_candidates
+        # Determine selected candidates from whisper metrics per chunk using best_candidate fallback
+        # Whisper metrics must not carry selected_candidates anymore; compute from chunk bests
         selected_candidates_1based = {}
-        whisper_selected = whisper_metrics.get("selected_candidates", {})
-        for chunk_key, candidate_idx in whisper_selected.items():
-            chunk_idx_1based = int(chunk_key) + 1
-            selected_candidates_1based[str(chunk_idx_1based)] = candidate_idx + 1
 
         # Build chunks array
         chunks = []
@@ -244,9 +294,35 @@ class TaskMetricsGenerator:
                 logger.warning(f"No metadata found for chunk {chunk_idx_1based}")
                 continue
 
-            # Get selected candidate for this chunk
-            selected_candidate_0based = whisper_selected.get(chunk_key, 0)
+            # Compute selected candidate for this chunk from best_candidate or by score
+            selected_candidate_0based = 0
+            try:
+                if isinstance(whisper_chunk_data, dict):
+                    if "best_candidate" in whisper_chunk_data and whisper_chunk_data["best_candidate"] is not None:
+                        selected_candidate_0based = int(whisper_chunk_data["best_candidate"])  # already 0-based
+                    else:
+                        # Fallback: choose highest score from candidates
+                        cand_map = whisper_chunk_data.get("candidates", {})
+                        best_idx = 0
+                        best_score = float("-inf")
+                        for cand_k, cand_v in cand_map.items():
+                            try:
+                                cand_idx_int = int(cand_k)
+                            except Exception:
+                                continue
+                            score = 0.0
+                            if isinstance(cand_v, dict):
+                                score = float(cand_v.get("overall_quality_score", cand_v.get("final_score", 0.0)))
+                            if score > best_score:
+                                best_score = score
+                                best_idx = cand_idx_int
+                        selected_candidate_0based = int(best_idx)
+            except Exception:
+                selected_candidate_0based = 0
+
             selected_candidate_1based = selected_candidate_0based + 1
+            # Record into global selected_candidates map (1-based keys/values)
+            selected_candidates_1based[str(chunk_idx_1based)] = selected_candidate_1based
 
             # Get candidate metrics
             candidates_data = whisper_chunk_data.get("candidates", {})

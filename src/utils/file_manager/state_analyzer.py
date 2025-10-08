@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class TaskState:
     # New fields for candidate editor functionality
     has_candidate_selection: bool = False
     candidate_editor_available: bool = False
-    missing_candidates: List[int] = None
+    missing_candidates: Optional[List[int]] = None
     task_status_message: str = ""
 
     def __post_init__(self):
@@ -213,14 +213,19 @@ class StateAnalyzer:
         missing_candidates_list = []
 
         if has_metrics:
-            metrics = self.metrics_handler.get_metrics()
-            selected_candidates = metrics.get("selected_candidates", {})
-            has_candidate_selection = len(selected_candidates) > 0
+            # Read candidate selections exclusively from task_metrics.json
+            try:
+                from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+                task_metrics_generator = TaskMetricsGenerator(self.task_directory, self.config)
+                selections_map = task_metrics_generator.get_selected_candidates()  # 0-based dict
+            except Exception:
+                selections_map = {}
+
+            has_candidate_selection = len(selections_map) > 0
 
             # Check if all chunks have candidate selections
             for chunk_idx in range(len(chunks)):
-                chunk_key = str(chunk_idx)
-                if chunk_key not in selected_candidates:
+                if chunk_idx not in selections_map:
                     missing_candidates_list.append(chunk_idx)
 
             # Editor is available if we have metrics and complete candidate data

@@ -29,6 +29,14 @@ class MetricsIOHandler:
         try:
             whisper_dir = self.task_directory / "whisper"
             whisper_dir.mkdir(parents=True, exist_ok=True)
+            # Ensure no selected_candidates are persisted in whisper metrics
+            try:
+                if isinstance(metrics, dict) and "selected_candidates" in metrics:
+                    metrics = metrics.copy()
+                    metrics.pop("selected_candidates", None)
+            except Exception:
+                pass
+
             path = whisper_dir / "whisper_metrics.json"
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(metrics, f, indent=2, ensure_ascii=False)
@@ -53,33 +61,13 @@ class MetricsIOHandler:
 
     def update_selected_candidates(self, selections: Dict[int, int]) -> bool:
         """
-        Update selected candidates in enhanced metrics.
-
-        Args:
-            selections: Dictionary mapping chunk_idx to candidate_idx
-
-        Returns:
-            True if update successful, False otherwise
+        Deprecated: selected_candidates are no longer stored in whisper metrics.
+        This method is a no-op and returns False to indicate no update.
         """
-        try:
-            metrics = self.get_metrics()
-            if not metrics:
-                logger.error("No metrics found to update")
-                return False
-
-            # Convert int keys to string keys for JSON compatibility
-            string_selections = {str(k): v for k, v in selections.items()}
-
-            # Sort by chunk index to maintain proper order
-            sorted_selections = dict(
-                sorted(string_selections.items(), key=lambda x: int(x[0]))
-            )
-            metrics["selected_candidates"] = sorted_selections
-
-            return self.save_metrics(metrics)
-        except Exception as e:
-            logger.error(f"Error updating selected candidates: {e}")
-            return False
+        logger.warning(
+            "update_selected_candidates is deprecated for whisper metrics and will not persist any data"
+        )
+        return False
 
     def backup_original_selections(self) -> Dict:
         """
@@ -143,12 +131,12 @@ class MetricsIOHandler:
                 logger.error("No existing metrics found to update")
                 return False
 
-            # Preserve selected candidates if requested
-            original_selected_candidates = {}
-            if preserve_selected_candidates:
-                original_selected_candidates = metrics.get(
-                    "selected_candidates", {}
-                ).copy()
+            # Ensure whisper metrics never contain selected_candidates
+            if isinstance(metrics, dict) and "selected_candidates" in metrics:
+                try:
+                    metrics.pop("selected_candidates", None)
+                except Exception:
+                    pass
 
             # Update chunk data
             if "chunks" not in metrics:
@@ -204,31 +192,6 @@ class MetricsIOHandler:
                         if isinstance(v, dict) and "final_score" not in v and "overall_quality_score" in v:
                             v["final_score"] = v["overall_quality_score"]
                     metrics["chunks"][chunk_key] = normalized_chunk
-
-                # Update selected candidates only for new chunks or if not preserving
-                if (
-                    not preserve_selected_candidates
-                    or chunk_key not in original_selected_candidates
-                ):
-                    if "best_candidate" in chunk_data:
-                        metrics["selected_candidates"][chunk_key] = chunk_data[
-                            "best_candidate"
-                        ]
-
-            # Restore original selected candidates if preserving
-            if preserve_selected_candidates:
-                for chunk_key, candidate_idx in original_selected_candidates.items():
-                    metrics["selected_candidates"][chunk_key] = candidate_idx
-
-            # Sort selected_candidates by chunk index to maintain proper order
-            if "selected_candidates" in metrics:
-                # Convert to int keys for sorting, then back to string keys
-                sorted_selected = dict(
-                    sorted(
-                        metrics["selected_candidates"].items(), key=lambda x: int(x[0])
-                    )
-                )
-                metrics["selected_candidates"] = sorted_selected
 
             # Update timestamp
             metrics["timestamp"] = __import__("time").time()

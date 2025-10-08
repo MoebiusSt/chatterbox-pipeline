@@ -151,7 +151,7 @@ class ValidationHandler:
                 ):
                     return False
 
-            # Create and save enhanced metrics
+            # Create and save consolidated whisper metrics (without selections)
             metrics = self._create_enhanced_metrics(
                 chunks, all_candidates, validation_results
             )
@@ -337,7 +337,6 @@ class ValidationHandler:
             "timestamp": time.time(),
             "total_chunks": len(chunks),
             "chunks": {},
-            "selected_candidates": {},
         }
         logger.info("")
         logger.info("🔍 Create enhanced metrics")
@@ -464,19 +463,12 @@ class ValidationHandler:
 
                 # Type-safe dictionary access
                 chunks_dict = metrics["chunks"]
-                selected_candidates_dict = metrics["selected_candidates"]
                 chunks_dict[chunk.idx] = chunk_metrics
-                selected_candidates_dict[chunk.idx] = best_candidate_idx
 
             except Exception as e:
                 logger.warning(
                     f"Failed to select best candidate for chunk {chunk.idx}: {e}"
                 )
-                if filtered_candidates_list:
-                    selected_candidates_dict = metrics["selected_candidates"]
-                    selected_candidates_dict[chunk.idx] = filtered_candidates_list[
-                        0
-                    ].candidate_idx
 
         # Calculate median overall_quality_score and similarity_score across all candidates
         all_overall_scores = []

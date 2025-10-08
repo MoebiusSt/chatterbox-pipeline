@@ -264,11 +264,18 @@ class TaskExecutor:
                 )
             self._tick_runtime()
 
-            # Migrate existing whisper files to enhanced metrics format
+            # Migrate existing whisper files into consolidated whisper metrics
             self.file_manager.migrate_whisper_to_enhanced_metrics()
             if self.run_logger:
                 self.run_logger.add_event("migrated_whisper_metrics", {})
             self._tick_runtime()
+
+            # Migrate legacy selected_candidates from whisper metrics to task_metrics.json
+            try:
+                task_metrics_generator = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
+                task_metrics_generator.migrate_selected_candidates_from_whisper()
+            except Exception as e:
+                logger.warning(f"Failed legacy selection migration: {e}")
 
             if task_state.missing_components:
                 logger.debug(
@@ -290,6 +297,13 @@ class TaskExecutor:
                 )
 
                 # Detect incomplete selected_candidates even when candidates/whisper look complete
+                try:
+                    # Ensure task_metrics.json exists before checking selections
+                    tmg = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
+                    tmg.generate_task_metrics()
+                except Exception:
+                    pass
+
                 try:
                     chunks_for_selection = self.file_manager.get_chunks()
                     selected_for_selection = self.file_manager.get_selected_candidates()
@@ -483,7 +497,12 @@ class TaskExecutor:
         has_missing_whisper = any(
             "whisper_chunk" in comp for comp in task_state.missing_components
         )
-        has_existing_metrics = bool(self.file_manager.get_metrics())
+        # Ensure whisper metrics are available for gap-fill analysis
+        try:
+            _ = self.file_manager.get_metrics()
+            has_existing_metrics = True
+        except Exception:
+            has_existing_metrics = False
         # Detect incomplete selected_candidates to trigger gap-filling path as well
         missing_selection_indices = []
         try:
@@ -595,6 +614,13 @@ class TaskExecutor:
             task_state.completion_stage == CompletionStage.COMPLETE
             and self.task_config.force_final_generation
         ):
+            # Ensure task_metrics.json exists before assembly in gap-fill/forced flows
+            try:
+                tmg = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
+                tmg.generate_task_metrics()
+            except Exception:
+                pass
+
             # Execute assembly if needed or if forcing final audio regeneration
             if not self.assembly_handler.execute_assembly():
                 return False
