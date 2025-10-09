@@ -1,0 +1,7 @@
+erik_prochnow_DE.wav:
+  exaggeration: 1.25
+  cfg_weight: 0.38
+  temperature: 1.16
+  repetition_penalty: 2.06
+  min_p: 0.09
+  top_p: 1.0

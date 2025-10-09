@@ -117,6 +117,10 @@ class ChatterboxTester:
         # Settings file path
         self.settings_file = Path(__file__).parent / ".chatterbox_tester_settings.json"
         
+        # Presets file path and storage
+        self.presets_file = Path(__file__).parent / ".chatterbox_tester_presets.yaml"
+        self.presets: Dict[str, Dict[str, float]] = {}  # reference_audio -> params
+        
         # History for undo/redo
         self.history: list[Dict[str, Any]] = []
         self.history_position: int = -1
@@ -126,8 +130,10 @@ class ChatterboxTester:
         
         self._build_ui()
         self._load_settings()  # Load saved settings first
+        self._load_presets()  # Load TTS parameter presets
         self._load_initial_model()
         self._update_language_dropdown_state()  # Set initial state of language dropdown
+        self._update_load_button_state()  # Set initial state of Load preset button
         
         # Keyboard shortcuts for undo/redo
         self.root.bind('<Control-z>', lambda e: self._undo())
@@ -176,11 +182,58 @@ class ChatterboxTester:
         elif self.reference_audio_files:
             self.ref_audio_var.set(self.reference_audio_files[0])
         
+        # Update Load button state
+        self._update_load_button_state()
+        
         print(f"Reference audio list refreshed: {len(self.reference_audio_files)} files found")
+    
+    def _on_load_preset(self):
+        """Load preset parameters for current reference audio."""
+        current_ref_audio = self.ref_audio_var.get()
+        if not current_ref_audio or current_ref_audio not in self.presets:
+            return
+        
+        try:
+            preset = self.presets[current_ref_audio]
+            
+            # Temporarily disable history recording during preset load
+            self.is_restoring_state = True
+            
+            # Load parameters into sliders
+            for param_name, value in preset.items():
+                if param_name in self.param_vars:
+                    self.param_vars[param_name].set(value)
+                    self.param_labels[param_name].config(text=f"{value:.2f}")
+            
+            self.is_restoring_state = False
+            
+            # Mark as needs refresh since parameters changed
+            self._mark_needs_refresh()
+            
+            # Save to history after loading preset
+            self._save_state_to_history()
+            
+            # Visual feedback
+            original_text = "Load"
+            self.load_preset_btn.config(text="✓ Loaded")
+            print(f"Loaded preset for '{current_ref_audio}'")
+            self.root.after(1500, lambda: self.load_preset_btn.config(text=original_text))
+            
+        except Exception as e:
+            print(f"Error loading preset: {e}")
+    
+    def _on_save_preset(self):
+        """Save current parameters as preset."""
+        self._save_preset()
+        
+        # Visual feedback
+        original_text = "Save"
+        self.save_preset_btn.config(text="✓ Saved")
+        self.root.after(1500, lambda: self.save_preset_btn.config(text=original_text))
     
     def _build_ui(self):
         """Build the user interface."""
-        # Reference Audio File Dropdown with Refresh Button
+        # Reference Audio File Dropdown with Load/Save/Refresh Buttons
         ref_frame = tk.Frame(self.root)
         ref_frame.pack(fill=tk.X, padx=10, pady=5)
         
@@ -195,19 +248,43 @@ class ChatterboxTester:
             font=("Arial", 12)
         )
         self.ref_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        self.ref_dropdown.bind('<<ComboboxSelected>>', lambda e: (self._on_text_change(), self._mark_needs_refresh()))
+        self.ref_dropdown.bind('<<ComboboxSelected>>', lambda e: (self._on_text_change(), self._mark_needs_refresh(), self._update_load_button_state()))
         
         # Refresh button for reference audio files
         ref_refresh_btn = tk.Button(
             ref_frame,
             text="⭯",
-            font=("Arial", 16),
+            font=("Arial", 9),
             command=self._refresh_reference_audio_list,
             bg="#f0f0f0",
-            width=2,
+            width=3,
             cursor="hand2"
         )
-        ref_refresh_btn.pack(side=tk.RIGHT)
+        ref_refresh_btn.pack(side=tk.LEFT, padx=2)
+
+        # Load preset button
+        self.load_preset_btn = tk.Button(
+            ref_frame,
+            text="Load",
+            font=("Arial", 9),
+            command=self._on_load_preset,
+            bg="#f0f0f0",
+            state=tk.DISABLED,
+            cursor="hand2"
+        )
+        self.load_preset_btn.pack(side=tk.LEFT, padx=2)
+        
+        # Save preset button
+        self.save_preset_btn = tk.Button(
+            ref_frame,
+            text="Save",
+            font=("Arial", 9),
+            command=self._on_save_preset,
+            bg="#f0f0f0",
+            cursor="hand2"
+        )
+        self.save_preset_btn.pack(side=tk.LEFT, padx=2)
+        
         
         # Model Selection (Radio Buttons)
         model_frame = tk.Frame(self.root)
@@ -716,6 +793,64 @@ class ChatterboxTester:
         
         # Set geometry
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
+    
+    def _load_presets(self):
+        """Load TTS parameter presets from YAML file."""
+        if not self.presets_file.exists():
+            return
+        
+        try:
+            import yaml
+            with open(self.presets_file, 'r', encoding='utf-8') as f:
+                self.presets = yaml.safe_load(f) or {}
+            print(f"Loaded {len(self.presets)} preset(s) from {self.presets_file.name}")
+        except Exception as e:
+            print(f"Could not load presets: {e}")
+            self.presets = {}
+    
+    def _save_preset(self):
+        """Save current TTS parameters as preset for current reference audio."""
+        try:
+            import yaml
+            
+            # Get current reference audio filename
+            current_ref_audio = self.ref_audio_var.get()
+            if not current_ref_audio:
+                return
+            
+            # Get current TTS parameters (only the 6 preset params)
+            preset_params = {
+                'exaggeration': float(self.param_vars['exaggeration'].get()),
+                'cfg_weight': float(self.param_vars['cfg_weight'].get()),
+                'temperature': float(self.param_vars['temperature'].get()),
+                'repetition_penalty': float(self.param_vars['repetition_penalty'].get()),
+                'min_p': float(self.param_vars['min_p'].get()),
+                'top_p': float(self.param_vars['top_p'].get()),
+            }
+            
+            # Update presets dictionary
+            self.presets[current_ref_audio] = preset_params
+            
+            # Save to file (sorted by key for better readability)
+            sorted_presets = dict(sorted(self.presets.items()))
+            with open(self.presets_file, 'w', encoding='utf-8') as f:
+                yaml.dump(sorted_presets, f, default_flow_style=False, sort_keys=False)
+            
+            print(f"Saved preset for '{current_ref_audio}'")
+            
+            # Update Load button state
+            self._update_load_button_state()
+            
+        except Exception as e:
+            print(f"Could not save preset: {e}")
+    
+    def _update_load_button_state(self):
+        """Enable/disable Load button based on whether preset exists for current audio."""
+        current_ref_audio = self.ref_audio_var.get()
+        if current_ref_audio and current_ref_audio in self.presets:
+            self.load_preset_btn.config(state=tk.NORMAL)
+        else:
+            self.load_preset_btn.config(state=tk.DISABLED)
     
     def _load_initial_model(self):
         """Load the initial model."""

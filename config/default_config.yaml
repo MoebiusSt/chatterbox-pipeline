@@ -189,14 +189,14 @@ audio:
   silence_duration:
     normal: 0.20  # inserted between chunks if split was between sentences
     paragraph: 0.80  # inserted if split was before paragraph break blank line
-    long: 1.50  # inserted for explicit long paragraph breaks (>= 2 empty lines)
+    long: 1.30  # inserted for explicit long paragraph breaks (>= 2 empty lines)
   sample_rate: 24000
 
   # Optional trimming of leading/trailing silence on segment boundaries during assembly
   silence_trim:
     enabled: true   # if true, trim low-amplitude leading/trailing samples at boundaries
-    threshold: 0.01  # absolute amplitude threshold used for trimming
-    fade_duration: 0.08  # fade duration (seconds) applied at start/end after trimming
+    threshold: 0.09  # absolute amplitude threshold used for trimming
+    fade_duration: 0.2  # fade duration (seconds) applied at start/end after trimming
 
   # ChatterboxTTS native sample rate - NOT a user setting!
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
@@ -205,6 +205,6 @@ audio:
   # Audio normalization settings
   normalization:
     enabled: true            # Enable/disable audio normalization
-    target_level: -1.5      # Target loudness level in dB (unit depends on method)
+    target_level: -1.4      # Target loudness level in dB (unit depends on method)
     method: "peak"            # Normalization method: "lufs", "rms", or "peak"
-    saturation_factor: 0.05   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)
+    saturation_factor: 0.03   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)
