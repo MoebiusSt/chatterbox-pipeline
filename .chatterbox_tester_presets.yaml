@@ -1,4 +1,11 @@
 erik_prochnow_DE.wav:
+  exaggeration: 1.58
+  cfg_weight: 0.51
+  temperature: 1.2
+  repetition_penalty: 2.0
+  min_p: 0.09
+  top_p: 0.98
+hans-juergen-lenhart_DE.wav:
   exaggeration: 1.25
   cfg_weight: 0.38
   temperature: 1.16

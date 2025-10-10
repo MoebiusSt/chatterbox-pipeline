@@ -12,7 +12,7 @@ generation:
   max_retries: 1
   default_speaker: stephan_moebius_5  # overriding the default speaker from default_config.yaml
   speakers:
-    - id: stephan_moebius_5  # and overriding some speaker parameters below
+    - id: stephan_moebius_4  # and overriding some speaker parameters below
       tts_params:
         exaggeration: 0.5
         exaggeration_max_deviation: 0.15

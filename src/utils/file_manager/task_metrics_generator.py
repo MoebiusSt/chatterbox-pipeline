@@ -270,9 +270,29 @@ class TaskMetricsGenerator:
         config: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Build comprehensive task metrics structure."""
-        # Determine selected candidates from whisper metrics per chunk using best_candidate fallback
-        # Whisper metrics must not carry selected_candidates anymore; compute from chunk bests
-        selected_candidates_1based = {}
+        # Preserve existing user selections from task_metrics.json when present.
+        # Only fill in missing selections from whisper metrics (best_candidate / best score fallback).
+        selected_candidates_1based: Dict[str, int] = {}
+
+        existing_task_metrics_path = self.task_directory / "task_metrics.json"
+        existing_selected_candidates_1based: Dict[str, int] = {}
+        if existing_task_metrics_path.exists():
+            try:
+                with open(existing_task_metrics_path, "r", encoding="utf-8") as f:
+                    existing_task_metrics = json.load(f)
+                    esc = existing_task_metrics.get("selected_candidates", {})
+                    if isinstance(esc, dict):
+                        # ensure values are ints
+                        for k, v in esc.items():
+                            try:
+                                selected_candidates_1based[str(int(k))] = int(v)
+                            except Exception:
+                                # skip invalid entries
+                                pass
+                        existing_selected_candidates_1based = dict(selected_candidates_1based)
+            except Exception:
+                # If loading fails, proceed without existing selections
+                existing_selected_candidates_1based = {}
 
         # Build chunks array
         chunks = []
@@ -294,31 +314,69 @@ class TaskMetricsGenerator:
                 logger.warning(f"No metadata found for chunk {chunk_idx_1based}")
                 continue
 
-            # Compute selected candidate for this chunk from best_candidate or by score
+            # Determine selected candidate: prefer existing user selection if valid; else compute fallback.
             selected_candidate_0based = 0
-            try:
-                if isinstance(whisper_chunk_data, dict):
-                    if "best_candidate" in whisper_chunk_data and whisper_chunk_data["best_candidate"] is not None:
-                        selected_candidate_0based = int(whisper_chunk_data["best_candidate"])  # already 0-based
+            # 1) Try existing selection
+            existing_key_1based = str(chunk_idx_1based)
+            if existing_key_1based in existing_selected_candidates_1based:
+                try:
+                    existing_cand_1based = int(existing_selected_candidates_1based[existing_key_1based])
+                    cand_idx_0 = max(0, existing_cand_1based - 1)
+                    # Validate that candidate exists in whisper data
+                    candidates_map = whisper_chunk_data.get("candidates", {}) if isinstance(whisper_chunk_data, dict) else {}
+                    if str(cand_idx_0) in candidates_map:
+                        selected_candidate_0based = cand_idx_0
                     else:
-                        # Fallback: choose highest score from candidates
-                        cand_map = whisper_chunk_data.get("candidates", {})
-                        best_idx = 0
-                        best_score = float("-inf")
-                        for cand_k, cand_v in cand_map.items():
-                            try:
-                                cand_idx_int = int(cand_k)
-                            except Exception:
-                                continue
-                            score = 0.0
-                            if isinstance(cand_v, dict):
-                                score = float(cand_v.get("overall_quality_score", cand_v.get("final_score", 0.0)))
-                            if score > best_score:
-                                best_score = score
-                                best_idx = cand_idx_int
-                        selected_candidate_0based = int(best_idx)
-            except Exception:
-                selected_candidate_0based = 0
+                        # fall through to compute best
+                        raise KeyError("Existing selection not found in whisper candidates")
+                except Exception:
+                    # 2) Compute fallback from whisper (best_candidate or by score)
+                    try:
+                        if isinstance(whisper_chunk_data, dict):
+                            if "best_candidate" in whisper_chunk_data and whisper_chunk_data["best_candidate"] is not None:
+                                selected_candidate_0based = int(whisper_chunk_data["best_candidate"])  # already 0-based
+                            else:
+                                cand_map = whisper_chunk_data.get("candidates", {})
+                                best_idx = 0
+                                best_score = float("-inf")
+                                for cand_k, cand_v in cand_map.items():
+                                    try:
+                                        cand_idx_int = int(cand_k)
+                                    except Exception:
+                                        continue
+                                    score = 0.0
+                                    if isinstance(cand_v, dict):
+                                        score = float(cand_v.get("overall_quality_score", cand_v.get("final_score", 0.0)))
+                                    if score > best_score:
+                                        best_score = score
+                                        best_idx = cand_idx_int
+                                selected_candidate_0based = int(best_idx)
+                    except Exception:
+                        selected_candidate_0based = 0
+            else:
+                # No existing selection; compute fallback from whisper (best)
+                try:
+                    if isinstance(whisper_chunk_data, dict):
+                        if "best_candidate" in whisper_chunk_data and whisper_chunk_data["best_candidate"] is not None:
+                            selected_candidate_0based = int(whisper_chunk_data["best_candidate"])  # already 0-based
+                        else:
+                            cand_map = whisper_chunk_data.get("candidates", {})
+                            best_idx = 0
+                            best_score = float("-inf")
+                            for cand_k, cand_v in cand_map.items():
+                                try:
+                                    cand_idx_int = int(cand_k)
+                                except Exception:
+                                    continue
+                                score = 0.0
+                                if isinstance(cand_v, dict):
+                                    score = float(cand_v.get("overall_quality_score", cand_v.get("final_score", 0.0)))
+                                if score > best_score:
+                                    best_score = score
+                                    best_idx = cand_idx_int
+                            selected_candidate_0based = int(best_idx)
+                except Exception:
+                    selected_candidate_0based = 0
 
             selected_candidate_1based = selected_candidate_0based + 1
             # Record into global selected_candidates map (1-based keys/values)
@@ -374,7 +432,7 @@ class TaskMetricsGenerator:
                         "audio_duration": selected_candidate_data.get("audio_duration", 0.0),
                         "audio_filename": f"candidate_{selected_candidate_1based:02d}.wav",
                         "generation_params": self._get_selected_candidate_generation_params(
-                            selected_candidate_data, speaker_id, config
+                            selected_candidate_data, chunk_idx_0based, selected_candidate_0based
                         ),
                         "validation": self._extract_validation_data(selected_candidate_data),
                     },
@@ -483,39 +541,109 @@ class TaskMetricsGenerator:
             }
 
     def _get_selected_candidate_generation_params(
-        self, candidate_data: Dict[str, Any], speaker_id: str, config: Dict[str, Any]
+        self, candidate_data: Dict[str, Any], chunk_idx_0based: int, candidate_idx_0based: int
     ) -> Dict[str, Any]:
         """
-        Get generation parameters for the selected candidate from speaker configuration.
+        Get generation parameters for the selected candidate from candidates metadata.
         
         Args:
-            candidate_data: Selected candidate data
-            speaker_id: Speaker ID for this chunk
-            config: Task configuration containing speaker definitions
+            candidate_data: Selected candidate data from whisper metrics
+            chunk_idx_0based: Chunk index (0-based)
+            candidate_idx_0based: Candidate index (0-based)
             
         Returns:
             Dictionary with generation parameters
         """
         try:
+            # Load candidates metadata for this chunk
+            chunk_dir = self.candidates_dir / f"chunk_{chunk_idx_0based + 1:03d}"
+            candidates_meta_path = chunk_dir / "candidates_metadata.json"
+            
+            if not candidates_meta_path.exists():
+                logger.warning(f"Candidates metadata not found: {candidates_meta_path}")
+                return {}
+            
+            with open(candidates_meta_path, "r", encoding="utf-8") as f:
+                candidates_metadata = json.load(f)
+            
+            # Find the specific candidate
+            candidates = candidates_metadata.get("candidates", [])
+            for candidate in candidates:
+                if candidate.get("candidate_idx") == candidate_idx_0based:
+                    generation_params = candidate.get("generation_params", {})
+                    
+                    # Extract relevant parameters (exclude seed and language_id)
+                    return {
+                        "exaggeration": generation_params.get("exaggeration", 0.0),
+                        "exaggeration_max_deviation": generation_params.get("exaggeration_max_deviation", 0.0),
+                        "cfg_weight": generation_params.get("cfg_weight", 0.0),
+                        "cfg_weight_max_deviation": generation_params.get("cfg_weight_max_deviation", 0.0),
+                        "temperature": generation_params.get("temperature", 0.0),
+                        "temperature_max_deviation": generation_params.get("temperature_max_deviation", 0.0),
+                        "repetition_penalty": generation_params.get("repetition_penalty", 1.0),
+                        "min_p": generation_params.get("min_p", 0.0),
+                        "top_p": generation_params.get("top_p", 0.0),
+                    }
+            
+            logger.warning(f"Candidate {candidate_idx_0based} not found in candidates metadata for chunk {chunk_idx_0based}")
+            return self._get_fallback_generation_params(chunk_idx_0based)
+            
+        except Exception as e:
+            logger.warning(f"Failed to get generation params for candidate {candidate_idx_0based} in chunk {chunk_idx_0based}: {e}")
+            return self._get_fallback_generation_params(chunk_idx_0based)
+
+    def _get_fallback_generation_params(self, chunk_idx_0based: int) -> Dict[str, Any]:
+        """
+        Get fallback generation parameters from speaker configuration.
+        
+        Args:
+            chunk_idx_0based: Chunk index (0-based)
+            
+        Returns:
+            Dictionary with fallback generation parameters
+        """
+        try:
+            # Load chunks metadata to get speaker_id
+            chunks_meta_path = self.texts_dir / "chunks_metadata.json"
+            if not chunks_meta_path.exists():
+                return {}
+            
+            with open(chunks_meta_path, "r", encoding="utf-8") as f:
+                chunks_metadata = json.load(f)
+            
+            # Find speaker_id for this chunk
+            chunks_meta_list = chunks_metadata.get("chunks", [])
+            speaker_id = None
+            for meta in chunks_meta_list:
+                if meta.get("idx") == chunk_idx_0based:
+                    speaker_id = meta.get("speaker_id")
+                    break
+            
+            if not speaker_id:
+                return {}
+            
+            # Load config
+            config = self._load_config()
+            if not config:
+                return {}
+            
             # Get speaker configuration
             speakers = config.get("generation", {}).get("speakers", [])
             speaker_config = None
             
-            # Find speaker config
             for speaker in speakers:
                 if speaker.get("id") == speaker_id:
                     speaker_config = speaker
                     break
             
             if not speaker_config:
-                logger.warning(f"No speaker configuration found for speaker_id: {speaker_id}")
                 return {}
             
             # Get TTS parameters from speaker config
             tts_params = speaker_config.get("tts_params", {})
             
             # Extract relevant parameters
-            generation_params = {
+            return {
                 "exaggeration": tts_params.get("exaggeration", 0.0),
                 "exaggeration_max_deviation": tts_params.get("exaggeration_max_deviation", 0.0),
                 "cfg_weight": tts_params.get("cfg_weight", 0.0),
@@ -527,10 +655,8 @@ class TaskMetricsGenerator:
                 "top_p": tts_params.get("top_p", 0.0),
             }
             
-            return generation_params
-            
         except Exception as e:
-            logger.warning(f"Failed to get generation params for speaker {speaker_id}: {e}")
+            logger.warning(f"Failed to get fallback generation params for chunk {chunk_idx_0based}: {e}")
             return {}
 
     def _extract_validation_data(self, candidate_data: Dict[str, Any]) -> Dict[str, Any]:

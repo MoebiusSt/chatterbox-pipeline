@@ -481,11 +481,11 @@ class ChatterboxTester:
         # Slider configurations: (name, min, max, default, resolution)
         sliders_config = [
             ("exaggeration", 0.0, 2.0, 0.7, 0.01),
-            ("cfg_weight", 0.0, 2.0, 0.45, 0.01),
+            ("cfg_weight", 0.0, 1.5, 0.45, 0.01),
             ("temperature", 0.0, 2.0, 0.8, 0.01),
             ("repetition_penalty", 1.0, 3.0, 2.2, 0.01),
             ("min_p", 0.01, 0.5, 0.05, 0.01),
-            ("top_p", 0.5, 1.0, 0.95, 0.01),
+            ("top_p", 0.5, 1.0, 0.98, 0.01),
         ]
         
         self.param_vars = {}

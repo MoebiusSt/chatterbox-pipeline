@@ -115,28 +115,9 @@ generation:
         exaggeration: 0.4
         cfg_weight: 0.4
         temperature: 0.75
-
-    - id: stephan_moebius_5
-      reference_audio: stephan_moebius_5.wav
-      language: en
-      tts_params:
-        exaggeration: 0.5
-        exaggeration_max_deviation: 0.15
-        cfg_weight: 0.25
-        cfg_weight_max_deviation: 0.20
-        temperature: 1.0
-        temperature_max_deviation: 0.3
-        repetition_penalty: 1.2
-        min_p: 0.05
-        top_p: 0.95
-      conservative_candidate:
-        enabled: false
-        exaggeration: 0.4
-        cfg_weight: 0.5
-        temperature: 0.8
         
     - id: test1
-      reference_audio: stephan_moebius_6.wav
+      reference_audio: stephan_moebius_4.wav
       language: en
       tts_params:
         exaggeration: 0.5
@@ -151,7 +132,7 @@ generation:
       conservative_candidate:
         enabled: false
     - id: test2
-      reference_audio: stephan_moebius_6.wav
+      reference_audio: stephan_moebius_4.wav
       language: en
       tts_params:
         exaggeration: 0.80  #only ramp down exaggeration, evaluate effect of exaggeration
@@ -164,7 +145,7 @@ generation:
         min_p: 0.07 # lower likelihood of artefacts with slightly narrower min_p and top_p range
         top_p: 0.96
     - id: test3
-      reference_audio: stephan_moebius_6.wav
+      reference_audio: stephan_moebius_4.wav
       language: en
       tts_params:
         exaggeration: 0.40

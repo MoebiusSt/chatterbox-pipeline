@@ -24,7 +24,7 @@ generation:
   # Speaker definitions - Define all your speakers here and reference them by id in any other job.yaml
   speakers:
     - id: test1
-      reference_audio: stephan_moebius_6.wav
+      reference_audio: stephan_moebius_4.wav
       language: en
       tts_params:
         exaggeration: 0.5

@@ -23,7 +23,7 @@ generation:
   
   speakers:
     - id: stephan_EN
-      reference_audio: stephan_moebius_6.wav
+      reference_audio: stephan_moebius_4.wav
       language: en
       tts_params:
         exaggeration: 0.25
