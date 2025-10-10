@@ -511,6 +511,9 @@ class ValidationHandler:
                 logger.error("No chunks or candidates found for validation")
                 return False
 
+            # Enhance chunks with language_id from speaker configuration (was missing in selective mode)
+            self._enhance_chunks_with_language_id(chunks)
+
             # Determine which chunks need validation
             if chunks_to_validate is None:
                 # Auto-determine based on missing validation data (legacy behavior)

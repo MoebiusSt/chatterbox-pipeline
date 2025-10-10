@@ -12,3 +12,10 @@ hans-juergen-lenhart_DE.wav:
   repetition_penalty: 2.06
   min_p: 0.09
   top_p: 1.0
+martina-zimmermann_DE.wav:
+  exaggeration: 0.7
+  cfg_weight: 0.49
+  temperature: 1.13
+  repetition_penalty: 2.1
+  min_p: 0.12
+  top_p: 0.98

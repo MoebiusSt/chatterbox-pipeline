@@ -401,8 +401,8 @@ class TaskMetricsGenerator:
             speaker_id = chunk_meta.get("speaker_id", "")
             parameter_ranges = self._calculate_parameter_ranges(speaker_id, config)
 
-            # Get chunk text and normalize line breaks
-            chunk_text = whisper_chunk_data.get("text", "")
+            # Get chunk text and normalize line breaks (schema key is 'chunk_text' in whisper_metrics)
+            chunk_text = whisper_chunk_data.get("chunk_text", whisper_chunk_data.get("text", ""))
             # Replace line breaks with \n and normalize whitespace
             normalized_text = chunk_text.replace("\r\n", "\n").replace("\r", "\n")
             # Replace multiple consecutive newlines with double newlines

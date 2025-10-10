@@ -1316,13 +1316,19 @@ class ChatterboxTester:
             return
         
         # Set seed for reproducibility
+        # Convention: seed > 0 => deterministic; seed == 0 => use random (do NOT set torch seed)
         try:
-            seed = int(self.seed_var.get()) if self.seed_var.get().isdigit() else 12345
+            seed_str = self.seed_var.get().strip()
+            seed = int(seed_str) if seed_str.isdigit() else 0
+        except Exception:
+            seed = 0
+
+        if seed > 0:
             torch.manual_seed(seed)
             print(f"🎲 Seed set to: {seed}")
-        except:
-            seed = 12345
-            torch.manual_seed(seed)
+        else:
+            # Intentionally do not call torch.manual_seed so the model uses randomness internally
+            print("🎲 Using random seed (0)")
         
         # Get reference audio path
         ref_audio_file = self.ref_audio_var.get()
