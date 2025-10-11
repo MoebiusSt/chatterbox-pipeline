@@ -50,9 +50,17 @@ class QualityCalculator:
 
             if _RAPIDFUZZ_AVAILABLE:
                 try:
-                    tsr = _rf_fuzz.token_set_ratio(norm_original, norm_transcr)
-                    tor = _rf_fuzz.token_sort_ratio(norm_original, norm_transcr)
-                    similarity = max(tsr, tor) / 100.0
+                    # For micro-chunks (≤2 tokens), use character-based ratio to avoid 1.0 saturation
+                    tokens_o = self._tokenize(norm_original)
+                    tokens_t = self._tokenize(norm_transcr)
+                    if len(tokens_o) <= 2 or len(tokens_t) <= 2:
+                        char_ratio = _rf_fuzz.ratio(norm_original, norm_transcr) / 100.0
+                        # Cap at 0.92 to preserve discriminability for micro-chunks
+                        similarity = min(0.92, char_ratio)
+                    else:
+                        tsr = _rf_fuzz.token_set_ratio(norm_original, norm_transcr)
+                        tor = _rf_fuzz.token_sort_ratio(norm_original, norm_transcr)
+                        similarity = max(tsr, tor) / 100.0
                     return float(max(0.0, min(1.0, similarity)))
                 except Exception:
                     # fall back to jaccard below

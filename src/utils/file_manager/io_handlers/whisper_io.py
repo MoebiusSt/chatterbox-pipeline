@@ -302,6 +302,9 @@ class WhisperIOHandler:
                 "transcription": result.get("transcription", ""),
                 "quality_details": quality_details,
                 "is_valid": result.get("is_valid", False),
+                # Add top-level fields for median calculation compatibility
+                "overall_quality_score": overall_score,
+                "similarity_score": individual_scores.get("similarity_score", 0.0),
             }
 
             # Merge into existing candidate entry if present to preserve fields like final_score
@@ -324,6 +327,30 @@ class WhisperIOHandler:
                     metrics.pop("selected_candidates", None)
                 except Exception:
                     pass
+
+            # Sort chunks and candidates for stable, readable output
+            try:
+                chunks = metrics.get("chunks", {})
+                if isinstance(chunks, dict):
+                    # Sort candidates per chunk
+                    sorted_chunks = {}
+                    for k in sorted(chunks.keys(), key=lambda x: int(x)):
+                        chunk_data = chunks.get(k, {})
+                        if isinstance(chunk_data, dict):
+                            cands = chunk_data.get("candidates", {})
+                            if isinstance(cands, dict):
+                                sorted_cands = {ck: cands[ck] for ck in sorted(cands.keys(), key=lambda x: int(x))}
+                                chunk_copy = chunk_data.copy()
+                                chunk_copy["candidates"] = sorted_cands
+                                sorted_chunks[k] = chunk_copy
+                            else:
+                                sorted_chunks[k] = chunk_data
+                        else:
+                            sorted_chunks[k] = chunk_data
+                    metrics["chunks"] = sorted_chunks
+            except Exception:
+                # Non-critical: keep original ordering if sorting fails
+                pass
 
             # Save updated metrics back
             with open(metrics_path, "w", encoding="utf-8") as f:

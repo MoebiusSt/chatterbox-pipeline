@@ -79,8 +79,27 @@ def _de_word_is_number(token: str) -> bool:
         except Exception:
             pass
 
-    # Fallback heuristic: pattern of common german number components
-    return bool(_DE_NUMBER_WORD_RE.match(t))
+    # Conservative fallback: only exact forms and legitimate compounds
+    EXACT = {
+        "null","eins","ein","eine","einem","einen","einer","zwei","drei","vier","fuenf","fünf","sechs","sieben",
+        "acht","neun","zehn","elf","zwoelf","zwölf","dreizehn","vierzehn","fuenfzehn","fünfzehn",
+        "sechzehn","siebzehn","achtzehn","neunzehn","zwanzig","dreissig","dreißig","vierzig","fuenfzig",
+        "fünfzig","sechzig","siebzig","achtzig","neunzig","hundert","tausend","million","millionen",
+        "milliarde","milliarden","billion","billionen"
+    }
+    if t in EXACT:
+        return True
+
+    # Allow typical compounds with 'und' + ZEHNER (e.g., einundzwanzig)
+    ZEHNER = {"zwanzig","dreissig","dreißig","vierzig","fuenfzig","fünfzig","sechzig","siebzig","achtzig","neunzig"}
+    if "und" in t:
+        bases = {"ein","eins","zwei","drei","vier","fuenf","fünf","sechs","sieben","acht","neun"}
+        for base in bases:
+            for z in ZEHNER:
+                if t == f"{base}und{z}":
+                    return True
+
+    return False
 
 
 def _replace_de_number_words_with_placeholder(text: str) -> str:
