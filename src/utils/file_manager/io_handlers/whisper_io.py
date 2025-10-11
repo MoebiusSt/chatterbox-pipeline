@@ -149,11 +149,15 @@ class WhisperIOHandler:
             whisper_files = list(
                 self.whisper_dir.glob("chunk_*_candidate_*_whisper.json")
             )
-            if not whisper_files:
-                logger.debug("No existing whisper files found - no migration needed")
+            total_files = len(whisper_files)
+            if total_files == 0:
+                logger.info("Whisper migration: no files found - nothing to migrate")
                 return True
 
-            migration_count = 0
+            migrated_count = 0
+            skipped_missing_audio = 0
+            invalid_filename_or_json = 0
+            sync_failures = 0
 
             for whisper_file in whisper_files:
                 try:
@@ -164,9 +168,7 @@ class WhisperIOHandler:
 
                     # Only migrate if corresponding audio file still exists
                     if not self._audio_file_exists(chunk_idx, candidate_idx):
-                        logger.debug(
-                            f"Skipping migration for chunk {chunk_idx}, candidate {candidate_idx} - audio file no longer exists"
-                        )
+                        skipped_missing_audio += 1
                         continue
 
                     # Load whisper result
@@ -177,15 +179,22 @@ class WhisperIOHandler:
                     if self._sync_whisper_to_enhanced_metrics(
                         chunk_idx, candidate_idx, result
                     ):
-                        migration_count += 1
-                        # logger.debug(f"✓ Migrated whisper result for chunk {chunk_idx}, candidate {candidate_idx}")
+                        migrated_count += 1
+                    else:
+                        sync_failures += 1
 
-                except Exception as e:
-                    logger.warning(f"Failed to migrate {whisper_file}: {e}")
+                except Exception:
+                    # Filename parse errors, IO errors, or JSON decode errors → count and continue
+                    invalid_filename_or_json += 1
                     continue
 
-            logger.debug(
-                f"✅ Migration completed: {migration_count}/{len(whisper_files)} whisper files migrated to enhanced metrics"
+            logger.info(
+                "Whisper migration: processed %d, migrated %d, skipped_missing_audio %d, invalid %d, sync_failures %d",
+                total_files,
+                migrated_count,
+                skipped_missing_audio,
+                invalid_filename_or_json,
+                sync_failures,
             )
             return True
 
@@ -323,8 +332,8 @@ class WhisperIOHandler:
             return True
 
         except Exception as e:
-            # Don't fail the whole operation if sync fails
-            logger.warning(f"Failed to sync whisper result to enhanced metrics: {e}")
+            # Don't fail the whole operation if sync fails; keep noise low in normal runs
+            logger.debug(f"Failed to sync whisper result to enhanced metrics: {e}")
             return False
 
     def _get_whisper_from_enhanced_metrics(

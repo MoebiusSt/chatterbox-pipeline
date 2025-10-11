@@ -85,18 +85,23 @@ temperature: RAMP-UP from MIN (config) to MAX (config + max_deviation)
 ```python
 # Validation Chain
 WhisperValidator.validate() → transcription + similarity_score
-FuzzyMatcher.match_texts() → MatchResult (token/partial/ratio methods)
 QualityScorer.score_candidate() → QualityScore (combined metrics)
+
+# Robust Similarity
+# - Lowercasing, unicode punctuation normalization, whitespace/hyphen unification,
+#   German ß→ss tolerance
+# - RapidFuzz token ratios if available, otherwise token Jaccard
 
 # Numbers Normalization (non-EN only)
 # - validation.numbers_normalization_mode: off|placeholder|digits|words
-# - placeholder: Replace digits and recognized number words with <NUM>
-# - digits: Number words → digits (DE uses word2num-de if available)
-# - words: Digits → words (uses num2words)
-# Similarity computed on normalized texts; length uses normalized original
+# - Similarity computed on normalized texts; length uses normalized original
+
+# Dynamic Thresholding
+# - Similarity threshold is adjusted by text length and punctuation density
+#   (no new config flags)
 
 # Selection Logic (3-stage fallback)
-# Stage 1: Best valid candidate (similarity > threshold)
+# Stage 1: Best valid candidate (similarity > effective_threshold)
 # Stage 2: Best invalid candidate (highest quality score)
 # Stage 3: Emergency fallback (first candidate)
 ```

@@ -345,6 +345,9 @@ class ValidationHandler:
             chunk_key = str(chunk_idx)
             chunk_metrics = {
                 "text": chunk.text,
+                "chunk_text": (
+                    chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text
+                ),
                 "speaker_id": chunk.speaker_id,
                 "start_pos": chunk.start_pos,
                 "end_pos": chunk.end_pos,
@@ -395,10 +398,9 @@ class ValidationHandler:
                         best_candidate_idx = candidate.candidate_idx
 
                 chunk_metrics = {
+                    "text": chunk.text,
                     "chunk_text": (
-                        chunk.text[:100] + "..."
-                        if len(chunk.text) > 100
-                        else chunk.text
+                        chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text
                     ),
                     "speaker_id": chunk.speaker_id,
                     "language_id": getattr(chunk, 'language_id', 'en'),
@@ -760,10 +762,9 @@ class ValidationHandler:
                             best_candidate_idx = candidate.candidate_idx
 
                     chunk_metrics = {
+                        "text": chunk.text,
                         "chunk_text": (
-                            chunk.text[:100] + "..."
-                            if len(chunk.text) > 100
-                            else chunk.text
+                            chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text
                         ),
                         "candidates": {},
                         "best_candidate": best_candidate_idx,

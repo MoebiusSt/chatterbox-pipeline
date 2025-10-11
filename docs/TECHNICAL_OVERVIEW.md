@@ -160,9 +160,22 @@ generate_single(text, language_id="de") → language-specific generation
 ### 5. Quality Validation (`src/validation/`)
 ```python
 WhisperValidator.validate_candidate() → ValidationResult
-FuzzyMatcher.match_texts() → MatchResult  
 QualityScorer.score_candidate() → QualityScore
-# Speech-to-Text Validierung + Multi-Kriterien Scoring
+# Speech-to-Text validation + multi-criteria scoring
+
+# Robust Similarity
+# - quality_calculator.calculate_similarity() applies robust normalization
+#   (lowercase, unicode punctuation handling, whitespace/hyphen unification,
+#    ß→ss tolerance). Uses RapidFuzz token ratios if available,
+#    falls back to Jaccard on tokens.
+
+# Numbers Normalization (non-EN only)
+# - validation.numbers_normalization_mode: off|placeholder|digits|words
+# - Similarity is computed on normalized texts; length uses normalized original length.
+
+# Dynamic Thresholding
+# - WhisperValidator computes an effective similarity threshold based on
+#   text length and punctuation density (no new config flags).
 ```
 
 Numbers Normalization (non-EN only)
@@ -172,7 +185,7 @@ Numbers Normalization (non-EN only)
 - words: Converts digits → words (e.g., 1995 → "neunzehnhundertfünfundneunzig") [uses num2words]
 
 Effects
-- Similarity: computed on normalized texts (original + transcription)
+- Similarity: computed on robustly normalized texts (original + transcription)
 - Length: uses normalized original length; transcription length remains raw
 - Optional Whisper initial prompt: validation.whisper_initial_prompt_enabled + validation.whisper_initial_prompt_text
 

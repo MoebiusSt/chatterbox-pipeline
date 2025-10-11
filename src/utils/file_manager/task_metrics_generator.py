@@ -78,6 +78,7 @@ class TaskMetricsGenerator:
         try:
             whisper_path = self.whisper_dir / "whisper_metrics.json"
             if not whisper_path.exists():
+                logger.info("Legacy selection migration: no whisper_metrics.json - nothing to do")
                 return True
 
             with open(whisper_path, "r", encoding="utf-8") as f:
@@ -85,13 +86,16 @@ class TaskMetricsGenerator:
 
             legacy_sel = whisper_metrics.get("selected_candidates", {})
             if not legacy_sel:
+                logger.info("Legacy selection migration: no legacy selected_candidates present")
                 return True
 
             # Ensure task_metrics.json exists and is up-to-date
             if not self.generate_task_metrics():
-                logger.warning("Could not generate task_metrics.json during migration")
+                logger.debug("Legacy selection migration: task_metrics generation returned False")
 
             # Convert legacy selections (string->int, 0-based) and persist into task_metrics.json
+            migrated_entries = 0
+            invalid_entries = 0
             try:
                 selections_0based = {}
                 for k, v in legacy_sel.items():
@@ -99,26 +103,37 @@ class TaskMetricsGenerator:
                         chunk_idx_0 = int(k)
                         cand_idx_0 = int(v)
                         selections_0based[chunk_idx_0] = cand_idx_0
+                        migrated_entries += 1
                     except Exception:
+                        invalid_entries += 1
                         continue
                 if selections_0based:
-                    self.update_selected_candidates(selections_0based)
-            except Exception as e:
-                logger.warning(f"Failed to migrate legacy selected_candidates into task_metrics.json: {e}")
+                    if not self.update_selected_candidates(selections_0based):
+                        logger.debug("Legacy selection migration: update_selected_candidates returned False")
+            except Exception:
+                # Count as invalid batch, but continue to strip legacy field below
+                invalid_entries += 1
 
-            # Strip selected_candidates from whisper metrics
+            # Strip selected_candidates from whisper metrics regardless
             try:
                 whisper_metrics.pop("selected_candidates", None)
                 with open(whisper_path, "w", encoding="utf-8") as f:
                     json.dump(whisper_metrics, f, indent=2, ensure_ascii=False)
-            except Exception as e:
-                logger.warning(f"Failed to strip selected_candidates from whisper metrics: {e}")
+            except Exception:
+                # Keep noise low; file will be rewritten on next validation anyway
+                pass
 
+            logger.info(
+                "Legacy selection migration: migrated %d entries, invalid %d",
+                migrated_entries,
+                invalid_entries,
+            )
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to migrate selected_candidates from whisper metrics: {e}")
-            return False
+        except Exception:
+            # Treat as no-op with single summary line to avoid noisy warnings in gap-filling runs
+            logger.info("Legacy selection migration: skipped due to read/parse error")
+            return True
 
     def get_selected_candidates(self) -> Dict[int, int]:
         """
@@ -299,7 +314,11 @@ class TaskMetricsGenerator:
         whisper_chunks = whisper_metrics.get("chunks", {})
         chunks_meta_list = chunks_metadata.get("chunks", [])
 
-        for chunk_key, whisper_chunk_data in whisper_chunks.items():
+        # Iterate chunks in ascending numeric order of their keys for stable, readable output
+        chunk_keys_sorted = sorted(whisper_chunks.keys(), key=lambda k: int(k))
+
+        for chunk_key in chunk_keys_sorted:
+            whisper_chunk_data = whisper_chunks.get(chunk_key, {})
             chunk_idx_0based = int(chunk_key)
             chunk_idx_1based = chunk_idx_0based + 1
 
@@ -401,8 +420,8 @@ class TaskMetricsGenerator:
             speaker_id = chunk_meta.get("speaker_id", "")
             parameter_ranges = self._calculate_parameter_ranges(speaker_id, config)
 
-            # Get chunk text and normalize line breaks (schema key is 'chunk_text' in whisper_metrics)
-            chunk_text = whisper_chunk_data.get("chunk_text", whisper_chunk_data.get("text", ""))
+            # Get chunk text and normalize line breaks: prefer 'text', fallback to 'chunk_text'
+            chunk_text = whisper_chunk_data.get("text", whisper_chunk_data.get("chunk_text", ""))
             # Replace line breaks with \n and normalize whitespace
             normalized_text = chunk_text.replace("\r\n", "\n").replace("\r", "\n")
             # Replace multiple consecutive newlines with double newlines
@@ -440,6 +459,13 @@ class TaskMetricsGenerator:
             }
 
             chunks.append(chunk_data)
+
+        # Ensure final chunks list is strictly ordered by chunk index (1-based in meta)
+        try:
+            chunks.sort(key=lambda c: int(c.get("chunk_meta", {}).get("idx", 0)))
+        except Exception:
+            # Fallback: keep existing order if sorting fails for any reason
+            pass
 
         # Calculate summary statistics
         all_overall_scores = []

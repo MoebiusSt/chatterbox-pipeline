@@ -5,6 +5,14 @@ Handles similarity scoring and overall quality assessment.
 
 import logging
 import math
+import re
+from typing import List
+
+try:
+    from rapidfuzz import fuzz as _rf_fuzz  # type: ignore
+    _RAPIDFUZZ_AVAILABLE = True
+except Exception:
+    _RAPIDFUZZ_AVAILABLE = False
 
 from typing import TYPE_CHECKING
 
@@ -22,7 +30,7 @@ class QualityCalculator:
     def calculate_similarity(self, original: str, transcription: str) -> float:
         """
         Calculate similarity between original text and transcription.
-        This is a simplified implementation - will be enhanced by FuzzyMatcher.
+        Uses robust normalization and optionally RapidFuzz token ratios.
 
         Args:
             original: Original text
@@ -32,19 +40,36 @@ class QualityCalculator:
             Similarity score (0.0 to 1.0)
         """
         try:
-            original_tokens = set(original.lower().split())
-            transcription_tokens = set(transcription.lower().split())
+            norm_original = self._normalize_text_base(original)
+            norm_transcr = self._normalize_text_base(transcription)
 
-            if not original_tokens and not transcription_tokens:
+            if not norm_original and not norm_transcr:
                 return 1.0
-            if not original_tokens or not transcription_tokens:
+            if not norm_original or not norm_transcr:
                 return 0.0
 
-            intersection = original_tokens.intersection(transcription_tokens)
-            union = original_tokens.union(transcription_tokens)
+            if _RAPIDFUZZ_AVAILABLE:
+                try:
+                    tsr = _rf_fuzz.token_set_ratio(norm_original, norm_transcr)
+                    tor = _rf_fuzz.token_sort_ratio(norm_original, norm_transcr)
+                    similarity = max(tsr, tor) / 100.0
+                    return float(max(0.0, min(1.0, similarity)))
+                except Exception:
+                    # fall back to jaccard below
+                    pass
 
-            similarity = len(intersection) / len(union) if union else 0.0
-            return min(1.0, max(0.0, similarity))
+            tokens_o = self._tokenize(norm_original)
+            tokens_t = self._tokenize(norm_transcr)
+            if not tokens_o and not tokens_t:
+                return 1.0
+            if not tokens_o or not tokens_t:
+                return 0.0
+            set_o = set(tokens_o)
+            set_t = set(tokens_t)
+            union = set_o | set_t
+            inter = set_o & set_t
+            similarity = (len(inter) / len(union)) if union else 0.0
+            return float(max(0.0, min(1.0, similarity)))
 
         except Exception as e:
             self.logger.warning(f"Similarity calculation failed: {e}")
@@ -97,3 +122,39 @@ class QualityCalculator:
         except Exception as e:
             self.logger.warning(f"Quality score calculation failed: {e}")
             return similarity_score
+
+    # --- Helpers ---
+
+    def _normalize_text_base(self, text: str) -> str:
+        if not text:
+            return ""
+
+        t = text.lower()
+
+        # Normalize common unicode quotes/dashes to spaces or ascii
+        quotes_map = {
+            "\u2018": "'", "\u2019": "'", "\u201a": ",", "\u201b": "'",
+            "\u201c": '"', "\u201d": '"', "\u201e": '"',
+            "\xab": '"', "\xbb": '"',
+        }
+        for k, v in quotes_map.items():
+            t = t.replace(k, v)
+
+        dashes = ["\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2212", "-"]
+        for d in dashes:
+            t = t.replace(d, " ")
+
+        # German sharp s tolerance: map ß to ss
+        t = t.replace("ß", "ss")
+
+        # Remove remaining punctuation (keep letters, digits, underscore)
+        t = re.sub(r"[^\w\s]", " ", t, flags=re.UNICODE)
+
+        # Collapse whitespace
+        t = re.sub(r"\s+", " ", t, flags=re.UNICODE).strip()
+        return t
+
+    def _tokenize(self, text: str) -> List[str]:
+        if not text:
+            return []
+        return [tok for tok in text.split(" ") if tok]

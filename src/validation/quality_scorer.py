@@ -9,7 +9,7 @@ import logging
 import warnings
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from validation.fuzzy_matcher import MatchResult
@@ -150,6 +150,12 @@ class QualityScorer:
                         "original_text_length": (
                             len(candidate.chunk_text) if candidate.chunk_text else 0
                         ),
+                        # diagnostics
+                        "normalized_transcription": getattr(validation_result, "normalized_transcription", None),
+                        "normalization_language": getattr(validation_result, "normalization_language", None),
+                        "numbers_normalization_mode": getattr(validation_result, "numbers_normalization_mode", None),
+                        "base_similarity_threshold": getattr(validation_result, "base_similarity_threshold", None),
+                        "effective_similarity_threshold": getattr(validation_result, "effective_similarity_threshold", None),
                     },
                 },
             )
@@ -295,7 +301,7 @@ class QualityScorer:
         candidates: List[AudioCandidate],
         validation_results: List[ValidationResult],
         match_results: Optional[List[Optional[MatchResult]]] = None,  # Updated annotation
-        expected_durations: Optional[List[float]] = None,
+        expected_durations: Optional[List[Optional[float]]] = None,
     ) -> List[Tuple[AudioCandidate, QualityScore]]:
         """
         Rank multiple candidates by quality score.
@@ -391,8 +397,12 @@ class QualityScorer:
         if not candidates:
             raise ValueError("No candidates provided")
 
+        expected_durations_typed = cast(Optional[List[Optional[float]]], expected_durations)
         ranked_candidates = self.rank_candidates(
-            candidates, validation_results, match_results, expected_durations
+            candidates,
+            validation_results,
+            match_results,
+            expected_durations_typed,
         )
 
         best_candidate, best_score = ranked_candidates[0]

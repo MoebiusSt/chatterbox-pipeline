@@ -34,13 +34,14 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 
 #### Validation
 - **WhisperValidator**: Speech-to-text re-validation of generated audio candidates using local Whisper models (base/small/medium/large).
+- **Robust Similarity**: Lowercasing, unicode punctuation normalization, whitespace/hyphen unification, German ß→ss tolerance; uses RapidFuzz token ratios if available (fallback: token Jaccard).
 - **Numbers Normalization (non-EN only)**: Reduces format mismatches between digits and written numbers during validation; modes:
   - `off`: No normalization.
   - `placeholder`: Replaces digit sequences (e.g., "1995", "10", "3") and recognized German number words (incl. compounds like "zweitausendfünfundzwanzig", "fünfzigtausend", "neunzehnhundertfünfundneunzig") with <NUM> placeholder. Uses word2num-de parser if available; otherwise conservative regex heuristic.
   - `digits`: Converts number words to digits (e.g., "tausend" → "1000"); falls back to placeholder if word2num-de unavailable.
   - `words`: Converts digits to written words (e.g., 1995 → "neunzehnhundertfünfundneunzig"); uses num2words; falls back to placeholder.
 - **Application**: Similarity score computed on normalized texts (original + transcription), so "1995" and "neunzehnhundertfünfundneunzig" are treated equally. Length score uses normalized original length (transcription remains raw), reducing deviations from format differences.
-- **QualityScorer**: Multi-criteria evaluation (75% similarity + 25% length) and best candidate selection (3-stage fallback: best valid → best overall → emergency first).
+- **QualityScorer**: Multi-criteria evaluation (75% similarity + 25% length) and best candidate selection (3-stage fallback: best valid → best overall → emergency first). Similarity gate uses a dynamic effective threshold depending on chunk length and punctuation density (no extra config flags).
 
 #### ⚠️ Does not have:
 - a fancy user interface

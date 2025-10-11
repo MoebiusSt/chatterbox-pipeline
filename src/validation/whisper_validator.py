@@ -33,6 +33,9 @@ class ValidationResult:
     normalized_transcription: Optional[str] = None
     normalization_language: Optional[str] = None
     numbers_normalization_mode: Optional[str] = None
+    # Diagnostics: thresholding
+    base_similarity_threshold: Optional[float] = None
+    effective_similarity_threshold: Optional[float] = None
 
 class WhisperValidator:
     """
@@ -270,9 +273,9 @@ class WhisperValidator:
             )
 
             # Validation logic with flexibility
+            eff_thr = self._compute_effective_similarity_threshold(original_text)
             strict_validation = (
-                similarity_score >= self.similarity_threshold
-                and quality_score >= self.min_quality_score
+                similarity_score >= eff_thr and quality_score >= self.min_quality_score
             )
 
             flexible_validation = (
@@ -305,6 +308,8 @@ class WhisperValidator:
                 normalized_transcription=(transcr_for_sim if apply_norm else None),
                 normalization_language=(safe_language if apply_norm else None),
                 numbers_normalization_mode=(numbers_mode if apply_norm else None),
+                base_similarity_threshold=self.similarity_threshold,
+                effective_similarity_threshold=eff_thr,
             )
 
             return result
@@ -321,6 +326,27 @@ class WhisperValidator:
                 validation_time=validation_time,
                 error_message=str(e),
             )
+
+    def _compute_effective_similarity_threshold(self, text: str) -> float:
+        """
+        Compute a dynamic similarity threshold based on text length and punctuation density.
+        No new config parameters are introduced; uses self.similarity_threshold as base.
+        """
+        try:
+            base = float(self.similarity_threshold)
+            if not text:
+                return max(0.0, min(1.0, base))
+            length = len(text)
+            # Approximate punctuation density
+            import re
+            punct_count = len(re.findall(r"[\.,;:!\?\-\(\)\[\]\{\}\"'«»„“”‚‘’]", text))
+            punct_density = punct_count / max(1, length)
+            # Adjust up to ~0.08 downward for long, punctuation-rich texts
+            adj = min(0.08, 0.05 * min(1.0, length / 300.0) + 0.03 * min(1.0, punct_density * 10))
+            thr = max(0.0, base - adj)
+            return float(thr)
+        except Exception:
+            return float(self.similarity_threshold)
 
     def batch_validate(
         self,
