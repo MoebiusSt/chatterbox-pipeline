@@ -8,6 +8,10 @@ from chunking.base_chunker import TextChunk
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from validation.quality_scorer import QualityScorer
+from validation.preprocessors.tail_trimmer import TailTrimmer
+from validation.prosody_scorer import ProsodyScorer
+from validation.mos_providers.utmos import UTMOSProvider
+from validation.mos_providers.nisqa import NISQAProvider
 from validation.whisper_validator import ValidationResult, WhisperValidator
 
 logger = logging.getLogger(__name__)
@@ -28,6 +32,26 @@ class ValidationHandler:
         self.whisper_validator = whisper_validator
         self.quality_scorer = quality_scorer
         self.generation_handler = generation_handler
+        # Initialize tail trimmer (optional, controlled by config)
+        try:
+            self.tail_trimmer = TailTrimmer(config=self.config, sample_rate=self.config.get("audio", {}).get("sample_rate", 24000))
+        except Exception:
+            self.tail_trimmer = None
+        # Initialize MOS provider and Prosody scorer
+        try:
+            mos_cfg = self.config.get("validation", {}).get("mos", {})
+            provider_name = str(mos_cfg.get("provider", "utmos")).lower()
+            enabled_langs = mos_cfg.get("enabled_languages", ["de", "en", "fr", "es", "it", "ja", "zh"]) or []
+            mos_provider = None
+            if provider_name == "utmos":
+                mos_provider = UTMOSProvider(enabled_languages=enabled_langs)
+            elif provider_name == "nisqa":
+                mos_provider = NISQAProvider(enabled_languages=enabled_langs)
+            else:
+                mos_provider = None
+            self.prosody_scorer = ProsodyScorer(config=self.config, mos_provider=mos_provider, sample_rate=self.config.get("audio", {}).get("sample_rate", 24000))
+        except Exception:
+            self.prosody_scorer = None
 
     def execute_validation(self) -> bool:
         try:
@@ -80,6 +104,32 @@ class ValidationHandler:
 
                     candidate.chunk_text = chunk.text
 
+                    # Tail-trim candidate audio before validation to remove trailing non-speech
+                    try:
+                        if hasattr(self, "tail_trimmer") and self.tail_trimmer and candidate.audio_tensor is not None:
+                            trimmed_audio, removed_tail, trim_meta = self.tail_trimmer.trim(
+                                candidate.audio_tensor,
+                                language=getattr(chunk, 'language_id', 'en'),
+                                original_text=chunk.text,
+                            )
+                            if trimmed_audio is not None and trimmed_audio.numel() > 0:
+                                candidate.audio_tensor = trimmed_audio
+                                logger.debug(f"✂️  Tail-trim applied (method={trim_meta.get('method')}, cut={trim_meta.get('cut_sample')}) for candidate {candidate_num}")
+                                # Optional: persist removed tail for inspection if enabled in config
+                                try:
+                                    tt_cfg = self.config.get("validation", {}).get("preprocessing", {}).get("tail_trim", {})
+                                    if removed_tail is not None and bool(tt_cfg.get("debug_save_removed_tail", False)):
+                                        from pathlib import Path
+                                        import torchaudio as ta
+                                        out_dir = self.file_manager.task_directory / "debug_tail_trimmer"
+                                        out_dir.mkdir(parents=True, exist_ok=True)
+                                        out_path = out_dir / f"chunk_{chunk.idx+1:03d}_cand_{candidate.candidate_idx+1:02d}_removed_tail.wav"
+                                        ta.save(str(out_path), removed_tail.unsqueeze(0).cpu(), self.config.get("audio", {}).get("sample_rate", 24000))
+                                except Exception as e:
+                                    logger.debug(f"Failed saving removed tail audio: {e}")
+                    except Exception as e:
+                        logger.debug(f"Tail-trim failed for candidate {candidate_num}: {e}")
+
                     # Perform Whisper validation with language-specific model
                     chunk_language = getattr(chunk, 'language_id', 'en')
                     whisper_result = self.whisper_validator.validate_candidate(
@@ -92,7 +142,53 @@ class ValidationHandler:
                             candidate, whisper_result
                         )
 
-                        # Combine results
+                        # Prosody + MOS scoring (optional)
+                        prosody_details = None
+                        prosody_score = 0.0
+                        mos_value = None
+                        if hasattr(self, "prosody_scorer") and self.prosody_scorer and candidate.audio_tensor is not None:
+                            try:
+                                prosody_details = self.prosody_scorer.score(
+                                    candidate.audio_tensor,
+                                    language=getattr(chunk, 'language_id', 'en'),
+                                    original_text=chunk.text,
+                                    asr_transcription=whisper_result.transcription,
+                                )
+                                prosody_score = float(prosody_details.get("prosody_score", 0.0))
+                                mos_value = prosody_details.get("raw_mos")
+                            except Exception:
+                                prosody_details = None
+                                prosody_score = 0.0
+
+                        # Final selection score
+                        sel_cfg = self.config.get("validation", {}).get("prosody", {}).get("select", {})
+                        alpha = float(sel_cfg.get("alpha_quality", 0.50))
+                        beta = float(sel_cfg.get("beta_prosody", 0.35))
+                        gamma = float(sel_cfg.get("gamma_mos", 0.15))
+                        # Derive mos_unit from prosody_details (already unitized) if available
+                        mos_unit = 0.0
+                        if isinstance(prosody_details, dict):
+                            mos_unit = float(prosody_details.get("subscores", {}).get("mos", 0.0))
+                        final_selection_score = (
+                            alpha * float(quality_result.overall_score)
+                            + beta * float(prosody_score)
+                            + gamma * float(mos_unit)
+                        )
+
+                        # Apply gating
+                        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
+                        require_mos = bool(gating.get("require_mos", True))
+                        require_similarity = bool(gating.get("require_similarity", True))
+                        passes_mos = True
+                        if require_mos and isinstance(prosody_details, dict):
+                            min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
+                            raw_mos = prosody_details.get("raw_mos")
+                            # If MOS is unavailable (None), do not block selection
+                            passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
+                        passes_similarity = True
+                        if require_similarity:
+                            passes_similarity = bool(whisper_result.is_valid)
+
                         combined_result = {
                             "is_valid": whisper_result.is_valid,
                             "transcription": whisper_result.transcription,
@@ -104,6 +200,11 @@ class ValidationHandler:
                             "quality_details": quality_result.details,
                             "speaker_id": chunk.speaker_id,
                             "language_id": getattr(chunk, 'language_id', 'en'),
+                            # Prosody/MOS
+                            "prosody": prosody_details,
+                            "final_selection_score": final_selection_score,
+                            "passes_mos_gate": passes_mos,
+                            "passes_similarity_gate": passes_similarity,
                         }
 
                         # Save whisper result
@@ -382,19 +483,33 @@ class ValidationHandler:
                 continue
 
             try:
-                # Find best candidate
+                # Find best candidate (prefer final_selection_score if present)
                 best_candidate_idx = None
-                best_score_value = -1.0
+                best_score_value = float("-inf")
 
                 for candidate in filtered_candidates_list:
                     result_dict = chunk_validation[candidate.candidate_idx]
-                    # Use overall from details to avoid redundancy
                     quality_details = result_dict.get("quality_details", {})
                     individual_scores = quality_details.get("individual_scores", {})
-                    candidate_score = individual_scores.get("overall_score", 0.0)
+                    # Prefer our combined score; fallback to legacy overall
+                    candidate_score = float(
+                        result_dict.get(
+                            "final_selection_score",
+                            individual_scores.get("overall_score", 0.0),
+                        )
+                    )
 
-                    if candidate_score > best_score_value:
-                        best_score_value = candidate_score
+                    # Respect gating flags if present
+                    passes_mos = result_dict.get("passes_mos_gate", True)
+                    passes_similarity = result_dict.get("passes_similarity_gate", True)
+                    if not (passes_mos and passes_similarity):
+                        # Demote gated-out candidates
+                        candidate_effective = float("-inf")
+                    else:
+                        candidate_effective = candidate_score
+
+                    if candidate_effective > best_score_value:
+                        best_score_value = candidate_effective
                         best_candidate_idx = candidate.candidate_idx
 
                 chunk_metrics = {
@@ -412,19 +527,27 @@ class ValidationHandler:
                 candidate_scores = []
                 for candidate in filtered_candidates_list:
                     result_dict = chunk_validation[candidate.candidate_idx]
-                    # Use overall from details to avoid redundancy
                     quality_details = result_dict.get("quality_details", {})
                     individual_scores = quality_details.get("individual_scores", {})
-                    candidate_score = individual_scores.get("overall_score", 0.0)
-                    candidate_scores.append(candidate_score)
+                    final_sel = float(
+                        result_dict.get(
+                            "final_selection_score",
+                            individual_scores.get("overall_score", 0.0),
+                        )
+                    )
+                    candidate_scores.append(final_sel)
 
                     # Use string keys for candidate indices to avoid int/str duplicates in JSON
                     cand_key = str(candidate.candidate_idx)
                     chunk_metrics["candidates"][cand_key] = {
                         "transcription": result_dict.get("transcription", ""),
                         "quality_details": quality_details,
-                        "final_score": candidate_score,
+                        "overall_quality_score": float(individual_scores.get("overall_score", 0.0)),
+                        "final_selection_score": final_sel,
+                        "prosody": result_dict.get("prosody"),
                         "is_valid": result_dict.get("is_valid", False),
+                        "passes_mos_gate": result_dict.get("passes_mos_gate", True),
+                        "passes_similarity_gate": result_dict.get("passes_similarity_gate", True),
                     }
 
                 # Log results

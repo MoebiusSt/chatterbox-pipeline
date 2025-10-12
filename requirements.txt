@@ -18,3 +18,9 @@ pygame>=2.6.0                  # Audio playback for chatterbox_tester.py
 # Number normalization (optional but recommended)
 num2words>=0.5.13              # Digits → words conversion (multi-language including 'de')
 word2num-de>=1.1               # German word → number conversion (0-999999)
+
+# Prosody/MOS/Alignment (multilingual) – added for prosody scorer feature
+whisperx>=3.1.1                # Multilingual ASR with word-level timestamps (alignment)
+praat-parselmouth>=0.4.3       # F0/Intensity extraction via Praat bindings
+webrtcvad>=2.0.10              # Voice activity detection for tail trim
+versa>=0.2.4                   # UTMOS/metrics via VERSA toolkit (if available)

@@ -124,6 +124,18 @@ Usage Examples:
         help="Device to use for processing (default: auto)",
     )
 
+    # Feature toggles
+    parser.add_argument(
+        "--enable-prosody",
+        action="store_true",
+        help="Enable prosody scoring and MOS selection (overrides config)",
+    )
+    parser.add_argument(
+        "--enable-tail-trim",
+        action="store_true",
+        help="Enable tail-end trim preprocessor before validation (overrides config)",
+    )
+
     parser.add_argument(
         "--explain-cache",
         action="store_true",
@@ -331,6 +343,18 @@ def main() -> int:
             if not confirm_cli_rerender_action(execution_plan.task_configs):
                 logger.info("❌ Operation cancelled by user")
                 return 0
+
+        # Optional feature toggles overriding config
+        if hasattr(args, "enable_prosody") and args.enable_prosody:
+            try:
+                config_manager.default_config["validation"]["prosody"]["enabled"] = True
+            except Exception:
+                pass
+        if hasattr(args, "enable_tail_trim") and args.enable_tail_trim:
+            try:
+                config_manager.default_config["validation"]["preprocessing"]["tail_trim"]["enabled"] = True
+            except Exception:
+                pass
 
         # Execute tasks using task orchestrator
         orchestrator = TaskOrchestrator(config_manager)

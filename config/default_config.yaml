@@ -166,6 +166,57 @@ validation:
   whisper_initial_prompt_enabled: true    # If true, pass an initial prompt to Whisper
   whisper_initial_prompt_text: "Schreibe Zahlen ausgeschrieben."  # Style-only prompt, no language directive
 
+  # Preprocessing before validation: Tail-end speech-aware trim
+  preprocessing:
+    tail_trim:
+      enabled: true
+      lookback_seconds: 4.0
+      post_speech_silence_ms: 200
+      fade_out_ms: 120
+      prefer_whisperx: true
+      whisperx_device: cpu
+      debug_save_removed_tail: true
+      vad:
+        aggressiveness: 2        # 0..3
+        frame_ms: 20
+        min_voiced_ms: 60
+        hangover_ms: 120
+
+  # Prosody/MOS/Alignment configuration for automatic selection
+  prosody:
+    enabled: true
+    weights:
+      semantic_alignment: 0.20
+      flow: 0.25
+      liveliness: 0.25
+      intelligibility: 0.10
+      mos: 0.20
+    targets:
+      wpm_min: 130
+      wpm_max: 180
+      comma_pause_ms: [100, 250]
+      period_pause_ms: [350, 800]
+    select:
+      alpha_quality: 0.50
+      beta_prosody: 0.35
+      gamma_mos: 0.15
+    thresholds:
+      min_prosody_score: 0.60
+
+  mos:
+    provider: utmos            # utmos|nisqa|none
+    enabled_languages: [de, en, fr, es, it, ja, zh]
+    min_mos: 3.5               # UTMOS Schwelle (1..5)
+    scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
+
+  alignment:
+    required_languages: [de, en, fr, es, it, ja, zh]
+
+  selection:
+    gating:
+      require_mos: true        # Kandidaten < min_mos werden verworfen
+      require_similarity: true # bestehende Whisper‑Gate bleibt aktiv
+
 audio:
   silence_duration:
     normal: 0.20  # inserted between chunks if split was between sentences
