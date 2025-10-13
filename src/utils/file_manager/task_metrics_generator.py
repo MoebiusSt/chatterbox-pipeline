@@ -454,6 +454,11 @@ class TaskMetricsGenerator:
                             selected_candidate_data, chunk_idx_0based, selected_candidate_0based
                         ),
                         "validation": self._extract_validation_data(selected_candidate_data),
+                        # Prosody/MOS and selection diagnostics for the selected candidate
+                        "prosody": selected_candidate_data.get("prosody"),
+                        "final_selection_score": selected_candidate_data.get("final_selection_score"),
+                        "passes_mos_gate": selected_candidate_data.get("passes_mos_gate"),
+                        "passes_similarity_gate": selected_candidate_data.get("passes_similarity_gate"),
                     },
                 },
             }

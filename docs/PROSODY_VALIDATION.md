@@ -2,7 +2,7 @@
 
 ## Overview
 Adds a multilingual prosody and MOS-based selection layer to candidate validation:
-- Tail-end speech-aware trimming (VAD/whisperx) before any validation
+- Tail-end speech-aware trimming (Smart/WhisperX → VAD → Energy) before any validation
 - Prosody scoring (flow, liveliness, intelligibility, semantic proxy)
 - MOS via UTMOS (VERSA), fallback NISQA (optional)
 - Final selection score combines quality, prosody, and MOS
@@ -13,16 +13,27 @@ See `config/default_config.yaml` under `validation.preprocessing.tail_trim`, `va
 Key fields:
 - `validation.mos.min_mos`: 3.5 (UTMOS threshold)
 - `validation.prosody.select`: weights for combining scores
-- `validation.preprocessing.tail_trim`: lookback window, post-silence, fade-out
+- `validation.preprocessing.tail_trim`: Smart-Trim (WhisperX), lookback window, post-silence, fade-out, diagnostics/persistence
 
 ## Integration Points
 - TailTrim applied in `validation_handler` before Whisper validation
+- Trim metadata (`tail_trim`) persisted per candidate in `whisper/whisper_metrics.json` (method, match_type, cut_sample, matched_words, etc.)
+- `candidate_YY_trimmed.wav` preferred during assembly when present
 - Prosody/MOS scored per candidate; persisted in whisper metrics as `prosody` and `final_selection_score`
 - Assembly prefers `final_selection_score` (fallbacks to legacy overall scores)
 
 ## CLI
 - `--enable-prosody` enables prosody scoring regardless of config
 - `--enable-tail-trim` enables tail trimming regardless of config
+
+## Smart Tail-Trim details
+- Smart search for last N words of the input text (
+  `validation.preprocessing.tail_trim.smart_match.last_n_words`) in the last
+  `search_window_words` tokens of WhisperX-aligned words; fuzzy threshold via `fuzzy_ratio`.
+- Language gating via `language_gate` to limit Smart-Trim to supported languages.
+- Fallbacks when Smart-Trim misses: WhisperX last word end → VAD → energy.
+- Post-speech silence (`post_speech_silence_ms`) added, `fade_out_ms` applied to end.
+- Debug artifacts: `*_removed_tail.wav` if `debug_save_removed_tail` is true.
 
 ## Testing
 - `scripts/test_prosody_scorer.py` runs TailTrim and Prosody scoring on a dummy sample

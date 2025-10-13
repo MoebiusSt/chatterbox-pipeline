@@ -67,6 +67,14 @@ class ProsodyScorer:
         mos_cfg = self.config.get("validation", {}).get("mos", {})
         self.min_mos = float(mos_cfg.get("min_mos", 3.5))
 
+        # WhisperX caching to avoid repeated model loads per candidate
+        self._whisperx = whisperx
+        self._whisperx_asr_models: Dict[str, Any] = {}
+        self._whisperx_aligners: Dict[str, Tuple[Any, Any]] = {}
+        # Reuse device preference from tail-trim if present; default CPU for stability
+        tt_cfg = self.config.get("validation", {}).get("preprocessing", {}).get("tail_trim", {})
+        self.whisperx_device: str = str(tt_cfg.get("whisperx_device", "cpu")).lower()
+
     def _estimate_wpm(self, audio_len_samples: int, word_count: int) -> float:
         if word_count <= 0:
             return 0.0
@@ -115,6 +123,46 @@ class ProsodyScorer:
         except Exception:
             return 0.0, 0.0
 
+    def _resample_to_16k(self, audio: torch.Tensor) -> torch.Tensor:
+        if self.sample_rate == 16000:
+            return audio
+        try:
+            resampler = torchaudio.transforms.Resample(orig_freq=self.sample_rate, new_freq=16000)
+            return resampler(audio.unsqueeze(0)).squeeze(0)
+        except Exception:
+            ratio = 16000 / float(self.sample_rate)
+            new_len = max(1, int(round(audio.shape[-1] * ratio)))
+            idx = torch.linspace(0, audio.shape[-1] - 1, steps=new_len, device=audio.device)
+            idx_floor = idx.long().clamp_(0, audio.shape[-1] - 1)
+            return audio.index_select(-1, idx_floor)
+
+    def _get_whisperx_asr_model(self, device: str) -> Optional[Any]:
+        try:
+            key = f"small:{device}"
+            if key in self._whisperx_asr_models:
+                return self._whisperx_asr_models[key]
+            if self._whisperx is None:
+                return None
+            compute_type = "float16" if device == "cuda" else "int8"
+            model = self._whisperx.load_model("small", device=device, compute_type=compute_type)
+            self._whisperx_asr_models[key] = model
+            return model
+        except Exception:
+            return None
+
+    def _get_whisperx_aligner(self, language: str, device: str) -> Optional[Tuple[Any, Any]]:
+        try:
+            lang = (language or "en").lower()
+            if lang in self._whisperx_aligners:
+                return self._whisperx_aligners[lang]
+            if self._whisperx is None:
+                return None
+            align_model, metadata = self._whisperx.load_align_model(language_code=lang, device=device)
+            self._whisperx_aligners[lang] = (align_model, metadata)
+            return self._whisperx_aligners[lang]
+        except Exception:
+            return None
+
     def score(self, audio: Optional[torch.Tensor], language: str, original_text: str, asr_transcription: Optional[str]) -> Dict[str, Any]:
         result: Dict[str, Any] = {
             "enabled": self.enabled,
@@ -154,18 +202,29 @@ class ProsodyScorer:
         # Semantic alignment: if whisperx available, use alignment coverage; else ASR presence
         semantic_alignment = 1.0 if asr_len > 0 else 0.0
         try:
-            if whisperx is not None and asr_len > 0:
-                device = "cpu"
-                model = whisperx.load_model("small", device=device, compute_type="int8")
-                audio16 = torchaudio.transforms.Resample(orig_freq=self.sample_rate, new_freq=16000)(audio.unsqueeze(0)).squeeze(0)
-                result = model.transcribe(audio16.cpu().numpy(), language=language)
-                align_model, metadata = whisperx.load_align_model(language_code=language, device=device)
-                aligned = whisperx.align(result["segments"], align_model, metadata, audio16.cpu().numpy(), device=device, return_char_alignments=False)
-                words = aligned.get("word_segments") or []
-                if words:
-                    # Coverage: fraction of words with valid time stamps
-                    covered = sum(1 for w in words if (w.get("start") is not None and w.get("end") is not None))
-                    semantic_alignment = max(0.0, min(1.0, covered / max(1, len(words))))
+            if self._whisperx is not None and asr_len > 0:
+                device = self.whisperx_device if self.whisperx_device in {"cpu", "cuda"} else "cpu"
+                asr_model = self._get_whisperx_asr_model(device)
+                if asr_model is not None:
+                    audio16 = self._resample_to_16k(audio)
+                    # Guard against empty/None language
+                    lang = language or "en"
+                    result = asr_model.transcribe(audio16.cpu().numpy(), language=lang)
+                    align_pair = self._get_whisperx_aligner(lang, device)
+                    if align_pair is not None:
+                        align_model, metadata = align_pair
+                        aligned = self._whisperx.align(
+                            result.get("segments", []),
+                            align_model,
+                            metadata,
+                            audio16.cpu().numpy(),
+                            device=device,
+                            return_char_alignments=False,
+                        )
+                        words = aligned.get("word_segments") or []
+                        if words:
+                            covered = sum(1 for w in words if (w.get("start") is not None and w.get("end") is not None))
+                            semantic_alignment = max(0.0, min(1.0, covered / max(1, len(words))))
         except Exception:
             pass
 

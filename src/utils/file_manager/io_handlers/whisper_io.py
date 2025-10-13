@@ -298,6 +298,7 @@ class WhisperIOHandler:
             individual_scores = quality_details.get("individual_scores", {})
             overall_score = individual_scores.get("overall_score", 0.0)
 
+            # Build candidate data and include prosody/MOS/selection if present
             new_candidate_data = {
                 "transcription": result.get("transcription", ""),
                 "quality_details": quality_details,
@@ -306,6 +307,47 @@ class WhisperIOHandler:
                 "overall_quality_score": overall_score,
                 "similarity_score": individual_scores.get("similarity_score", 0.0),
             }
+
+            # Optional prosody block
+            try:
+                prosody = result.get("prosody")
+                if isinstance(prosody, dict):
+                    new_candidate_data["prosody"] = prosody
+            except Exception:
+                pass
+
+            # Optional final selection and gating flags
+            try:
+                if "final_selection_score" in result:
+                    new_candidate_data["final_selection_score"] = float(result.get("final_selection_score", 0.0))
+                if "passes_mos_gate" in result:
+                    new_candidate_data["passes_mos_gate"] = bool(result.get("passes_mos_gate", True))
+                if "passes_similarity_gate" in result:
+                    new_candidate_data["passes_similarity_gate"] = bool(result.get("passes_similarity_gate", True))
+            except Exception:
+                pass
+
+            # Persist tail_trim diagnostics if provided by validation stage (non-selective fields)
+            try:
+                tail_trim_meta = result.get("tail_trim")
+                if isinstance(tail_trim_meta, dict):
+                    # Keep only diagnostic fields; do not make selections dependent on these
+                    allowed_keys = {
+                        "method",
+                        "match_type",
+                        "cut_sample",
+                        "kept_post_silence_ms",
+                        "fade_out_ms",
+                        "matched_words",
+                        "match_ratio",
+                        "language_gated",
+                        "trimmed_path",
+                    }
+                    filtered = {k: tail_trim_meta.get(k) for k in allowed_keys if k in tail_trim_meta}
+                    if filtered:
+                        new_candidate_data["tail_trim"] = filtered
+            except Exception:
+                pass
 
             # Merge into existing candidate entry if present to preserve fields like final_score
             existing_candidate = metrics["chunks"][chunk_key]["candidates"].get(candidate_key)

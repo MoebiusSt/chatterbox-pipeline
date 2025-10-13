@@ -40,6 +40,10 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
   - `placeholder`: Replaces digit sequences (e.g., "1995", "10", "3") and recognized German number words (incl. compounds like "zweitausendfünfundzwanzig", "fünfzigtausend", "neunzehnhundertfünfundneunzig") with <NUM> placeholder. Uses word2num-de parser if available; otherwise conservative regex heuristic.
   - `digits`: Converts number words to digits (e.g., "tausend" → "1000"); falls back to placeholder if word2num-de unavailable.
   - `words`: Converts digits to written words (e.g., 1995 → "neunzehnhundertfünfundneunzig"); uses num2words; falls back to placeholder.
+- **Smart Tail-Trim (WhisperX + VAD/Energy)**: Content-aware trimming at the end of each candidate before validation.
+  - Uses WhisperX word-level alignment to locate the last N words of the input text near the end of the recognition and cuts right after the last matched word; fallback to VAD → Energy.
+  - Persistently saves kept audio as `candidate_YY_trimmed.wav` (if enabled) and optional removed tail snippet for debugging.
+  - Assembly prefers `*_trimmed.wav` automatically when present.
 - **Application**: Similarity score computed on normalized texts (original + transcription), so "1995" and "neunzehnhundertfünfundneunzig" are treated equally. Length score uses normalized original length (transcription remains raw), reducing deviations from format differences.
 - **QualityScorer**: Multi-criteria evaluation (75% similarity + 25% length) and best candidate selection (3-stage fallback: best valid → best overall → emergency first). Similarity gate uses a dynamic effective threshold depending on chunk length and punctuation density (no extra config flags).
 
@@ -51,6 +55,44 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - **Python 3.9+** (recommended: Python 3.10+)
 - **Git** for cloning the repository
 - **CUDA** (optional, for GPU-accelerated TTS generation and Whisper validation)
+
+### GPU Setup (CUDA/cuDNN) for WhisperX Validation
+WhisperX benötigt auf GPU zusätzlich die NVIDIA CUDA Runtime und cuDNN 8 Libraries auf dem Host/WSL2. Diese Systembibliotheken werden absichtlich nicht in `requirements.txt` gelistet.
+
+WSL2/Ubuntu 22.04/24.04 (Empfehlung):
+```bash
+# NVIDIA Repo einbinden (einmalig)
+sudo apt update
+sudo apt install wget gnupg
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt update
+
+# Minimal: cuDNN 8 Runtime + Dev (liefert libcudnn_ops_infer.so.8)
+sudo apt install libcudnn8
+sudo apt install libcudnn8-dev
+
+# Optional: CUDA Runtime (ohne volles Toolkit)
+sudo apt install cuda-runtime-12-4
+
+# Verifikation
+ls /usr/lib/x86_64-linux-gnu | grep libcudnn_ops_infer.so.8
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+python -c "import whisperx; m=whisperx.load_model('small', device='cuda', compute_type='float16'); print('asr ok')"
+python -c "import whisperx; a,_=whisperx.load_align_model(language_code='de', device='cuda'); print('align ok')"
+```
+
+Konfiguration:
+```yaml
+validation:
+  preprocessing:
+    tail_trim:
+      whisperx_device: cuda  # CPU funktioniert immer; CUDA ist schneller, benötigt aber obige Libs
+```
+
+Hinweise:
+- In CPU-Umgebungen funktioniert WhisperX automatisch, ist jedoch langsamer. Unsere Loader wählen auf CUDA automatisch `compute_type: float16`, auf CPU `int8`.
+- Die PyPI-Abhängigkeiten (siehe `requirements.txt`) enthalten keine Systempakete wie CUDA/cuDNN. Diese müssen systemweit installiert werden (wie oben beschrieben).
 
 ## Quick Start
 
@@ -610,4 +652,41 @@ generation:
 - **Memory Errors**: Reduce `num_candidates` in config
 - **Validation Failures**: Lower `similarity_threshold` 
 - **Audio Artifacts**: Fintune TTS parameters, – generate more and more diverse candidates
+ - **Tail-Trim Checks**: Enable `validation.preprocessing.tail_trim.debug_save_removed_tail` to store `*_removed_tail.wav` and inspect cuts. Use `scripts/test_smart_tail_trim.py` for targeted checks.
+
+### Smart Tail-Trim – Configuration
+```yaml
+validation:
+  preprocessing:
+    tail_trim:
+      enabled: true
+      lookback_seconds: 6.0
+      post_speech_silence_ms: 200   # trailing silence to keep after cut (ms)
+      fade_out_ms: 120              # fade applied to the kept segment end (ms)
+      prefer_whisperx: true
+      whisperx_device: cpu
+      persist_trimmed_candidate: true
+      debug_save_removed_tail: true
+      smart_match:
+        enabled: true
+        last_n_words: 2            # how many last input words to search for
+        fuzzy_ratio: 0.85          # acceptance threshold for fuzzy match
+        search_window_words: 30    # window of align words near the end to search within
+        language_gate: [en, de, fr, es, it]  # only enable Smart-Trim for these languages
+```
+
+Notes:
+- Smart-Trim and VAD/Energy share `post_speech_silence_ms` and `fade_out_ms`.
+- If `post_speech_silence_ms` is small (e.g., 0–120), cut is tight to the last word; higher values keep more trailing silence.
+- `search_window_words` limits the fuzzy scan to recent recognized words for performance/precision.
+
+CLI overrides:
+- `--enable-tail-trim` forces Tail-Trim on (overrides config). By default Tail-Trim is enabled in `default_config.yaml`.
+
+Test utility:
+```bash
+python scripts/test_smart_tail_trim.py \
+  --audio data/output/.../candidates/chunk_001/candidate_01.wav \
+  --text "Einleitung Ende" --language de --post-silence-ms 0
+```
 ```

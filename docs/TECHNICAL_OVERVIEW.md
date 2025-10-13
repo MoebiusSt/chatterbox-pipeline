@@ -11,6 +11,13 @@ This document is an unsorted collection of useful information that goes beyond t
 **Architecture**: Job/Task-based pipeline with cascading configuration  
 **Entry Point**: `src/cbpipe.py`
 
+### Tail-End Processing Overview
+- Smart Tail-Trim (WhisperX + VAD/Energy): Before Whisper validation, candidates are trimmed at the tail to remove hallucinations and noise.
+  - Smart search for the last N input-words within the final `search_window_words` of aligned ASR words via WhisperX; cut right after the last match.
+  - Fallbacks: WhisperX last-word end → WebRTC VAD backward scan → energy heuristic.
+  - Post-processing: keep `post_speech_silence_ms` trailing silence, then apply `fade_out_ms` to the kept segment end.
+  - Diagnostics persisted in `whisper/whisper_metrics.json` under `tail_trim` per candidate; `*_trimmed.wav` is preferred by assembly.
+
 
 ## Project structure
 ```
@@ -176,6 +183,16 @@ QualityScorer.score_candidate() → QualityScore
 # Dynamic Thresholding
 # - WhisperValidator computes an effective similarity threshold based on
 #   text length and punctuation density (no new config flags).
+
+# Tail-End Trimming (Smart + Fallbacks)
+# - validation.preprocessing.tail_trim (see default_config.yaml)
+#   smart_match.enabled: word-level alignment via WhisperX
+#   last_n_words: input tail words to match
+#   fuzzy_ratio: acceptance threshold (0..1)
+#   search_window_words: limit scan near audio end
+#   language_gate: enable Smart-Trim only for specific languages
+#   persist_trimmed_candidate: write candidate_YY_trimmed.wav
+#   debug_save_removed_tail: write removed tail snippet for inspection
 ```
 
 Numbers Normalization (non-EN only)
@@ -193,6 +210,7 @@ Effects
 ```python
 AudioProcessor.concatenate_segments() → torch.Tensor
 # Intelligente Audio-Verkettung mit Pausenverarbeitung
+# Note: Assembly loads candidate_YY_trimmed.wav when present, otherwise falls back to candidate_YY.wav
 ```
 
 

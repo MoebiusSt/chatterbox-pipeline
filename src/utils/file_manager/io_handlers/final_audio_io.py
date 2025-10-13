@@ -94,9 +94,10 @@ class FinalAudioIOHandler:
             chunk_idx = int(chunk_idx)
             candidate_idx = int(candidate_idx)
 
-            # Find audio file
+            # Find audio file (prefer trimmed variant if present)
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
-            audio_file = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
+            trimmed = chunk_dir / f"candidate_{candidate_idx+1:02d}_trimmed.wav"
+            audio_file = trimmed if trimmed.exists() else (chunk_dir / f"candidate_{candidate_idx+1:02d}.wav")
 
             if audio_file.exists():
                 try:

@@ -89,6 +89,22 @@ class ValidationHandler:
                     candidate_num = candidate.candidate_idx + 1
                     logger.debug(f"🔍 Validating candidate {candidate_num}...")
 
+                    # Resolve language for this candidate
+                    try:
+                        gen_params = getattr(candidate, "generation_params", None) or {}
+                        base_lang = getattr(chunk, "language_id", None)
+                        cand_language = (
+                            gen_params.get("language_id")
+                            or gen_params.get("language")
+                            or base_lang
+                            or "en"
+                        )
+                        logger.debug(
+                            f"🌐 Using language '{cand_language}' for chunk {chunk.idx + 1}, candidate {candidate_num}"
+                        )
+                    except Exception:
+                        cand_language = getattr(chunk, "language_id", "en")
+
                     # Check if whisper result already exists
                     existing_whisper = self.file_manager.get_whisper(
                         chunk.idx, candidate.candidate_idx
@@ -109,7 +125,7 @@ class ValidationHandler:
                         if hasattr(self, "tail_trimmer") and self.tail_trimmer and candidate.audio_tensor is not None:
                             trimmed_audio, removed_tail, trim_meta = self.tail_trimmer.trim(
                                 candidate.audio_tensor,
-                                language=getattr(chunk, 'language_id', 'en'),
+                                language=cand_language,
                                 original_text=chunk.text,
                             )
                             if trimmed_audio is not None and trimmed_audio.numel() > 0:
@@ -118,20 +134,32 @@ class ValidationHandler:
                                 # Optional: persist removed tail for inspection if enabled in config
                                 try:
                                     tt_cfg = self.config.get("validation", {}).get("preprocessing", {}).get("tail_trim", {})
+                                    sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
+                                    # Save removed tail for debugging
                                     if removed_tail is not None and bool(tt_cfg.get("debug_save_removed_tail", False)):
                                         from pathlib import Path
                                         import torchaudio as ta
                                         out_dir = self.file_manager.task_directory / "debug_tail_trimmer"
                                         out_dir.mkdir(parents=True, exist_ok=True)
                                         out_path = out_dir / f"chunk_{chunk.idx+1:03d}_cand_{candidate.candidate_idx+1:02d}_removed_tail.wav"
-                                        ta.save(str(out_path), removed_tail.unsqueeze(0).cpu(), self.config.get("audio", {}).get("sample_rate", 24000))
+                                        ta.save(str(out_path), removed_tail.unsqueeze(0).cpu(), sample_rate)
+
+                                    # Persist kept (trimmed) candidate alongside original if enabled
+                                    if bool(tt_cfg.get("persist_trimmed_candidate", True)) and trim_meta.get("cut_sample") is not None:
+                                        from pathlib import Path
+                                        import torchaudio as ta
+                                        cand_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                                        cand_dir.mkdir(parents=True, exist_ok=True)
+                                        kept_path = cand_dir / f"candidate_{candidate.candidate_idx+1:02d}_trimmed.wav"
+                                        ta.save(str(kept_path), trimmed_audio.unsqueeze(0).cpu(), sample_rate)
+                                        trim_meta["trimmed_path"] = str(kept_path)
                                 except Exception as e:
-                                    logger.debug(f"Failed saving removed tail audio: {e}")
+                                    logger.debug(f"Failed persisting tail-trim artifacts: {e}")
                     except Exception as e:
                         logger.debug(f"Tail-trim failed for candidate {candidate_num}: {e}")
 
                     # Perform Whisper validation with language-specific model
-                    chunk_language = getattr(chunk, 'language_id', 'en')
+                    chunk_language = cand_language
                     whisper_result = self.whisper_validator.validate_candidate(
                         candidate, chunk.text, language=chunk_language
                     )
@@ -150,7 +178,7 @@ class ValidationHandler:
                             try:
                                 prosody_details = self.prosody_scorer.score(
                                     candidate.audio_tensor,
-                                    language=getattr(chunk, 'language_id', 'en'),
+                                    language=cand_language,
                                     original_text=chunk.text,
                                     asr_transcription=whisper_result.transcription,
                                 )
@@ -199,13 +227,29 @@ class ValidationHandler:
                             "overall_quality_score": quality_result.overall_score,
                             "quality_details": quality_result.details,
                             "speaker_id": chunk.speaker_id,
-                            "language_id": getattr(chunk, 'language_id', 'en'),
+                            "language_id": cand_language,
                             # Prosody/MOS
                             "prosody": prosody_details,
                             "final_selection_score": final_selection_score,
                             "passes_mos_gate": passes_mos,
                             "passes_similarity_gate": passes_similarity,
                         }
+                        # Attach tail_trim metadata if available
+                        try:
+                            if 'trim_meta' in locals() and isinstance(trim_meta, dict):
+                                combined_result["tail_trim"] = {
+                                    "method": trim_meta.get("method"),
+                                    "match_type": trim_meta.get("match_type"),
+                                    "cut_sample": trim_meta.get("cut_sample"),
+                                    "kept_post_silence_ms": trim_meta.get("kept_post_silence_ms"),
+                                    "fade_out_ms": trim_meta.get("fade_out_ms"),
+                                    "matched_words": trim_meta.get("matched_words"),
+                                    "match_ratio": trim_meta.get("match_ratio"),
+                                    "language_gated": trim_meta.get("language_gated", False),
+                                    "trimmed_path": trim_meta.get("trimmed_path"),
+                                }
+                        except Exception:
+                            pass
 
                         # Save whisper result
                         self.file_manager.save_whisper(
@@ -343,8 +387,58 @@ class ValidationHandler:
 
                     retry_candidate.chunk_text = chunk.text
 
+                    # Resolve language for this retry candidate (same logic as main path)
+                    try:
+                        gen_params = getattr(retry_candidate, "generation_params", None) or {}
+                        base_lang = getattr(chunk, "language_id", None)
+                        cand_language = (
+                            gen_params.get("language_id")
+                            or gen_params.get("language")
+                            or base_lang
+                            or "en"
+                        )
+                        logger.debug(
+                            f"🌐 Using language '{cand_language}' for chunk {chunk.idx + 1}, retry candidate {candidate_num}"
+                        )
+                    except Exception:
+                        cand_language = getattr(chunk, "language_id", "en")
+
+                    # Tail-trim retry candidate before validation
+                    try:
+                        if hasattr(self, "tail_trimmer") and self.tail_trimmer and retry_candidate.audio_tensor is not None:
+                            trimmed_audio, removed_tail, trim_meta = self.tail_trimmer.trim(
+                                retry_candidate.audio_tensor,
+                                language=cand_language,
+                                original_text=chunk.text,
+                            )
+                            if trimmed_audio is not None and trimmed_audio.numel() > 0:
+                                retry_candidate.audio_tensor = trimmed_audio
+                                logger.debug(f"✂️  Tail-trim (retry) applied (method={trim_meta.get('method')}, cut={trim_meta.get('cut_sample')}) for retry candidate {candidate_num}")
+                                try:
+                                    tt_cfg = self.config.get("validation", {}).get("preprocessing", {}).get("tail_trim", {})
+                                    sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
+                                    if removed_tail is not None and bool(tt_cfg.get("debug_save_removed_tail", False)):
+                                        from pathlib import Path
+                                        import torchaudio as ta
+                                        out_dir = self.file_manager.task_directory / "debug_tail_trimmer"
+                                        out_dir.mkdir(parents=True, exist_ok=True)
+                                        out_path = out_dir / f"chunk_{chunk.idx+1:03d}_cand_{retry_candidate.candidate_idx+1:02d}_removed_tail.wav"
+                                        ta.save(str(out_path), removed_tail.unsqueeze(0).cpu(), sample_rate)
+                                    if bool(tt_cfg.get("persist_trimmed_candidate", True)) and trim_meta.get("cut_sample") is not None:
+                                        from pathlib import Path
+                                        import torchaudio as ta
+                                        cand_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                                        cand_dir.mkdir(parents=True, exist_ok=True)
+                                        kept_path = cand_dir / f"candidate_{retry_candidate.candidate_idx+1:02d}_trimmed.wav"
+                                        ta.save(str(kept_path), trimmed_audio.unsqueeze(0).cpu(), sample_rate)
+                                        trim_meta["trimmed_path"] = str(kept_path)
+                                except Exception as e:
+                                    logger.debug(f"Failed persisting tail-trim artifacts (retry): {e}")
+                    except Exception as e:
+                        logger.debug(f"Tail-trim (retry) failed for retry candidate {candidate_num}: {e}")
+
                     # Use language-specific validation for retry candidates
-                    chunk_language = getattr(chunk, 'language_id', 'en')
+                    chunk_language = cand_language
                     whisper_result = self.whisper_validator.validate_candidate(
                         retry_candidate, chunk.text, language=chunk_language
                     )
@@ -353,6 +447,51 @@ class ValidationHandler:
                         quality_result = self.quality_scorer.score_candidate(
                             retry_candidate, whisper_result
                         )
+
+                        # Prosody + MOS scoring (same as main path)
+                        prosody_details = None
+                        prosody_score = 0.0
+                        mos_value = None
+                        if hasattr(self, "prosody_scorer") and self.prosody_scorer and retry_candidate.audio_tensor is not None:
+                            try:
+                                prosody_details = self.prosody_scorer.score(
+                                    retry_candidate.audio_tensor,
+                                    language=cand_language,
+                                    original_text=chunk.text,
+                                    asr_transcription=whisper_result.transcription,
+                                )
+                                prosody_score = float(prosody_details.get("prosody_score", 0.0))
+                                mos_value = prosody_details.get("raw_mos")
+                            except Exception:
+                                prosody_details = None
+                                prosody_score = 0.0
+
+                        # Final selection score (same weights as main path)
+                        sel_cfg = self.config.get("validation", {}).get("prosody", {}).get("select", {})
+                        alpha = float(sel_cfg.get("alpha_quality", 0.50))
+                        beta = float(sel_cfg.get("beta_prosody", 0.35))
+                        gamma = float(sel_cfg.get("gamma_mos", 0.15))
+                        mos_unit = 0.0
+                        if isinstance(prosody_details, dict):
+                            mos_unit = float(prosody_details.get("subscores", {}).get("mos", 0.0))
+                        final_selection_score = (
+                            alpha * float(quality_result.overall_score)
+                            + beta * float(prosody_score)
+                            + gamma * float(mos_unit)
+                        )
+
+                        # Apply gating flags
+                        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
+                        require_mos = bool(gating.get("require_mos", True))
+                        require_similarity = bool(gating.get("require_similarity", True))
+                        passes_mos = True
+                        if require_mos and isinstance(prosody_details, dict):
+                            min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
+                            raw_mos = prosody_details.get("raw_mos")
+                            passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
+                        passes_similarity = True
+                        if require_similarity:
+                            passes_similarity = bool(whisper_result.is_valid)
 
                         combined_result = {
                             "is_valid": whisper_result.is_valid,
@@ -364,8 +503,29 @@ class ValidationHandler:
                             "overall_quality_score": quality_result.overall_score,
                             "quality_details": quality_result.details,
                             "speaker_id": chunk.speaker_id,
-                            "language_id": getattr(chunk, 'language_id', 'en'),
+                            "language_id": cand_language,
+                            "prosody": prosody_details,
+                            "final_selection_score": final_selection_score,
+                            "passes_mos_gate": passes_mos,
+                            "passes_similarity_gate": passes_similarity,
                         }
+
+                        # Attach tail_trim metadata if available (retry)
+                        try:
+                            if 'trim_meta' in locals() and isinstance(trim_meta, dict):
+                                combined_result["tail_trim"] = {
+                                    "method": trim_meta.get("method"),
+                                    "match_type": trim_meta.get("match_type"),
+                                    "cut_sample": trim_meta.get("cut_sample"),
+                                    "kept_post_silence_ms": trim_meta.get("kept_post_silence_ms"),
+                                    "fade_out_ms": trim_meta.get("fade_out_ms"),
+                                    "matched_words": trim_meta.get("matched_words"),
+                                    "match_ratio": trim_meta.get("match_ratio"),
+                                    "language_gated": trim_meta.get("language_gated", False),
+                                    "trimmed_path": trim_meta.get("trimmed_path"),
+                                }
+                        except Exception:
+                            pass
 
                         self.file_manager.save_whisper(
                             chunk.idx, retry_candidate.candidate_idx, combined_result
@@ -736,6 +896,42 @@ class ValidationHandler:
                     # Set chunk text for validation compatibility
                     candidate.chunk_text = chunk.text
 
+                    # Tail-trim candidate audio before validation to remove trailing non-speech (selective)
+                    try:
+                        if hasattr(self, "tail_trimmer") and self.tail_trimmer and candidate.audio_tensor is not None:
+                            trimmed_audio, removed_tail, trim_meta = self.tail_trimmer.trim(
+                                candidate.audio_tensor,
+                                language=getattr(chunk, 'language_id', 'en'),
+                                original_text=chunk.text,
+                            )
+                            if trimmed_audio is not None and trimmed_audio.numel() > 0:
+                                candidate.audio_tensor = trimmed_audio
+                                logger.debug(f"✂️  Tail-trim (selective) applied (method={trim_meta.get('method')}, cut={trim_meta.get('cut_sample')}) for candidate {candidate_num}")
+                                try:
+                                    tt_cfg = self.config.get("validation", {}).get("preprocessing", {}).get("tail_trim", {})
+                                    sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
+                                    # Save removed tail for debugging if enabled
+                                    if removed_tail is not None and bool(tt_cfg.get("debug_save_removed_tail", False)):
+                                        from pathlib import Path
+                                        import torchaudio as ta
+                                        out_dir = self.file_manager.task_directory / "debug_tail_trimmer"
+                                        out_dir.mkdir(parents=True, exist_ok=True)
+                                        out_path = out_dir / f"chunk_{chunk.idx+1:03d}_cand_{candidate.candidate_idx+1:02d}_removed_tail.wav"
+                                        ta.save(str(out_path), removed_tail.unsqueeze(0).cpu(), sample_rate)
+                                    # Persist kept (trimmed) candidate if enabled
+                                    if bool(tt_cfg.get("persist_trimmed_candidate", True)) and trim_meta.get("cut_sample") is not None:
+                                        from pathlib import Path
+                                        import torchaudio as ta
+                                        cand_dir = self.file_manager.candidates_dir / f"chunk_{chunk.idx+1:03d}"
+                                        cand_dir.mkdir(parents=True, exist_ok=True)
+                                        kept_path = cand_dir / f"candidate_{candidate.candidate_idx+1:02d}_trimmed.wav"
+                                        ta.save(str(kept_path), trimmed_audio.unsqueeze(0).cpu(), sample_rate)
+                                        trim_meta["trimmed_path"] = str(kept_path)
+                                except Exception as e:
+                                    logger.debug(f"Failed persisting tail-trim artifacts (selective): {e}")
+                    except Exception as e:
+                        logger.debug(f"Tail-trim (selective) failed for candidate {candidate_num}: {e}")
+
                     # Perform Whisper validation with language-specific model
                     chunk_language = getattr(chunk, 'language_id', 'en')
                     whisper_result = self.whisper_validator.validate_candidate(
@@ -761,6 +957,23 @@ class ValidationHandler:
                             "speaker_id": chunk.speaker_id,
                             "language_id": getattr(chunk, 'language_id', 'en'),
                         }
+
+                        # Attach tail_trim metadata if available (selective)
+                        try:
+                            if 'trim_meta' in locals() and isinstance(trim_meta, dict):
+                                combined_result["tail_trim"] = {
+                                    "method": trim_meta.get("method"),
+                                    "match_type": trim_meta.get("match_type"),
+                                    "cut_sample": trim_meta.get("cut_sample"),
+                                    "kept_post_silence_ms": trim_meta.get("kept_post_silence_ms"),
+                                    "fade_out_ms": trim_meta.get("fade_out_ms"),
+                                    "matched_words": trim_meta.get("matched_words"),
+                                    "match_ratio": trim_meta.get("match_ratio"),
+                                    "language_gated": trim_meta.get("language_gated", False),
+                                    "trimmed_path": trim_meta.get("trimmed_path"),
+                                }
+                        except Exception:
+                            pass
 
                         # Save whisper result
                         self.file_manager.save_whisper(

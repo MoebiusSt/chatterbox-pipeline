@@ -106,6 +106,49 @@ QualityScorer.score_candidate() → QualityScore (combined metrics)
 # Stage 3: Emergency fallback (first candidate)
 ```
 
+### Smart Tail-Trim (Developer Quick Reference)
+```python
+# Location
+src/validation/preprocessors/tail_trimmer.py
+src/pipeline/task_executor/stage_handlers/validation_handler.py  # integration
+src/utils/file_manager/io_handlers/final_audio_io.py             # prefers *_trimmed.wav
+src/utils/file_manager/io_handlers/whisper_io.py                 # persists tail_trim meta
+
+# Config (default_config.yaml)
+validation.preprocessing.tail_trim:
+  enabled: true
+  lookback_seconds: 6.0
+  post_speech_silence_ms: 200
+  fade_out_ms: 120
+  prefer_whisperx: true
+  whisperx_device: cpu
+  persist_trimmed_candidate: true
+  debug_save_removed_tail: true
+  smart_match:
+    enabled: true
+    last_n_words: 2
+    fuzzy_ratio: 0.85
+    search_window_words: 30
+    language_gate: ["en","de","fr","es","it"]
+
+# Behavior
+# 1) Smart-Trim: find last N input-words in WhisperX-aligned words near the end
+#    - if match ends before final aligned word → content_cut at last matched word end
+#    - if match aligns exactly at the last word → exact_final (no content cut)
+# 2) Fallbacks: whisperx last word end → VAD → energy
+# 3) Post-processing: add post_speech_silence_ms (capped by last voiced frame via VAD), apply fade_out_ms
+# 4) Persistence: candidate_YY_trimmed.wav (if enabled), optional *_removed_tail.wav
+# 5) Metrics: result["tail_trim"] persisted into whisper_metrics.json
+
+# Notes
+# - Smart-Trim shares post_speech_silence_ms and fade_out_ms with VAD/Energy trim
+# - search_window_words focuses on the last K alignment tokens for efficiency/precision
+# - language_gate skips Smart-Trim for unsupported languages
+
+# Test Script
+scripts/test_smart_tail_trim.py
+```
+
 ### 4. Multi-Speaker System
 ```python
 # Configuration

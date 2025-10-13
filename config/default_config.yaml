@@ -171,26 +171,33 @@ validation:
     tail_trim:
       enabled: true
       lookback_seconds: 4.0
-      post_speech_silence_ms: 200
-      fade_out_ms: 120
+      post_speech_silence_ms: 150
+      fade_out_ms: 100
       prefer_whisperx: true
-      whisperx_device: cpu
+      whisperx_device: cuda
       debug_save_removed_tail: true
+      persist_trimmed_candidate: true
+      smart_match:
+        enabled: true
+        last_n_words: 2
+        fuzzy_ratio: 0.85
+        search_window_words: 30
+        language_gate: [en, de, fr, es, it]
       vad:
         aggressiveness: 2        # 0..3
         frame_ms: 20
-        min_voiced_ms: 60
-        hangover_ms: 120
+        min_voiced_ms: 70
+        hangover_ms: 150
 
   # Prosody/MOS/Alignment configuration for automatic selection
   prosody:
     enabled: true
     weights:
       semantic_alignment: 0.20
-      flow: 0.25
-      liveliness: 0.25
+      flow: 0.20
+      liveliness: 0.20
       intelligibility: 0.10
-      mos: 0.20
+      mos: 0.30
     targets:
       wpm_min: 130
       wpm_max: 180
@@ -206,7 +213,7 @@ validation:
   mos:
     provider: utmos            # utmos|nisqa|none
     enabled_languages: [de, en, fr, es, it, ja, zh]
-    min_mos: 3.5               # UTMOS Schwelle (1..5)
+    min_mos: 3.0               # UTMOS Schwelle (1..5)
     scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
 
   alignment:
@@ -227,8 +234,8 @@ audio:
   # Optional trimming of leading/trailing silence on segment boundaries during assembly
   silence_trim:
     enabled: true   # if true, trim low-amplitude leading/trailing samples at boundaries
-    threshold: 0.09  # absolute amplitude threshold used for trimming
-    fade_duration: 0.2  # fade duration (seconds) applied at start/end after trimming
+    threshold: 0.10  # absolute amplitude threshold used for trimming
+    fade_duration: 0.15  # fade duration (seconds) applied at start/end after trimming
 
   # ChatterboxTTS native sample rate - NOT a user setting!
   # This must match the actual output sample rate of ChatterboxTTS (24kHz)
