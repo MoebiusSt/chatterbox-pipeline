@@ -34,7 +34,7 @@ class FinalAudioIOHandler:
         self.final_dir.mkdir(parents=True, exist_ok=True)
 
     def save_final_audio(self, audio: torch.Tensor, metadata: dict) -> bool:
-        """Save final assembled audio with metadata."""
+        """Save final assembled audio (no separate metadata JSON persists here)."""
         try:
             text_base = Path(self.config["input"]["text_file"]).stem
             run_label = self.config["job"].get("run-label", "")
@@ -48,11 +48,6 @@ class FinalAudioIOHandler:
             sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
             torchaudio.save(str(audio_path), audio.unsqueeze(0), sample_rate)
 
-            metadata_path = self.final_dir / filename.replace(".wav", "_metadata.json")
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                import json
-
-                json.dump(metadata, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
             logger.error(f"Error saving final audio: {e}")

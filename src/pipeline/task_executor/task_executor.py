@@ -376,6 +376,13 @@ class TaskExecutor:
                     # Finalize session BEFORE creating result to include final tick in totals
                     if self.run_logger:
                         self.run_logger.end_session(True, final_audio_path=final_audio_path)
+
+                    # Generate task metrics overview after final audio creation
+                    try:
+                        task_metrics_generator = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
+                        task_metrics_generator.generate_task_metrics()
+                    except Exception as e:
+                        logger.warning(f"Failed to generate task metrics: {e}")
                     result = TaskResult(
                         task_config=self.task_config,
                         success=True,
@@ -419,6 +426,13 @@ class TaskExecutor:
                     # Finalize session BEFORE creating result to include final tick in totals
                     if self.run_logger:
                         self.run_logger.end_session(True, final_audio_path=final_audio_path)
+
+                    # Generate task metrics overview after final audio creation
+                    try:
+                        task_metrics_generator = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
+                        task_metrics_generator.generate_task_metrics()
+                    except Exception as e:
+                        logger.warning(f"Failed to generate task metrics: {e}")
                     result = TaskResult(
                         task_config=self.task_config,
                         success=True,

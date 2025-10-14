@@ -184,14 +184,16 @@ class TailTrimmer:
                     meta["language_gated"] = True
                     return None, meta
 
-            # Target words: last N content words of the original text (numbers-aware),
-            # but skip placeholders like NUM and 1-letter artifacts
+            # Target words: last N content words of the original text (numbers-aware)
+            # Use configured numbers normalization mode (may be: off|placeholder|digits|words)
+            nm = (self.config.get("validation", {}) or {}).get("numbers_normalization_mode")
             norm_tokens = self._normalize_words(
                 original_text,
                 language=language,
-                numbers_mode="placeholder",
+                numbers_mode=nm,
             )
-            content_tokens = [t for t in norm_tokens if t != "num" and len(t) >= 2]
+            # Keep numeric placeholders (num) and pure-digit tokens even if length < 2
+            content_tokens = [t for t in norm_tokens if (len(t) >= 2) or (t == "num") or t.isdigit()]
             # Prefer content tokens, fallback to raw normalized if too few
             base_tokens = content_tokens if len(content_tokens) >= 1 else norm_tokens
             tgt_words = base_tokens[-int(max(1, last_n_words)) :]
@@ -229,9 +231,9 @@ class TailTrimmer:
             rec_words: list[Tuple[int, str]] = []
             for i, w in enumerate(words):
                 wtxt = str((w.get("word") or "")).strip()
-                nws = self._normalize_words(wtxt, language=language, numbers_mode="placeholder")
-                # Skip placeholder and 1-letter shards to avoid false matches like 'e' / 'num'
-                nws = [t for t in nws if t != "num" and len(t) >= 2]
+                nws = self._normalize_words(wtxt, language=language, numbers_mode=nm)
+                # Keep numeric placeholders and digit tokens; filter only obvious 1-letter shards
+                nws = [t for t in nws if (len(t) >= 2) or (t == "num") or t.isdigit()]
                 if not nws:
                     continue
                 rec_words.append((i, nws[0]))
@@ -259,8 +261,9 @@ class TailTrimmer:
                     best_span = (rec_words[j][0], rec_words[j + window - 1][0])
                     best_span_words = span_tokens
 
+            # Always expose the numerical ratio for diagnostics,
+            # but only set matched_words when the smart-match is actually used for cutting
             meta["match_ratio"] = float(best_ratio)
-            meta["matched_words"] = best_span_words if best_span_words else None
 
             # If fuzzy threshold not met, try compound token heuristic (join target words)
             if best_ratio < float(fuzzy_ratio) or best_span[0] is None or best_span[1] is None:
@@ -293,23 +296,26 @@ class TailTrimmer:
             last_end_s_all = max((float(w.get("end") or 0.0) for w in words), default=0.0)
             end_word_end_s = float(end_word.get("end") or 0.0)
 
-            if abs(last_end_s_all - end_word_end_s) < 1e-3:
-                meta["match_type"] = "exact_final"
-            else:
-                meta["match_type"] = "content_cut"
-
-            cut_idx = int(round(end_word_end_s * self.sample_rate))
+            # Compute potential cut, but only set meta matched_words when we actually accept the cut
+            potential_cut_idx = int(round(end_word_end_s * self.sample_rate))
             # Safety: ensure the matched end is reasonably near the end of audio
             # Avoid cutting in the middle due to misalignment (require ≥60% of duration)
             try:
                 total_len = int(audio.shape[-1])
                 duration_s = total_len / float(self.sample_rate)
-                if duration_s > 0:
-                    if end_word_end_s < 0.50 * duration_s:
-                        return None, meta
+                if duration_s > 0 and end_word_end_s < 0.50 * duration_s:
+                    return None, meta
             except Exception:
+                # If duration computation fails, proceed with the cut
                 pass
-            return cut_idx, meta
+
+            # Accept smart-match cut → set matched_words and match_type accordingly
+            if abs(last_end_s_all - end_word_end_s) < 1e-3:
+                meta["match_type"] = "exact_final"
+            else:
+                meta["match_type"] = "content_cut"
+            meta["matched_words"] = best_span_words if best_span_words else None
+            return potential_cut_idx, meta
         except Exception as e:
             logger.debug(f"smart-match alignment failed; skipping smart trim: {e}")
             return None, meta
@@ -377,7 +383,8 @@ class TailTrimmer:
 
             is_voiced = False
             try:
-                is_voiced = bool(self._webrtcvad.is_speech(frame.tobytes(), sample_rate=16000))
+                # Convert to raw bytes for webrtcvad; ensure NumPy array backing
+                is_voiced = bool(self._webrtcvad.is_speech(frame.numpy().tobytes(), sample_rate=16000))
             except Exception:
                 is_voiced = False
 
@@ -520,7 +527,24 @@ class TailTrimmer:
             except Exception as e:
                 logger.debug(f"Smart-match failed: {e}")
 
-            # If no smart cut, try whisperx last-word alignment, but do not cut unless near the end
+            # Only expose Smart-Match words in meta if we actually cut via Smart-Match
+            if cut_idx is not None and method == "smart_words":
+                # keep as is
+                pass
+            else:
+                # When Smart-Match failed or wasn't used, do not carry over its matched_words to avoid confusion
+                meta["matched_words"] = None
+                meta["match_type"] = None
+
+            # Revised fallback order after Smart-Match failure:
+            # 1) VAD (speech-aware, conservative)
+            # 2) WhisperX last-word alignment (only if near the end)
+            if cut_idx is None:
+                vad_cut = self._trim_with_vad(audio, language)
+                if isinstance(vad_cut, int):
+                    cut_idx = vad_cut
+                    method = "vad"
+
             if cut_idx is None:
                 wx_cut = self._trim_with_whisperx(audio, language=language, original_text=original_text)
                 if isinstance(wx_cut, int):
@@ -532,11 +556,6 @@ class TailTrimmer:
                     except Exception:
                         cut_idx = wx_cut
                         method = "whisperx"
-
-            # Fallback: VAD
-            if cut_idx is None:
-                cut_idx = self._trim_with_vad(audio, language)
-                method = "vad" if cut_idx is not None else None
 
             # Fallback: energy heuristic
             if cut_idx is None:

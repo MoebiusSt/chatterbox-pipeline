@@ -8,6 +8,7 @@ import json
 import logging
 import statistics
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -365,7 +366,13 @@ class TaskMetricsGenerator:
                                         continue
                                     score = 0.0
                                     if isinstance(cand_v, dict):
-                                        score = float(cand_v.get("overall_quality_score", cand_v.get("final_score", 0.0)))
+                                        val = cand_v.get("overall_quality_score")
+                                        if val is None:
+                                            val = cand_v.get("final_score")
+                                        try:
+                                            score = float(val) if val is not None else 0.0
+                                        except Exception:
+                                            score = 0.0
                                     if score > best_score:
                                         best_score = score
                                         best_idx = cand_idx_int
@@ -389,7 +396,13 @@ class TaskMetricsGenerator:
                                     continue
                                 score = 0.0
                                 if isinstance(cand_v, dict):
-                                    score = float(cand_v.get("overall_quality_score", cand_v.get("final_score", 0.0)))
+                                    val = cand_v.get("overall_quality_score")
+                                    if val is None:
+                                        val = cand_v.get("final_score")
+                                    try:
+                                        score = float(val) if val is not None else 0.0
+                                    except Exception:
+                                        score = 0.0
                                 if score > best_score:
                                     best_score = score
                                     best_idx = cand_idx_int
@@ -407,11 +420,13 @@ class TaskMetricsGenerator:
 
             # Calculate chunk-level metrics
             all_candidates = list(candidates_data.values())
-            scores = []
+            scores: List[float] = []
             for cand in all_candidates:
                 if isinstance(cand, dict):
-                    score = cand.get("overall_quality_score", cand.get("final_score", 0.0))
-                    scores.append(float(score))
+                    val = cand.get("overall_quality_score")
+                    if val is None:
+                        val = cand.get("final_score")
+                    scores.append(float(0.0 if val is None else float(val)))
 
             chunk_lowest_score = min(scores) if scores else 0.0
             chunk_best_score = max(scores) if scores else 0.0
@@ -489,8 +504,79 @@ class TaskMetricsGenerator:
             ),
         }
 
+        # Derive high-level identifiers
+        def _derive_job_task_info() -> Dict[str, Any]:
+            job_name = self.task_directory.parent.name if self.task_directory.parent else ""
+            task_name = self.task_directory.name
+            run_label = ""
+            timestamp = ""
+            try:
+                if isinstance(config, dict):
+                    run_label = (
+                        config.get("job", {}).get("run-label", "")
+                        if isinstance(config.get("job", {}), dict)
+                        else ""
+                    ) or ""
+            except Exception:
+                run_label = ""
+
+            try:
+                m = re.search(r"_(\d{8}_\d{6})$", task_name)
+                if m:
+                    timestamp = m.group(1)
+            except Exception:
+                timestamp = ""
+
+            return {
+                "job_name": job_name,
+                "task_name": task_name,
+                "run_label": run_label,
+                "timestamp": timestamp,
+            }
+
+        def _compute_final_audio_duration_seconds() -> float:
+            try:
+                final_dir = self.task_directory / "final"
+                final_files = sorted(
+                    final_dir.glob("*_final.wav"), key=lambda p: p.stat().st_mtime
+                )
+                if not final_files:
+                    return 0.0
+                final_file = final_files[-1]
+                # Prefer torchaudio for robust metadata; fallback to wave
+                try:
+                    import torchaudio  # type: ignore
+
+                    info = torchaudio.info(str(final_file))
+                    num_frames = getattr(info, "num_frames", None)
+                    sample_rate = getattr(info, "sample_rate", None)
+                    if num_frames is not None and sample_rate:
+                        return float(num_frames) / float(sample_rate)
+                except Exception:
+                    try:
+                        import wave
+
+                        with wave.open(str(final_file), "rb") as w:
+                            frames = w.getnframes()
+                            framerate = w.getframerate()
+                            if framerate:
+                                return float(frames) / float(framerate)
+                    except Exception:
+                        return 0.0
+            except Exception:
+                return 0.0
+            return 0.0
+
+        job_task_info = _derive_job_task_info()
+        audio_duration_seconds = _compute_final_audio_duration_seconds()
+
         # Build final structure
         task_metrics = {
+            "job_name": job_task_info.get("job_name", ""),
+            "task_name": job_task_info.get("task_name", ""),
+            "run_label": job_task_info.get("run_label", ""),
+            "timestamp": job_task_info.get("timestamp", ""),
+            "audio_duration_seconds": audio_duration_seconds,
             "total_chunks": len(chunks),
             "selected_candidates": selected_candidates_1based,
             "chunks": chunks,

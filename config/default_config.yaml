@@ -180,7 +180,7 @@ validation:
       smart_match:
         enabled: true
         last_n_words: 2
-        fuzzy_ratio: 0.85
+        fuzzy_ratio: 0.9
         search_window_words: 30
         language_gate: [en, de, fr, es, it]
       vad:
