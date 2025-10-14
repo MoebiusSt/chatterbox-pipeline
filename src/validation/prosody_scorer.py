@@ -181,12 +181,27 @@ class ProsodyScorer:
         # Basic text stats
         word_count = len([w for w in (original_text or "").split() if w.strip()])
 
-        # Flow: WPM in target range
+        # Flow: reading speed proximity to target band (triangular score)
         wpm = self._estimate_wpm(audio.shape[-1], word_count)
-        flow_score = min(
-            self._unit_score_range(wpm, self.tgt_wpm_min, self.tgt_wpm_max),
-            self._unit_score_range(self.tgt_wpm_max, self.tgt_wpm_min, max(self.tgt_wpm_max, wpm)),
-        )
+        # Clamp unrealistic extremes for stability on micro-chunks
+        wpm_clamped = max(40.0, min(260.0, wpm))
+        # Triangular score: 1.0 at band center, 0.0 at/ beyond band edges
+        try:
+            low = self.tgt_wpm_min
+            high = self.tgt_wpm_max
+            center = 0.5 * (low + high)
+            half_range = max(1e-6, 0.5 * (high - low))
+            flow_score = max(0.0, 1.0 - abs(wpm_clamped - center) / half_range)
+        except Exception:
+            flow_score = self._unit_score_range(wpm_clamped, self.tgt_wpm_min, self.tgt_wpm_max)
+        # Micro-chunk neutralization: for very short segments, avoid penalizing flow
+        try:
+            duration_sec = max(0.0, float(audio.shape[-1]) / float(self.sample_rate))
+        except Exception:
+            duration_sec = 0.0
+        if word_count < 5 or duration_sec < 2.0:
+            # Use neutral contribution instead of 0 to avoid biasing selection against short chunks
+            flow_score = 0.5
 
         # Liveliness: energy dynamics + F0 via parselmouth
         dyn_score = self._energy_dynamics(audio)
@@ -202,6 +217,14 @@ class ProsodyScorer:
         # Semantic alignment: if whisperx available, use alignment coverage; else ASR presence
         semantic_alignment = 1.0 if asr_len > 0 else 0.0
         try:
+            # Language gate for alignment (reuse tail-trim language gate if configured)
+            lang_gate = None
+            try:
+                tt_cfg = self.config.get("validation", {}).get("preprocessing", {}).get("tail_trim", {})
+                lang_gate = set((tt_cfg.get("smart_match", {}) or {}).get("language_gate", []) or [])
+            except Exception:
+                lang_gate = None
+
             if self._whisperx is not None and asr_len > 0:
                 device = self.whisperx_device if self.whisperx_device in {"cpu", "cuda"} else "cpu"
                 asr_model = self._get_whisperx_asr_model(device)
@@ -209,22 +232,24 @@ class ProsodyScorer:
                     audio16 = self._resample_to_16k(audio)
                     # Guard against empty/None language
                     lang = language or "en"
-                    result = asr_model.transcribe(audio16.cpu().numpy(), language=lang)
-                    align_pair = self._get_whisperx_aligner(lang, device)
-                    if align_pair is not None:
-                        align_model, metadata = align_pair
-                        aligned = self._whisperx.align(
-                            result.get("segments", []),
-                            align_model,
-                            metadata,
-                            audio16.cpu().numpy(),
-                            device=device,
-                            return_char_alignments=False,
-                        )
-                        words = aligned.get("word_segments") or []
-                        if words:
-                            covered = sum(1 for w in words if (w.get("start") is not None and w.get("end") is not None))
-                            semantic_alignment = max(0.0, min(1.0, covered / max(1, len(words))))
+                    # Optional: restrict alignment to configured languages for stability
+                    if not lang_gate or (lang.split("-")[0].lower() in lang_gate):
+                        asr_result = asr_model.transcribe(audio16.cpu().numpy(), language=lang)
+                        align_pair = self._get_whisperx_aligner(lang, device)
+                        if align_pair is not None:
+                            align_model, metadata = align_pair
+                            aligned = self._whisperx.align(
+                                asr_result.get("segments", []),
+                                align_model,
+                                metadata,
+                                audio16.cpu().numpy(),
+                                device=device,
+                                return_char_alignments=False,
+                            )
+                            words = aligned.get("word_segments") or []
+                            if words:
+                                covered = sum(1 for w in words if (w.get("start") is not None and w.get("end") is not None))
+                                semantic_alignment = max(0.0, min(1.0, covered / max(1, len(words))))
         except Exception:
             pass
 

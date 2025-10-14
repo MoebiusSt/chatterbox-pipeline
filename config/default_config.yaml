@@ -164,7 +164,7 @@ validation:
   min_quality_score: 0.72  #  WhisperValidator: 70% * similarity_score + 30% * length_score
   numbers_normalization_mode: placeholder  # off|placeholder|digits|words (applied only for language != 'en')
   whisper_initial_prompt_enabled: true    # If true, pass an initial prompt to Whisper
-  whisper_initial_prompt_text: "Schreibe Zahlen ausgeschrieben."  # Style-only prompt, no language directive
+  whisper_initial_prompt_text: ""  # Style-only prompt, no language directive
 
   # Preprocessing before validation: Tail-end speech-aware trim
   preprocessing:
@@ -193,36 +193,34 @@ validation:
   prosody:
     enabled: true
     weights:
-      semantic_alignment: 0.20
-      flow: 0.20
-      liveliness: 0.20
-      intelligibility: 0.10
-      mos: 0.30
-    targets:
-      wpm_min: 130
-      wpm_max: 180
-      comma_pause_ms: [100, 250]
-      period_pause_ms: [350, 800]
+      semantic_alignment: 0.0   #No deliverer yet
+      flow: 0.45                # Derived from wpm_min and wpm_max
+      liveliness: 0.25
+      intelligibility: 0.0      #No deliverer yet
+      mos: 0.30                 # MOS-Weight, note: MOS will score double as per gamma_mos
+    targets:                    # the deviation from the mediean defines the flow score
+      wpm_min: 130        
+      wpm_max: 160
     select:
-      alpha_quality: 0.50
-      beta_prosody: 0.35
-      gamma_mos: 0.15
+      alpha_quality: 0.50       # Whisper Quality-Weight
+      beta_prosody: 0.35        # Prosody-Weight
+      gamma_mos: 0.15           # additional MOS-direct weight
     thresholds:
-      min_prosody_score: 0.60
+      min_prosody_score: 0.60   # Prosody-Gate
 
   mos:
-    provider: utmos            # utmos|nisqa|none
-    enabled_languages: [de, en, fr, es, it, ja, zh]
-    min_mos: 3.0               # UTMOS Schwelle (1..5)
+    provider: combined         # combined|nisqa|utmos
+    enabled_languages: [de, en] # Language-Gate: MOS only für de/en
+    min_mos: 3.0               # MOS-Threshold (1..5); ~>3.5 is good
     scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
+    nisqa_weights_path: "NISQA/weights/nisqa_tts.tar"  # NISQA-TTS v1 Naturalness
 
-  alignment:
-    required_languages: [de, en, fr, es, it, ja, zh]
+  # alignment: (removed; alignment language gating handled via preprocessing.tail_trim.smart_match.language_gate)
 
   selection:
     gating:
-      require_mos: true        # Kandidaten < min_mos werden verworfen
-      require_similarity: true # bestehende Whisper‑Gate bleibt aktiv
+      require_mos: true        # candidates < min_mos will be rejected
+      require_similarity: true # existing Whisper-Gate remains active
 
 audio:
   silence_duration:

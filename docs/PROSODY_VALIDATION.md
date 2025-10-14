@@ -8,7 +8,7 @@ Adds a multilingual prosody and MOS-based selection layer to candidate validatio
 - Final selection score combines quality, prosody, and MOS
 
 ## Configuration
-See `config/default_config.yaml` under `validation.preprocessing.tail_trim`, `validation.prosody`, `validation.mos`, `validation.alignment`, and `validation.selection.gating`.
+See `config/default_config.yaml` under `validation.preprocessing.tail_trim`, `validation.prosody`, `validation.mos`, and `validation.selection.gating`. Note: `validation.alignment` has been removed; alignment language gating is controlled via `validation.preprocessing.tail_trim.smart_match.language_gate`.
 
 Key fields:
 - `validation.mos.min_mos`: 3.5 (UTMOS threshold)

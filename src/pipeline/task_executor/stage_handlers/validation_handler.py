@@ -12,6 +12,7 @@ from validation.preprocessors.tail_trimmer import TailTrimmer
 from validation.prosody_scorer import ProsodyScorer
 from validation.mos_providers.utmos import UTMOSProvider
 from validation.mos_providers.nisqa import NISQAProvider
+from validation.mos_providers.combined import CombinedMOSProvider
 from validation.whisper_validator import ValidationResult, WhisperValidator
 
 logger = logging.getLogger(__name__)
@@ -32,24 +33,46 @@ class ValidationHandler:
         self.whisper_validator = whisper_validator
         self.quality_scorer = quality_scorer
         self.generation_handler = generation_handler
+        # Ensure validator sees configuration (for prompt, normalization, etc.)
+        try:
+            setattr(self.whisper_validator, "_config", self.config)
+        except Exception:
+            pass
         # Initialize tail trimmer (optional, controlled by config)
         try:
             self.tail_trimmer = TailTrimmer(config=self.config, sample_rate=self.config.get("audio", {}).get("sample_rate", 24000))
         except Exception:
             self.tail_trimmer = None
-        # Initialize MOS provider and Prosody scorer
+        # Initialize MOS provider (optional) and Prosody scorer (should not fail if MOS missing)
+        mos_provider = None
         try:
             mos_cfg = self.config.get("validation", {}).get("mos", {})
-            provider_name = str(mos_cfg.get("provider", "utmos")).lower()
-            enabled_langs = mos_cfg.get("enabled_languages", ["de", "en", "fr", "es", "it", "ja", "zh"]) or []
-            mos_provider = None
+            provider_name = str(mos_cfg.get("provider", "combined")).lower()
+            # enforce de/en gate per requirement, even if config wider
+            enabled_langs = mos_cfg.get("enabled_languages", ["de", "en"]) or ["de", "en"]
             if provider_name == "utmos":
                 mos_provider = UTMOSProvider(enabled_languages=enabled_langs)
             elif provider_name == "nisqa":
-                mos_provider = NISQAProvider(enabled_languages=enabled_langs)
+                weights_path = mos_cfg.get("nisqa_weights_path")
+                mos_provider = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
+            elif provider_name == "combined":
+                weights_path = mos_cfg.get("nisqa_weights_path")
+                nisqa = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
+                utmos = UTMOSProvider(enabled_languages=enabled_langs)
+                mos_provider = CombinedMOSProvider([nisqa, utmos], enabled_languages=enabled_langs)
             else:
-                mos_provider = None
-            self.prosody_scorer = ProsodyScorer(config=self.config, mos_provider=mos_provider, sample_rate=self.config.get("audio", {}).get("sample_rate", 24000))
+                weights_path = mos_cfg.get("nisqa_weights_path")
+                nisqa = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
+                utmos = UTMOSProvider(enabled_languages=enabled_langs)
+                mos_provider = CombinedMOSProvider([nisqa, utmos], enabled_languages=enabled_langs)
+        except Exception:
+            mos_provider = None
+        try:
+            self.prosody_scorer = ProsodyScorer(
+                config=self.config,
+                mos_provider=mos_provider,
+                sample_rate=self.config.get("audio", {}).get("sample_rate", 24000),
+            )
         except Exception:
             self.prosody_scorer = None
 
@@ -113,9 +136,52 @@ class ValidationHandler:
                         logger.debug(
                             f"✓ Whisper result already exists for candidate {candidate_num}"
                         )
-                        chunk_results[candidate.candidate_idx] = existing_whisper[
-                            candidate.candidate_idx
-                        ]
+                        # Backfill prosody/final score/gates if missing in prior runs
+                        prev = existing_whisper[candidate.candidate_idx]
+                        needs_backfill = not isinstance(prev.get("prosody"), dict) or ("final_selection_score" not in prev)
+                        if needs_backfill and candidate.audio_tensor is not None:
+                            try:
+                                # Recompute prosody
+                                prosody_details = None
+                                prosody_score = 0.0
+                                mos_unit = 0.0
+                                if hasattr(self, "prosody_scorer") and self.prosody_scorer:
+                                    prosody_details = self.prosody_scorer.score(
+                                        candidate.audio_tensor,
+                                        language=getattr(chunk, 'language_id', 'en'),
+                                        original_text=chunk.text,
+                                        asr_transcription=str(prev.get("transcription") or ""),
+                                    )
+                                    prosody_score = float(prosody_details.get("prosody_score", 0.0))
+                                    mos_unit = float(prosody_details.get("subscores", {}).get("mos", 0.0))
+                                # Compute selection score using existing overall_quality_score
+                                sel_cfg = self.config.get("validation", {}).get("prosody", {}).get("select", {})
+                                alpha = float(sel_cfg.get("alpha_quality", 0.50))
+                                beta = float(sel_cfg.get("beta_prosody", 0.35))
+                                gamma = float(sel_cfg.get("gamma_mos", 0.15))
+                                overall = float(prev.get("overall_quality_score", 0.0))
+                                final_selection_score = alpha * overall + beta * prosody_score + gamma * mos_unit
+                                # Gates
+                                gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
+                                require_mos = bool(gating.get("require_mos", True))
+                                require_similarity = bool(gating.get("require_similarity", True))
+                                passes_mos = True
+                                if require_mos and isinstance(prosody_details, dict):
+                                    min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
+                                    raw_mos = prosody_details.get("raw_mos")
+                                    passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
+                                passes_similarity = True
+                                if require_similarity:
+                                    passes_similarity = bool(prev.get("is_valid", True))
+                                # Merge and save
+                                prev["prosody"] = prosody_details
+                                prev["final_selection_score"] = final_selection_score
+                                prev["passes_mos_gate"] = passes_mos
+                                prev["passes_similarity_gate"] = passes_similarity
+                                self.file_manager.save_whisper(chunk.idx, candidate.candidate_idx, prev)
+                            except Exception as e:
+                                logger.debug(f"Backfill prosody failed: {e}")
+                        chunk_results[candidate.candidate_idx] = existing_whisper[candidate.candidate_idx]
                         continue
 
                     candidate.chunk_text = chunk.text
@@ -174,19 +240,41 @@ class ValidationHandler:
                         prosody_details = None
                         prosody_score = 0.0
                         mos_value = None
-                        if hasattr(self, "prosody_scorer") and self.prosody_scorer and candidate.audio_tensor is not None:
-                            try:
-                                prosody_details = self.prosody_scorer.score(
-                                    candidate.audio_tensor,
-                                    language=cand_language,
-                                    original_text=chunk.text,
-                                    asr_transcription=whisper_result.transcription,
-                                )
-                                prosody_score = float(prosody_details.get("prosody_score", 0.0))
-                                mos_value = prosody_details.get("raw_mos")
-                            except Exception:
-                                prosody_details = None
-                                prosody_score = 0.0
+                        if candidate.audio_tensor is not None and getattr(candidate.audio_tensor, "numel", lambda: 0)() > 0:
+                            # Ensure scorer exists even if init failed earlier
+                            if not getattr(self, "prosody_scorer", None):
+                                try:
+                                    self.prosody_scorer = ProsodyScorer(
+                                        config=self.config,
+                                        mos_provider=None,
+                                        sample_rate=self.config.get("audio", {}).get("sample_rate", 24000),
+                                    )
+                                except Exception:
+                                    self.prosody_scorer = None
+                            if getattr(self, "prosody_scorer", None):
+                                try:
+                                    prosody_details = self.prosody_scorer.score(
+                                        candidate.audio_tensor,
+                                        language=cand_language,
+                                        original_text=chunk.text,
+                                        asr_transcription=whisper_result.transcription,
+                                    )
+                                    prosody_score = float(prosody_details.get("prosody_score", 0.0))
+                                    mos_value = prosody_details.get("raw_mos")
+                                except Exception as e:
+                                    logger.debug(f"Prosody scoring failed (chunk {chunk.idx+1}, cand {candidate_num}): {e}")
+                                    prosody_details = {
+                                        "enabled": False,
+                                        "subscores": {
+                                            "semantic_alignment": 0.0,
+                                            "flow": 0.0,
+                                            "liveliness": 0.0,
+                                            "intelligibility": 0.0,
+                                            "mos": 0.0,
+                                        },
+                                        "prosody_score": 0.0,
+                                    }
+                                    prosody_score = 0.0
 
                         # Final selection score
                         sel_cfg = self.config.get("validation", {}).get("prosody", {}).get("select", {})
@@ -230,6 +318,17 @@ class ValidationHandler:
                             "language_id": cand_language,
                             # Prosody/MOS
                             "prosody": prosody_details,
+                            # Debug transparency for MOS provider chain
+                            "mos_provider": (
+                                getattr(getattr(self, "prosody_scorer", None), "mos_provider", None).__class__.__name__
+                                if (getattr(self, "prosody_scorer", None) is not None and getattr(getattr(self, "prosody_scorer", None), "mos_provider", None) is not None)
+                                else None
+                            ),
+                            "mos_details": (
+                                getattr(getattr(getattr(self, "prosody_scorer", None), "mos_provider", None), "_last_details", None)
+                                if (getattr(self, "prosody_scorer", None) is not None and getattr(getattr(self, "prosody_scorer", None), "mos_provider", None) is not None)
+                                else None
+                            ),
                             "final_selection_score": final_selection_score,
                             "passes_mos_gate": passes_mos,
                             "passes_similarity_gate": passes_similarity,
@@ -452,19 +551,40 @@ class ValidationHandler:
                         prosody_details = None
                         prosody_score = 0.0
                         mos_value = None
-                        if hasattr(self, "prosody_scorer") and self.prosody_scorer and retry_candidate.audio_tensor is not None:
-                            try:
-                                prosody_details = self.prosody_scorer.score(
-                                    retry_candidate.audio_tensor,
-                                    language=cand_language,
-                                    original_text=chunk.text,
-                                    asr_transcription=whisper_result.transcription,
-                                )
-                                prosody_score = float(prosody_details.get("prosody_score", 0.0))
-                                mos_value = prosody_details.get("raw_mos")
-                            except Exception:
-                                prosody_details = None
-                                prosody_score = 0.0
+                        if retry_candidate.audio_tensor is not None and getattr(retry_candidate.audio_tensor, "numel", lambda: 0)() > 0:
+                            if not getattr(self, "prosody_scorer", None):
+                                try:
+                                    self.prosody_scorer = ProsodyScorer(
+                                        config=self.config,
+                                        mos_provider=None,
+                                        sample_rate=self.config.get("audio", {}).get("sample_rate", 24000),
+                                    )
+                                except Exception:
+                                    self.prosody_scorer = None
+                            if getattr(self, "prosody_scorer", None):
+                                try:
+                                    prosody_details = self.prosody_scorer.score(
+                                        retry_candidate.audio_tensor,
+                                        language=cand_language,
+                                        original_text=chunk.text,
+                                        asr_transcription=whisper_result.transcription,
+                                    )
+                                    prosody_score = float(prosody_details.get("prosody_score", 0.0))
+                                    mos_value = prosody_details.get("raw_mos")
+                                except Exception as e:
+                                    logger.debug(f"Prosody scoring failed (retry, chunk {chunk.idx+1}, cand {candidate_num}): {e}")
+                                    prosody_details = {
+                                        "enabled": False,
+                                        "subscores": {
+                                            "semantic_alignment": 0.0,
+                                            "flow": 0.0,
+                                            "liveliness": 0.0,
+                                            "intelligibility": 0.0,
+                                            "mos": 0.0,
+                                        },
+                                        "prosody_score": 0.0,
+                                    }
+                                    prosody_score = 0.0
 
                         # Final selection score (same weights as main path)
                         sel_cfg = self.config.get("validation", {}).get("prosody", {}).get("select", {})
@@ -672,6 +792,23 @@ class ValidationHandler:
                         best_score_value = candidate_effective
                         best_candidate_idx = candidate.candidate_idx
 
+                # Fallback: if all were gated out, ignore gates and choose best by candidate_score
+                if best_candidate_idx is None or best_score_value == float("-inf"):
+                    best_score_value = float("-inf")
+                    for candidate in filtered_candidates_list:
+                        result_dict = chunk_validation[candidate.candidate_idx]
+                        quality_details = result_dict.get("quality_details", {})
+                        individual_scores = quality_details.get("individual_scores", {})
+                        candidate_score = float(
+                            result_dict.get(
+                                "final_selection_score",
+                                individual_scores.get("overall_score", 0.0),
+                            )
+                        )
+                        if candidate_score > best_score_value:
+                            best_score_value = candidate_score
+                            best_candidate_idx = candidate.candidate_idx
+
                 chunk_metrics = {
                     "text": chunk.text,
                     "chunk_text": (
@@ -681,7 +818,7 @@ class ValidationHandler:
                     "language_id": getattr(chunk, 'language_id', 'en'),
                     "candidates": {},
                     "best_candidate": best_candidate_idx,
-                    "best_score": best_score_value,
+                    "best_score": (0.0 if best_candidate_idx is None else float(best_score_value)),
                 }
 
                 candidate_scores = []
@@ -888,9 +1025,73 @@ class ValidationHandler:
                         logger.debug(
                             f"✓ Whisper result already exists for candidate {candidate_num}"
                         )
-                        chunk_results[candidate.candidate_idx] = existing_whisper[
-                            candidate.candidate_idx
-                        ]
+                        # Backfill prosody/final score/gates if missing
+                        prev = existing_whisper[candidate.candidate_idx]
+                        needs_backfill = not isinstance(prev.get("prosody"), dict) or ("final_selection_score" not in prev)
+                        if needs_backfill and candidate.audio_tensor is not None and getattr(candidate.audio_tensor, "numel", lambda: 0)() > 0:
+                            try:
+                                # Ensure scorer exists
+                                if not getattr(self, "prosody_scorer", None):
+                                    try:
+                                        self.prosody_scorer = ProsodyScorer(
+                                            config=self.config,
+                                            mos_provider=None,
+                                            sample_rate=self.config.get("audio", {}).get("sample_rate", 24000),
+                                        )
+                                    except Exception:
+                                        self.prosody_scorer = None
+                                prosody_details = None
+                                prosody_score = 0.0
+                                mos_unit = 0.0
+                                if getattr(self, "prosody_scorer", None):
+                                    prosody_details = self.prosody_scorer.score(
+                                        candidate.audio_tensor,
+                                        language=getattr(chunk, 'language_id', 'en'),
+                                        original_text=chunk.text,
+                                        asr_transcription=str(prev.get("transcription") or ""),
+                                    )
+                                    prosody_score = float(prosody_details.get("prosody_score", 0.0))
+                                    mos_unit = float(prosody_details.get("subscores", {}).get("mos", 0.0))
+                                else:
+                                    prosody_details = {
+                                        "enabled": False,
+                                        "subscores": {
+                                            "semantic_alignment": 0.0,
+                                            "flow": 0.0,
+                                            "liveliness": 0.0,
+                                            "intelligibility": 0.0,
+                                            "mos": 0.0,
+                                        },
+                                        "prosody_score": 0.0,
+                                    }
+                                sel_cfg = self.config.get("validation", {}).get("prosody", {}).get("select", {})
+                                alpha = float(sel_cfg.get("alpha_quality", 0.50))
+                                beta = float(sel_cfg.get("beta_prosody", 0.35))
+                                gamma = float(sel_cfg.get("gamma_mos", 0.15))
+                                overall = float(prev.get("overall_quality_score", 0.0))
+                                final_selection_score = alpha * overall + beta * prosody_score + gamma * mos_unit
+                                # Gates
+                                gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
+                                require_mos = bool(gating.get("require_mos", True))
+                                require_similarity = bool(gating.get("require_similarity", True))
+                                passes_mos = True
+                                if require_mos and isinstance(prosody_details, dict):
+                                    min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
+                                    raw_mos = prosody_details.get("raw_mos")
+                                    passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
+                                passes_similarity = True
+                                if require_similarity:
+                                    passes_similarity = bool(prev.get("is_valid", True))
+                                prev["prosody"] = prosody_details
+                                prev["final_selection_score"] = final_selection_score
+                                prev["passes_mos_gate"] = passes_mos
+                                prev["passes_similarity_gate"] = passes_similarity
+                                self.file_manager.save_whisper(chunk.idx, candidate.candidate_idx, prev)
+                            except Exception as e:
+                                logger.debug(f"Selective backfill prosody failed: {e}")
+                        chunk_results[candidate.candidate_idx] = self.file_manager.get_whisper(
+                            chunk.idx, candidate.candidate_idx
+                        ).get(candidate.candidate_idx, prev)
                         continue
 
                     # Set chunk text for validation compatibility
@@ -944,6 +1145,70 @@ class ValidationHandler:
                             candidate, whisper_result
                         )
 
+                        # Prosody + MOS scoring (same as full validation)
+                        prosody_details = None
+                        prosody_score = 0.0
+                        mos_unit = 0.0
+                        if candidate.audio_tensor is not None and getattr(candidate.audio_tensor, "numel", lambda: 0)() > 0:
+                            if not getattr(self, "prosody_scorer", None):
+                                try:
+                                    self.prosody_scorer = ProsodyScorer(
+                                        config=self.config,
+                                        mos_provider=None,
+                                        sample_rate=self.config.get("audio", {}).get("sample_rate", 24000),
+                                    )
+                                except Exception:
+                                    self.prosody_scorer = None
+                            if getattr(self, "prosody_scorer", None):
+                                try:
+                                    prosody_details = self.prosody_scorer.score(
+                                        candidate.audio_tensor,
+                                        language=chunk_language,
+                                        original_text=chunk.text,
+                                        asr_transcription=whisper_result.transcription,
+                                    )
+                                    prosody_score = float(prosody_details.get("prosody_score", 0.0))
+                                    mos_unit = float(prosody_details.get("subscores", {}).get("mos", 0.0))
+                                except Exception as e:
+                                    logger.debug(f"Prosody scoring failed (selective, chunk {chunk.idx+1}, cand {candidate_num}): {e}")
+                                    prosody_details = {
+                                        "enabled": False,
+                                        "subscores": {
+                                            "semantic_alignment": 0.0,
+                                            "flow": 0.0,
+                                            "liveliness": 0.0,
+                                            "intelligibility": 0.0,
+                                            "mos": 0.0,
+                                        },
+                                        "prosody_score": 0.0,
+                                    }
+                                    prosody_score = 0.0
+                                    mos_unit = 0.0
+
+                        # Final selection score (same weights)
+                        sel_cfg = self.config.get("validation", {}).get("prosody", {}).get("select", {})
+                        alpha = float(sel_cfg.get("alpha_quality", 0.50))
+                        beta = float(sel_cfg.get("beta_prosody", 0.35))
+                        gamma = float(sel_cfg.get("gamma_mos", 0.15))
+                        final_selection_score = (
+                            alpha * float(quality_result.overall_score)
+                            + beta * float(prosody_score)
+                            + gamma * float(mos_unit)
+                        )
+
+                        # Gates (same logic)
+                        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
+                        require_mos = bool(gating.get("require_mos", True))
+                        require_similarity = bool(gating.get("require_similarity", True))
+                        passes_mos = True
+                        if require_mos and isinstance(prosody_details, dict):
+                            min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
+                            raw_mos = prosody_details.get("raw_mos")
+                            passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
+                        passes_similarity = True
+                        if require_similarity:
+                            passes_similarity = bool(whisper_result.is_valid)
+
                         # Combine results
                         combined_result = {
                             "is_valid": whisper_result.is_valid,
@@ -956,6 +1221,10 @@ class ValidationHandler:
                             "quality_details": quality_result.details,
                             "speaker_id": chunk.speaker_id,
                             "language_id": getattr(chunk, 'language_id', 'en'),
+                            "prosody": prosody_details,
+                            "final_selection_score": final_selection_score,
+                            "passes_mos_gate": passes_mos,
+                            "passes_similarity_gate": passes_similarity,
                         }
 
                         # Attach tail_trim metadata if available (selective)
@@ -1100,7 +1369,9 @@ class ValidationHandler:
                     chunk_metrics = {
                         "text": chunk.text,
                         "chunk_text": (
-                            chunk.text[:100] + "..." if len(chunk.text) > 100 else chunk.text
+                            chunk.text[:100] + "..."
+                            if len(chunk.text) > 100
+                            else chunk.text
                         ),
                         "candidates": {},
                         "best_candidate": best_candidate_idx,

@@ -189,6 +189,8 @@ class WhisperValidator:
                 "language": language,
                 "task": "transcribe",
                 "fp16": False,
+                # Avoid conditioning on previous text inside audio; reduces prompt echoing
+                "condition_on_previous_text": False,
             }
             if initial_prompt:
                 kwargs["initial_prompt"] = initial_prompt
@@ -196,6 +198,14 @@ class WhisperValidator:
             result: Dict[str, Any] = model.transcribe(audio_np, **kwargs)
 
             transcription = str(result.get("text", "")).strip()
+            # Strip exact prompt prefix if Whisper echos it verbatim
+            if initial_prompt:
+                try:
+                    prompt_clean = str(initial_prompt).strip()
+                    if prompt_clean and transcription.startswith(prompt_clean):
+                        transcription = transcription[len(prompt_clean):].lstrip()
+                except Exception:
+                    pass
 
             duration = (datetime.now() - start_time).total_seconds()
             self.logger.debug(

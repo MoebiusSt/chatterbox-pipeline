@@ -184,12 +184,17 @@ class TailTrimmer:
                     meta["language_gated"] = True
                     return None, meta
 
-            # Target words: last N of original text (numbers-aware)
-            tgt_words = self._normalize_words(
+            # Target words: last N content words of the original text (numbers-aware),
+            # but skip placeholders like NUM and 1-letter artifacts
+            norm_tokens = self._normalize_words(
                 original_text,
                 language=language,
                 numbers_mode="placeholder",
-            )[-int(max(1, last_n_words)) :]
+            )
+            content_tokens = [t for t in norm_tokens if t != "num" and len(t) >= 2]
+            # Prefer content tokens, fallback to raw normalized if too few
+            base_tokens = content_tokens if len(content_tokens) >= 1 else norm_tokens
+            tgt_words = base_tokens[-int(max(1, last_n_words)) :]
             if not tgt_words:
                 return None, meta
 
@@ -225,6 +230,8 @@ class TailTrimmer:
             for i, w in enumerate(words):
                 wtxt = str((w.get("word") or "")).strip()
                 nws = self._normalize_words(wtxt, language=language, numbers_mode="placeholder")
+                # Skip placeholder and 1-letter shards to avoid false matches like 'e' / 'num'
+                nws = [t for t in nws if t != "num" and len(t) >= 2]
                 if not nws:
                     continue
                 rec_words.append((i, nws[0]))
@@ -292,6 +299,16 @@ class TailTrimmer:
                 meta["match_type"] = "content_cut"
 
             cut_idx = int(round(end_word_end_s * self.sample_rate))
+            # Safety: ensure the matched end is reasonably near the end of audio
+            # Avoid cutting in the middle due to misalignment (require ≥60% of duration)
+            try:
+                total_len = int(audio.shape[-1])
+                duration_s = total_len / float(self.sample_rate)
+                if duration_s > 0:
+                    if end_word_end_s < 0.50 * duration_s:
+                        return None, meta
+            except Exception:
+                pass
             return cut_idx, meta
         except Exception as e:
             logger.debug(f"smart-match alignment failed; skipping smart trim: {e}")
@@ -503,10 +520,18 @@ class TailTrimmer:
             except Exception as e:
                 logger.debug(f"Smart-match failed: {e}")
 
-            # If no smart cut, try whisperx last-word alignment
+            # If no smart cut, try whisperx last-word alignment, but do not cut unless near the end
             if cut_idx is None:
-                cut_idx = self._trim_with_whisperx(audio, language=language, original_text=original_text)
-                method = "whisperx" if cut_idx is not None else None
+                wx_cut = self._trim_with_whisperx(audio, language=language, original_text=original_text)
+                if isinstance(wx_cut, int):
+                    # accept only if last-word end beyond 60% of duration
+                    try:
+                        if wx_cut >= int(0.50 * total_len):
+                            cut_idx = wx_cut
+                            method = "whisperx"
+                    except Exception:
+                        cut_idx = wx_cut
+                        method = "whisperx"
 
             # Fallback: VAD
             if cut_idx is None:
