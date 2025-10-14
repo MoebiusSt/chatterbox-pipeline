@@ -123,12 +123,13 @@ class StateAnalyzer:
             chunk_candidates = candidates.get(chunk_idx, [])
             has_candidates[chunk_idx] = len(chunk_candidates)
 
-            # Also check file system for expected candidates
+            # Also check file system for expected candidates (base files only, exclude _trimmed)
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
             if chunk_dir.exists():
-                # Count actual .wav files in chunk directory
-                actual_wav_files = list(chunk_dir.glob("candidate_*.wav"))
-                file_count = len(actual_wav_files)
+                # Count base candidate WAV files only
+                all_wav_files = list(chunk_dir.glob("candidate_*.wav"))
+                base_wav_files = [p for p in all_wav_files if not p.name.endswith("_trimmed.wav")]
+                file_count = len(base_wav_files)
 
                 # Check if we have the expected number of candidates
                 if file_count < expected_candidates_per_chunk:
@@ -149,11 +150,12 @@ class StateAnalyzer:
             whisper_results = self.whisper_handler.get_whisper(chunk_idx)
             has_whisper[chunk_idx] = set(whisper_results.keys())
 
-            # Check against actual candidate files, not just loaded candidates
+            # Check against actual candidate files, not just loaded candidates (base files only)
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
             if chunk_dir.exists():
-                actual_wav_files = list(chunk_dir.glob("candidate_*.wav"))
-                expected_whisper_count = len(actual_wav_files)
+                all_wav_files = list(chunk_dir.glob("candidate_*.wav"))
+                base_wav_files = [p for p in all_wav_files if not p.name.endswith("_trimmed.wav")]
+                expected_whisper_count = len(base_wav_files)
 
                 if len(whisper_results) < expected_whisper_count:
                     missing_components.append(f"whisper_chunk_{chunk_idx}")
@@ -161,8 +163,8 @@ class StateAnalyzer:
                         f"Chunk {chunk_idx}: expected {expected_whisper_count} whisper validations, found {len(whisper_results)}"
                     )
 
-                    # Log which specific candidates are missing whisper validation
-                    for wav_file in actual_wav_files:
+                    # Log which specific candidates are missing whisper validation (base files only)
+                    for wav_file in base_wav_files:
                         # Extract candidate index from filename (candidate_01.wav -> 0)
                         try:
                             candidate_num = int(wav_file.stem.split("_")[1]) - 1

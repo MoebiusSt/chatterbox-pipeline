@@ -235,14 +235,27 @@ class CandidateIOHandler:
                 with open(metadata_path, "r", encoding="utf-8") as f:
                     metadata = json.load(f)
 
-            # Load audio files
-            audio_files = sorted(chunk_dir.glob("candidate_*.wav"))
-            for audio_file in audio_files:
-                # Extract candidate index
-                candidate_idx = (
-                    int(audio_file.stem.split("_")[1]) - 1
-                )  # Convert back to 0-based
+            # Build unique candidate set: prefer trimmed if available
+            base_files = sorted(chunk_dir.glob("candidate_[0-9][0-9].wav"))
+            trimmed_files = sorted(chunk_dir.glob("candidate_*_trimmed.wav"))
 
+            # Map candidate_idx -> Path (prefer trimmed)
+            idx_to_path = {}
+            for tf in trimmed_files:
+                try:
+                    cand_num = int(tf.stem.split("_")[1]) - 1
+                    idx_to_path[cand_num] = tf
+                except Exception:
+                    continue
+            for bf in base_files:
+                try:
+                    cand_num = int(bf.stem.split("_")[1]) - 1
+                    if cand_num not in idx_to_path:
+                        idx_to_path[cand_num] = bf
+                except Exception:
+                    continue
+
+            for candidate_idx, audio_path in sorted(idx_to_path.items(), key=lambda kv: kv[0]):
                 # Get metadata for this candidate
                 candidate_meta = None
                 if metadata and "candidates" in metadata:
@@ -261,22 +274,19 @@ class CandidateIOHandler:
 
                 # Load audio tensor if file exists
                 audio_tensor = None
-                if audio_file.exists():
+                if audio_path.exists():
                     try:
-                        waveform, sample_rate = torchaudio.load(str(audio_file))
-                        # Convert to mono if needed and remove channel dimension
+                        waveform, sample_rate = torchaudio.load(str(audio_path))
                         if waveform.shape[0] > 1:
                             waveform = waveform.mean(dim=0, keepdim=True)
-                        audio_tensor = waveform.squeeze(
-                            0
-                        )  # Remove channel dimension for consistency
+                        audio_tensor = waveform.squeeze(0)
                     except Exception as e:
-                        logger.warning(f"Failed to load audio file {audio_file}: {e}")
+                        logger.warning(f"Failed to load audio file {audio_path}: {e}")
 
                 candidate = AudioCandidate(
                     chunk_idx=idx,
                     candidate_idx=candidate_idx,
-                    audio_path=audio_file,
+                    audio_path=audio_path,
                     audio_tensor=audio_tensor,
                     generation_params=generation_params,
                 )
@@ -330,12 +340,30 @@ class CandidateIOHandler:
                         output_dir, chunk_index, candidate.candidate_idx + 1
                     )
 
-                # Ensure audio tensor is 2D for torchaudio.save (channels, samples)
-                audio_tensor = candidate.audio_tensor.cpu()
-                if audio_tensor.ndim == 1:
-                    audio_tensor = audio_tensor.unsqueeze(0)  # Add channel dimension
+                # Ensure audio tensor is available and 2D for torchaudio.save (channels, samples)
+                audio_tensor = candidate.audio_tensor
+                if audio_tensor is None:
+                    # Try to load from candidate.audio_path if available
+                    try:
+                        if candidate.audio_path and candidate.audio_path.exists():
+                            loaded_waveform, _ = torchaudio.load(str(candidate.audio_path))
+                            audio_tensor = loaded_waveform
+                        else:
+                            logger.warning(
+                                f"Missing audio tensor and file for candidate {candidate.candidate_idx+1} (chunk {chunk_index})"
+                            )
+                            continue
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to load audio from path for candidate {candidate.candidate_idx+1} (chunk {chunk_index}): {e}"
+                        )
+                        continue
 
-                torchaudio.save(str(filepath), audio_tensor, sample_rate)
+                audio_cpu = audio_tensor.cpu()
+                if audio_cpu.ndim == 1:
+                    audio_cpu = audio_cpu.unsqueeze(0)  # Add channel dimension
+
+                torchaudio.save(str(filepath), audio_cpu, sample_rate)
 
                 # Update candidate metadata with correct path
                 candidate.audio_path = filepath
@@ -369,11 +397,28 @@ class CandidateIOHandler:
                 filename = f"candidate_{candidate.candidate_idx+1:02d}.wav"
                 filepath = chunk_dir / filename
 
-                audio_tensor = candidate.audio_tensor.cpu()
-                if audio_tensor.ndim == 1:
-                    audio_tensor = audio_tensor.unsqueeze(0)
+                audio_tensor = candidate.audio_tensor
+                if audio_tensor is None:
+                    try:
+                        if candidate.audio_path and candidate.audio_path.exists():
+                            loaded_waveform, _ = torchaudio.load(str(candidate.audio_path))
+                            audio_tensor = loaded_waveform
+                        else:
+                            logger.warning(
+                                f"Missing audio tensor and file for candidate {candidate.candidate_idx+1}"
+                            )
+                            continue
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to load audio from path for candidate {candidate.candidate_idx+1}: {e}"
+                        )
+                        continue
 
-                torchaudio.save(str(filepath), audio_tensor, sample_rate)
+                audio_cpu = audio_tensor.cpu()
+                if audio_cpu.ndim == 1:
+                    audio_cpu = audio_cpu.unsqueeze(0)
+
+                torchaudio.save(str(filepath), audio_cpu, sample_rate)
                 candidate.audio_path = filepath
 
                 logger.debug(f"Saved candidate to correct structure: {filepath}")

@@ -498,8 +498,10 @@ class WhisperIOHandler:
         """Check if the corresponding audio file exists for a validation result."""
         try:
             chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
-            audio_file = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
-            return audio_file.exists()
+            base_path = chunk_dir / f"candidate_{candidate_idx+1:02d}.wav"
+            trimmed_path = chunk_dir / f"candidate_{candidate_idx+1:02d}_trimmed.wav"
+            # Consider candidate present if base or trimmed exists
+            return base_path.exists() or trimmed_path.exists()
         except Exception as e:
             logger.warning(
                 f"Error checking audio file existence for chunk {chunk_idx}, candidate {candidate_idx}: {e}"
