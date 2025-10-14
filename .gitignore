@@ -147,3 +147,6 @@ scripts/github_token.txt
 
 # New token
 .github_token 
+ 
+# External repositories and local model folders
+NISQA/
