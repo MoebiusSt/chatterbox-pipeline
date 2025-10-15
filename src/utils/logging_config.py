@@ -227,6 +227,17 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
                         )
                     )
 
+                    # Special handling: inline progress updates starting with '\r'
+                    if isinstance(raw_msg, str) and raw_msg.startswith("\r"):
+                        try:
+                            stream = self.stream
+                            # Write raw message as-is (no formatter, no newline) to keep single-line updates
+                            stream.write(raw_msg)
+                            stream.flush()
+                            return
+                        except Exception:
+                            pass
+
                     if needs_newline:
                         try:
                             stream = self.stream

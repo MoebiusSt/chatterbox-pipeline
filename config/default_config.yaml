@@ -201,6 +201,7 @@ validation:
     targets:                    # the deviation from the mediean defines the flow score
       wpm_min: 120        
       wpm_max: 160
+      liveliness_target: 0.42
     select:
       alpha_quality: 0.50       # Whisper Quality-Weight
       beta_prosody: 0.30        # Prosody-Weight

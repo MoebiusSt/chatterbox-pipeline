@@ -125,7 +125,8 @@ class ValidationHandler:
                     logger.debug(f"🔍 Validating candidate {candidate_num}...")
                     try:
                         progress_line.append(str(candidate_num))
-                        logger.info("Candidates: " + ", ".join(progress_line))
+                        # Use carriage return to update the same line in supported terminals
+                        logger.info("\rCandidates: " + ", ".join(progress_line))
                     except Exception:
                         pass
 
@@ -1042,7 +1043,9 @@ class ValidationHandler:
                     logger.debug(f"🔍 Validating candidate {candidate_num}...")
                     try:
                         progress_line.append(str(candidate_num))
-                        logger.info("Candidates: " + ", ".join(progress_line))
+                        # Fallback for terminals that do not support inline updates: concise per-candidate line
+                        logger.info(f"Candidate {candidate_num}")
+                        logger.info("\rCandidates: " + ", ".join(progress_line))
                     except Exception:
                         pass
 

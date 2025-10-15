@@ -182,8 +182,22 @@ class UserCandidateManager:
             print()
 
             # Display candidate table with proper alignment
+            # Header aligned to column widths
             print(
-                "Cand.:  exag   cfg_w  tmp    type        val_s   qty_s   wpm   flow  live  mos   pros  final  passed[s,p]:"
+                f"{'Cand.':<6} "
+                f"{'exag':<6} "
+                f"{'cfg_w':<6} "
+                f"{'tmp':<6} "
+                f"{'type':<20} "
+                f"{'val_s':<7} "
+                f"{'qty_s':<7} "
+                f"{'wpm':<6} "
+                f"{'flow':<6} "
+                f"{'live':<6} "
+                f"{'mos':<6} "
+                f"{'pros':<6} "
+                f"{'final':<7} "
+                f"{'passed[s,p]':<12}"
             )
             for info in candidate_infos:
                 selected_marker = "<- sel" if info.is_selected else ""
@@ -196,12 +210,13 @@ class UserCandidateManager:
                 sim_mark = "✅" if info.validation_passed else "❌"
                 pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
 
+                passed_pair = f"{sim_mark}{pros_mark}"
                 print(
                     f"{info.candidate_id+1:<6} "
                     f"{info.exaggeration:<6.2f} "
                     f"{info.cfg_weight:<6.2f} "
                     f"{info.temperature:<6.2f} "
-                    f"{info.candidate_type:<10} "
+                    f"{info.candidate_type:<20} "
                     f"{getattr(info, 'validation_score', 0.0):<7.2f} "
                     f"{info.quality_score:<7.2f} "
                     f"{getattr(info, 'wpm', 0.0):<6.0f} "
@@ -210,7 +225,7 @@ class UserCandidateManager:
                     f"{info.mos_score:<6.2f} "
                     f"{info.prosody_score:<6.2f} "
                     f"{info.final_selection_score:<7.2f} "
-                    f"{sim_mark}{pros_mark:<5} {selected_marker}"
+                    f"{passed_pair:<12} {selected_marker}"
                 )
 
             print()
@@ -267,8 +282,22 @@ class UserCandidateManager:
                             print()
 
                             # Display candidate table with proper alignment
+                            # Header aligned to column widths
                             print(
-                                "Cand.:  exag   cfg_w  tmp    type        val_s   qty_s   wpm   flow  live  mos   pros  final  passed[s,p]:"
+                                f"{'Cand.':<6} "
+                                f"{'exag':<6} "
+                                f"{'cfg_w':<6} "
+                                f"{'tmp':<6} "
+                                f"{'type':<20} "
+                                f"{'val_s':<7} "
+                                f"{'qty_s':<7} "
+                                f"{'wpm':<6} "
+                                f"{'flow':<6} "
+                                f"{'live':<6} "
+                                f"{'mos':<6} "
+                                f"{'pros':<6} "
+                                f"{'final':<7} "
+                                f"{'passed[s,p]':<12}"
                             )
                             for info in candidate_infos:
                                 selected_marker = "<- sel" if info.is_selected else ""
@@ -280,12 +309,13 @@ class UserCandidateManager:
                                 sim_mark = "✅" if info.validation_passed else "❌"
                                 pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
 
+                                passed_pair = f"{sim_mark}{pros_mark}"
                                 print(
                                     f"{info.candidate_id+1:<6} "
                                     f"{info.exaggeration:<6.2f} "
                                     f"{info.cfg_weight:<6.2f} "
                                     f"{info.temperature:<6.2f} "
-                                    f"{info.candidate_type:<10} "
+                                    f"{info.candidate_type:<20} "
                                     f"{getattr(info, 'validation_score', 0.0):<7.2f} "
                                     f"{info.quality_score:<7.2f} "
                                     f"{getattr(info, 'wpm', 0.0):<6.0f} "
@@ -294,7 +324,7 @@ class UserCandidateManager:
                                     f"{info.mos_score:<6.2f} "
                                     f"{info.prosody_score:<6.2f} "
                                     f"{info.final_selection_score:<7.2f} "
-                                    f"{sim_mark}{pros_mark:<5} {selected_marker}"
+                                    f"{passed_pair:<12} {selected_marker}"
                                 )
 
                             print()

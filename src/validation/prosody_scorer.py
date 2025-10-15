@@ -65,6 +65,8 @@ class ProsodyScorer:
         tgt = p_cfg.get("targets", {}) or {}
         self.tgt_wpm_min = float(tgt.get("wpm_min", 130))
         self.tgt_wpm_max = float(tgt.get("wpm_max", 180))
+        # Center (ideal) for liveliness mapping; no extra band params
+        self.liv_target = float(tgt.get("liveliness_target", 0.5))
 
         # Thresholds
         thr = p_cfg.get("thresholds", {}) or {}
@@ -215,7 +217,11 @@ class ProsodyScorer:
         f0_mean, f0_std = self._f0_stats_parselmouth(audio)
         # Map F0 std (variability) to [0..1] with soft bounds
         f0_score = max(0.0, min(1.0, f0_std / 35.0))
-        liveliness = 0.5 * dyn_score + 0.5 * f0_score
+        liveliness_raw = 0.5 * dyn_score + 0.5 * f0_score
+        # Triangle around configurable center (half-width fixed at 0.5)
+        T = max(0.0, 1.0 - 2.0 * abs(liveliness_raw - self.liv_target))
+        # Fixed gamma sharpening to emphasize vicinity of the target
+        liveliness = T ** 1.2
 
         # Intelligibility: proxy from ASR presence/length
         asr_len = len(asr_transcription or "")
@@ -289,6 +295,7 @@ class ProsodyScorer:
 
         result["prosody_score"] = float(max(0.0, min(1.0, prosody_score)))
         result["raw_mos"] = raw_mos
+        result["liveliness_raw"] = float(liveliness_raw)
         result["wpm"] = wpm
         return result
 
