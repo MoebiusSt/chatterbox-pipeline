@@ -346,3 +346,26 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
             # Make WhisperX alignment logs quiet unless verbose
             logging.getLogger("whisperx").setLevel(logging.WARNING)
             logging.getLogger("webrtcvad").setLevel(logging.ERROR)
+
+            # Silence very specific training-era messages surfaced by certain repos
+            # (seen when VERSA/pyannote loads pretrained checkpoints)
+            logging.getLogger("pyannote").setLevel(logging.ERROR)
+            logging.getLogger("pyannote.audio").setLevel(logging.ERROR)
+
+        # As a last resort, globally demote warnings to console unless verbose.
+        # Detailed warnings are still captured in the file logger at DEBUG level.
+        # We avoid overriding warnings globally in verbose mode to aid debugging.
+        try:
+            import warnings as _warnings
+
+            if not verbose_mode:
+                for cat in (
+                    UserWarning,
+                    FutureWarning,
+                    DeprecationWarning,
+                    RuntimeWarning,
+                    ImportWarning,
+                ):
+                    _warnings.filterwarnings("ignore", category=cat)
+        except Exception:
+            pass

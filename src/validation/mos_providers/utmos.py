@@ -124,13 +124,14 @@ class UTMOSProvider(MOSProvider):
             # Call VERSA pseudo_mos metric; it resamples internally as needed
             assert self._pm is not None
             # mypy: treat _pm as module with expected callable; runtime import guarantees attribute
-            scores = getattr(self._pm, "pseudo_mos_metric")( 
-                pred=audio_np,
-                fs=int(sample_rate),
-                predictor_dict=self._predictor_dict or {},
-                predictor_fs=self._predictor_fs or {},
-                use_gpu=self.use_gpu,
-            )
+            with quiet_imports_and_warnings():
+                scores = getattr(self._pm, "pseudo_mos_metric")( 
+                    pred=audio_np,
+                    fs=int(sample_rate),
+                    predictor_dict=self._predictor_dict or {},
+                    predictor_fs=self._predictor_fs or {},
+                    use_gpu=self.use_gpu,
+                )
 
             # Retrieve the relevant key
             if not isinstance(scores, dict):

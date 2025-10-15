@@ -111,15 +111,23 @@ class ValidationHandler:
 
                 chunk_num = chunk.idx + 1
                 logger.info("")
-                logger.info(f"🎯 CHUNK {chunk_num}/{len(chunks)}")
+                logger.info(f"🎯 CHUNK {chunk_num}/{len(chunks)} - {len(chunk_candidates)} candidates")
                 logger.debug(f"Candidates to validate: {len(chunk_candidates)}")
                 logger.info("-" * 40)
 
                 chunk_results = {}
 
+                # Inline incremental candidate progress line (single line updated step by step)
+                progress_line = []
+
                 for candidate in chunk_candidates:
                     candidate_num = candidate.candidate_idx + 1
                     logger.debug(f"🔍 Validating candidate {candidate_num}...")
+                    try:
+                        progress_line.append(str(candidate_num))
+                        logger.info("Candidates: " + ", ".join(progress_line))
+                    except Exception:
+                        pass
 
                     # Resolve language for this candidate
                     try:
@@ -388,10 +396,16 @@ class ValidationHandler:
                         result.get("overall_quality_score", 0.0)
                         for result in chunk_results.values()
                     ]
-                    min_score = min(overall_scores)
-                    max_score = max(overall_scores)
+                    selection_scores = [
+                        result.get("final_selection_score", result.get("overall_quality_score", 0.0))
+                        for result in chunk_results.values()
+                    ]
+                    min_overall = min(overall_scores)
+                    max_overall = max(overall_scores)
+                    min_select = min(selection_scores)
+                    max_select = max(selection_scores)
                     logger.info(
-                        f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid (overall scores: {min_score:.3f} to {max_score:.3f})"
+                        f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid (overall: {min_overall:.3f}..{max_overall:.3f}, final_selection: {min_select:.3f}..{max_select:.3f})"
                     )
                 else:
                     logger.info(
@@ -1017,14 +1031,20 @@ class ValidationHandler:
 
                 chunk_num = chunk.idx + 1
                 logger.info("-" * 40)
-                logger.info(f"🎯 CHUNK {chunk_num}/{len(chunks)} (selective)")
+                logger.info(f"🎯 CHUNK {chunk_num}/{len(chunks)} (selective) - {len(chunk_candidates)} candidates")
                 logger.debug(f"Candidates to validate: {len(chunk_candidates)}")
 
                 chunk_results = {}
 
+                progress_line = []
                 for candidate in chunk_candidates:
                     candidate_num = candidate.candidate_idx + 1
                     logger.debug(f"🔍 Validating candidate {candidate_num}...")
+                    try:
+                        progress_line.append(str(candidate_num))
+                        logger.info("Candidates: " + ", ".join(progress_line))
+                    except Exception:
+                        pass
 
                     # Check if whisper result already exists
                     existing_whisper = self.file_manager.get_whisper(
@@ -1282,10 +1302,16 @@ class ValidationHandler:
                         result.get("overall_quality_score", 0.0)
                         for result in chunk_results.values()
                     ]
-                    min_score = min(overall_scores)
-                    max_score = max(overall_scores)
+                    selection_scores = [
+                        result.get("final_selection_score", result.get("overall_quality_score", 0.0))
+                        for result in chunk_results.values()
+                    ]
+                    min_overall = min(overall_scores)
+                    max_overall = max(overall_scores)
+                    min_select = min(selection_scores)
+                    max_select = max(selection_scores)
                     logger.info(
-                        f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid (overall scores: {min_score:.3f} to {max_score:.3f})"
+                        f"✅ Validation complete: {valid_count}/{len(chunk_candidates)} candidates valid (overall: {min_overall:.3f}..{max_overall:.3f}, final_selection: {min_select:.3f}..{max_select:.3f})"
                     )
                 else:
                     logger.info(
@@ -1360,20 +1386,46 @@ class ValidationHandler:
                     continue
 
                 try:
-                    # Find best candidate for new chunk data (but don't update selected_candidates)
+                    # Find best candidate for new chunk data (prefer final_selection_score; respect gates).
                     best_candidate_idx = None
-                    best_score_value = -1.0
+                    best_score_value = float("-inf")
 
                     for candidate in candidates_list:
                         result_dict = chunk_validation[candidate.candidate_idx]
-                        # Use overall from details to avoid redundancy
                         quality_details = result_dict.get("quality_details", {})
                         individual_scores = quality_details.get("individual_scores", {})
-                        candidate_score = individual_scores.get("overall_score", 0.0)
+                        # Prefer final_selection_score; fallback to legacy overall
+                        candidate_score = float(
+                            result_dict.get(
+                                "final_selection_score",
+                                individual_scores.get("overall_score", 0.0),
+                            )
+                        )
+                        # Respect gating flags if present
+                        passes_mos = result_dict.get("passes_mos_gate", True)
+                        passes_similarity = result_dict.get("passes_similarity_gate", True)
+                        candidate_effective = candidate_score if (passes_mos and passes_similarity) else float("-inf")
 
-                        if candidate_score > best_score_value:
-                            best_score_value = candidate_score
+                        if candidate_effective > best_score_value:
+                            best_score_value = candidate_effective
                             best_candidate_idx = candidate.candidate_idx
+
+                    # Fallback: if all were gated out, ignore gates and choose best by candidate_score
+                    if best_candidate_idx is None or best_score_value == float("-inf"):
+                        best_score_value = float("-inf")
+                        for candidate in candidates_list:
+                            result_dict = chunk_validation[candidate.candidate_idx]
+                            quality_details = result_dict.get("quality_details", {})
+                            individual_scores = quality_details.get("individual_scores", {})
+                            candidate_score = float(
+                                result_dict.get(
+                                    "final_selection_score",
+                                    individual_scores.get("overall_score", 0.0),
+                                )
+                            )
+                            if candidate_score > best_score_value:
+                                best_score_value = candidate_score
+                                best_candidate_idx = candidate.candidate_idx
 
                     chunk_metrics = {
                         "text": chunk.text,
@@ -1390,16 +1442,25 @@ class ValidationHandler:
                     candidate_scores = []
                     for candidate in candidates_list:
                         result_dict = chunk_validation[candidate.candidate_idx]
-                        # Use overall from details to avoid redundancy
                         quality_details = result_dict.get("quality_details", {})
                         individual_scores = quality_details.get("individual_scores", {})
-                        candidate_score = individual_scores.get("overall_score", 0.0)
-                        candidate_scores.append(candidate_score)
+                        final_sel = float(
+                            result_dict.get(
+                                "final_selection_score",
+                                individual_scores.get("overall_score", 0.0),
+                            )
+                        )
+                        candidate_scores.append(final_sel)
 
                         chunk_metrics["candidates"][candidate.candidate_idx] = {
                             "transcription": result_dict.get("transcription", ""),
                             "quality_details": quality_details,
-                            "final_score": candidate_score,
+                            "overall_quality_score": float(individual_scores.get("overall_score", 0.0)),
+                            "final_selection_score": final_sel,
+                            "prosody": result_dict.get("prosody"),
+                            "is_valid": result_dict.get("is_valid", False),
+                            "passes_mos_gate": result_dict.get("passes_mos_gate", True),
+                            "passes_similarity_gate": result_dict.get("passes_similarity_gate", True),
                         }
 
                     # Log results

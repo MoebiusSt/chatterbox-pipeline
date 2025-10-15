@@ -130,7 +130,8 @@ class NISQAProvider(MOSProvider):
             ns = self._versa_nisqa
             if ns is None or self._model is None:
                 return None
-            mos = ns.nisqa_metric(self._model, wav, int(sample_rate))
+            with quiet_imports_and_warnings():
+                mos = ns.nisqa_metric(self._model, wav, int(sample_rate))
             if mos is None:
                 return None
             self._last_details = {

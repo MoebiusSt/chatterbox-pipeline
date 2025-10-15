@@ -366,11 +366,17 @@ class TaskMetricsGenerator:
                                         continue
                                     score = 0.0
                                     if isinstance(cand_v, dict):
-                                        val = cand_v.get("overall_quality_score")
-                                        if val is None:
-                                            val = cand_v.get("final_score")
+                                        # Prefer new final_selection_score, fallback to legacy scores
                                         try:
-                                            score = float(val) if val is not None else 0.0
+                                            score = float(
+                                                cand_v.get(
+                                                    "final_selection_score",
+                                                    cand_v.get(
+                                                        "overall_quality_score",
+                                                        cand_v.get("final_score", 0.0),
+                                                    ),
+                                                )
+                                            )
                                         except Exception:
                                             score = 0.0
                                     if score > best_score:
@@ -396,11 +402,17 @@ class TaskMetricsGenerator:
                                     continue
                                 score = 0.0
                                 if isinstance(cand_v, dict):
-                                    val = cand_v.get("overall_quality_score")
-                                    if val is None:
-                                        val = cand_v.get("final_score")
+                                    # Prefer new final_selection_score, fallback to legacy scores
                                     try:
-                                        score = float(val) if val is not None else 0.0
+                                        score = float(
+                                            cand_v.get(
+                                                "final_selection_score",
+                                                cand_v.get(
+                                                    "overall_quality_score",
+                                                    cand_v.get("final_score", 0.0),
+                                                ),
+                                            )
+                                        )
                                     except Exception:
                                         score = 0.0
                                 if score > best_score:
