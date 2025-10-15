@@ -31,6 +31,7 @@ class CandidateInfo:
     flow_score: float = 0.0
     liveliness_score: float = 0.0
     mos_score: float = 0.0
+    wpm: float = 0.0
     prosody_score: float = 0.0
     final_selection_score: float = 0.0
 
@@ -182,7 +183,7 @@ class UserCandidateManager:
 
             # Display candidate table with proper alignment
             print(
-                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        val_score:  qty_score:  flow:  live:  mos:  pros:  final:  passed[sim,pros]:"
+                "Cand.:  exag   cfg_w  tmp    type        val_s   qty_s   wpm   flow  live  mos   pros  final  passed[s,p]:"
             )
             for info in candidate_infos:
                 selected_marker = "<- sel" if info.is_selected else ""
@@ -196,19 +197,20 @@ class UserCandidateManager:
                 pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
 
                 print(
-                    f"{info.candidate_id+1:<11} "
-                    f"{info.exaggeration:<13.2f} "
-                    f"{info.cfg_weight:<12.2f} "
-                    f"{info.temperature:<8.2f} "
-                    f"{info.candidate_type:<12} "
-                    f"{getattr(info, 'validation_score', 0.0):<10.2f} "
-                    f"{info.quality_score:<11.2f} "
+                    f"{info.candidate_id+1:<6} "
+                    f"{info.exaggeration:<6.2f} "
+                    f"{info.cfg_weight:<6.2f} "
+                    f"{info.temperature:<6.2f} "
+                    f"{info.candidate_type:<10} "
+                    f"{getattr(info, 'validation_score', 0.0):<7.2f} "
+                    f"{info.quality_score:<7.2f} "
+                    f"{getattr(info, 'wpm', 0.0):<6.0f} "
                     f"{info.flow_score:<6.2f} "
                     f"{info.liveliness_score:<6.2f} "
                     f"{info.mos_score:<6.2f} "
                     f"{info.prosody_score:<6.2f} "
                     f"{info.final_selection_score:<7.2f} "
-                    f"{sim_mark}{pros_mark:<6} {selected_marker}"
+                    f"{sim_mark}{pros_mark:<5} {selected_marker}"
                 )
 
             print()
@@ -266,7 +268,7 @@ class UserCandidateManager:
 
                             # Display candidate table with proper alignment
                             print(
-                                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        val_score:  qty_score:  flow:  live:  mos:  pros:  final:  passed[sim,pros]:"
+                                "Cand.:  exag   cfg_w  tmp    type        val_s   qty_s   wpm   flow  live  mos   pros  final  passed[s,p]:"
                             )
                             for info in candidate_infos:
                                 selected_marker = "<- sel" if info.is_selected else ""
@@ -279,19 +281,20 @@ class UserCandidateManager:
                                 pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
 
                                 print(
-                                    f"{info.candidate_id+1:<11} "
-                                    f"{info.exaggeration:<13.2f} "
-                                    f"{info.cfg_weight:<12.2f} "
-                                    f"{info.temperature:<8.2f} "
-                                    f"{info.candidate_type:<12} "
-                                    f"{getattr(info, 'validation_score', 0.0):<10.2f} "
-                                    f"{info.quality_score:<11.2f} "
+                                    f"{info.candidate_id+1:<6} "
+                                    f"{info.exaggeration:<6.2f} "
+                                    f"{info.cfg_weight:<6.2f} "
+                                    f"{info.temperature:<6.2f} "
+                                    f"{info.candidate_type:<10} "
+                                    f"{getattr(info, 'validation_score', 0.0):<7.2f} "
+                                    f"{info.quality_score:<7.2f} "
+                                    f"{getattr(info, 'wpm', 0.0):<6.0f} "
                                     f"{info.flow_score:<6.2f} "
                                     f"{info.liveliness_score:<6.2f} "
                                     f"{info.mos_score:<6.2f} "
                                     f"{info.prosody_score:<6.2f} "
                                     f"{info.final_selection_score:<7.2f} "
-                                    f"{sim_mark}{pros_mark:<6} {selected_marker}"
+                                    f"{sim_mark}{pros_mark:<5} {selected_marker}"
                                 )
 
                             print()
@@ -425,6 +428,7 @@ class UserCandidateManager:
                 liveliness = subscores.get("liveliness", 0.0) if isinstance(subscores, dict) else 0.0
                 mos_unit = subscores.get("mos", 0.0) if isinstance(subscores, dict) else 0.0
                 prosody_score = prosody.get("prosody_score", 0.0) if isinstance(prosody, dict) else 0.0
+                wpm_val = prosody.get("wpm", 0.0) if isinstance(prosody, dict) else 0.0
                 final_sel = candidate_data.get("final_selection_score")
                 if final_sel is None:
                     # Fallback to legacy/overall when final not present
@@ -444,6 +448,7 @@ class UserCandidateManager:
                     flow_score=float(flow),
                     liveliness_score=float(liveliness),
                     mos_score=float(mos_unit),
+                    wpm=float(wpm_val),
                     prosody_score=float(prosody_score),
                     final_selection_score=float(final_sel),
                 )

@@ -194,19 +194,19 @@ validation:
     enabled: true
     weights:
       semantic_alignment: 0.0   #No deliverer yet
-      flow: 0.45                # Derived from wpm_min and wpm_max
-      liveliness: 0.25
+      flow: 0.40                # Derived from wpm_min and wpm_max
+      liveliness: 0.30
       intelligibility: 0.0      #No deliverer yet
       mos: 0.30                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
-      wpm_min: 130        
+      wpm_min: 120        
       wpm_max: 160
     select:
       alpha_quality: 0.50       # Whisper Quality-Weight
-      beta_prosody: 0.35        # Prosody-Weight
-      gamma_mos: 0.15           # additional MOS-direct weight
+      beta_prosody: 0.30        # Prosody-Weight
+      gamma_mos: 0.20           # additional MOS-direct weight
     thresholds:
-      min_prosody_score: 0.60   # Prosody-Gate
+      min_prosody_score: 0.50   # Prosody-Gate
 
   mos:
     provider: combined         # combined|nisqa|utmos
@@ -225,8 +225,8 @@ validation:
 
 audio:
   silence_duration:
-    normal: 0.20  # inserted between chunks if split was between sentences
-    paragraph: 0.80  # inserted if split was before paragraph break blank line
+    normal: 0.30  # inserted between chunks if split was between sentences
+    paragraph: 0.90  # inserted if split was before paragraph break blank line
     long: 1.30  # inserted for explicit long paragraph breaks (>= 2 empty lines)
   sample_rate: 24000
 
