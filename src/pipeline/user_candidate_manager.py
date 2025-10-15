@@ -27,6 +27,12 @@ class CandidateInfo:
     quality_score: float
     validation_passed: bool
     is_selected: bool
+    # Prosody-related scores and final selection score (0.0..1.0)
+    flow_score: float = 0.0
+    liveliness_score: float = 0.0
+    mos_score: float = 0.0
+    prosody_score: float = 0.0
+    final_selection_score: float = 0.0
 
 @dataclass
 class ChunkOverview:
@@ -176,11 +182,18 @@ class UserCandidateManager:
 
             # Display candidate table with proper alignment
             print(
-                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        sim_score:  length_score:  val_score:  qty_score:  passed:"
+                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        val_score:  qty_score:  flow:  live:  mos:  pros:  final:  passed[sim,pros]:"
             )
             for info in candidate_infos:
                 selected_marker = "<- sel" if info.is_selected else ""
-                passed_marker = "✅" if info.validation_passed else "❌"
+                # Diagnostic prosody pass per min_prosody_score (not a hard gate)
+                try:
+                    validation_cfg = self.file_manager.config.get("validation", {})
+                    prosody_thr = float(validation_cfg.get("prosody", {}).get("thresholds", {}).get("min_prosody_score", 0.60))
+                except Exception:
+                    prosody_thr = 0.60
+                sim_mark = "✅" if info.validation_passed else "❌"
+                pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
 
                 print(
                     f"{info.candidate_id+1:<11} "
@@ -188,11 +201,14 @@ class UserCandidateManager:
                     f"{info.cfg_weight:<12.2f} "
                     f"{info.temperature:<8.2f} "
                     f"{info.candidate_type:<12} "
-                    f"{info.similarity_score:<11.2f} "
-                    f"{info.length_score:<14.2f} "
                     f"{getattr(info, 'validation_score', 0.0):<10.2f} "
                     f"{info.quality_score:<11.2f} "
-                    f"{passed_marker:<7} {selected_marker}"
+                    f"{info.flow_score:<6.2f} "
+                    f"{info.liveliness_score:<6.2f} "
+                    f"{info.mos_score:<6.2f} "
+                    f"{info.prosody_score:<6.2f} "
+                    f"{info.final_selection_score:<7.2f} "
+                    f"{sim_mark}{pros_mark:<6} {selected_marker}"
                 )
 
             print()
@@ -250,11 +266,17 @@ class UserCandidateManager:
 
                             # Display candidate table with proper alignment
                             print(
-                                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        sim_score:  length_score:  val_score:  qty_score:  passed:"
+                                "Candidate:  exaggeration:  cfg_weight:  temp:    type:        val_score:  qty_score:  flow:  live:  mos:  pros:  final:  passed[sim,pros]:"
                             )
                             for info in candidate_infos:
                                 selected_marker = "<- sel" if info.is_selected else ""
-                                passed_marker = "✅" if info.validation_passed else "❌"
+                                try:
+                                    validation_cfg = self.file_manager.config.get("validation", {})
+                                    prosody_thr = float(validation_cfg.get("prosody", {}).get("thresholds", {}).get("min_prosody_score", 0.60))
+                                except Exception:
+                                    prosody_thr = 0.60
+                                sim_mark = "✅" if info.validation_passed else "❌"
+                                pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
 
                                 print(
                                     f"{info.candidate_id+1:<11} "
@@ -262,11 +284,14 @@ class UserCandidateManager:
                                     f"{info.cfg_weight:<12.2f} "
                                     f"{info.temperature:<8.2f} "
                                     f"{info.candidate_type:<12} "
-                                    f"{info.similarity_score:<11.2f} "
-                                    f"{info.length_score:<14.2f} "
                                     f"{getattr(info, 'validation_score', 0.0):<10.2f} "
                                     f"{info.quality_score:<11.2f} "
-                                    f"{passed_marker:<7} {selected_marker}"
+                                    f"{info.flow_score:<6.2f} "
+                                    f"{info.liveliness_score:<6.2f} "
+                                    f"{info.mos_score:<6.2f} "
+                                    f"{info.prosody_score:<6.2f} "
+                                    f"{info.final_selection_score:<7.2f} "
+                                    f"{sim_mark}{pros_mark:<6} {selected_marker}"
                                 )
 
                             print()
@@ -393,6 +418,18 @@ class UserCandidateManager:
                 else:
                     is_valid_flag = bool(stored_is_valid)
 
+                # Prosody metrics (flow, liveliness, mos, prosody) and final selection score
+                prosody = candidate_data.get("prosody", {}) if isinstance(candidate_data, dict) else {}
+                subscores = prosody.get("subscores", {}) if isinstance(prosody, dict) else {}
+                flow = subscores.get("flow", 0.0) if isinstance(subscores, dict) else 0.0
+                liveliness = subscores.get("liveliness", 0.0) if isinstance(subscores, dict) else 0.0
+                mos_unit = subscores.get("mos", 0.0) if isinstance(subscores, dict) else 0.0
+                prosody_score = prosody.get("prosody_score", 0.0) if isinstance(prosody, dict) else 0.0
+                final_sel = candidate_data.get("final_selection_score")
+                if final_sel is None:
+                    # Fallback to legacy/overall when final not present
+                    final_sel = individual_scores.get("overall_score", 0.0)
+
                 info = CandidateInfo(
                     candidate_id=candidate_idx,
                     exaggeration=exaggeration,
@@ -404,6 +441,11 @@ class UserCandidateManager:
                     quality_score=overall,
                     validation_passed=is_valid_flag,
                     is_selected=(candidate_idx == current_selected),
+                    flow_score=float(flow),
+                    liveliness_score=float(liveliness),
+                    mos_score=float(mos_unit),
+                    prosody_score=float(prosody_score),
+                    final_selection_score=float(final_sel),
                 )
 
                 # Attach validation_score dynamically for printing from val_score
