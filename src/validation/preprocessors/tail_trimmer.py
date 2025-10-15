@@ -31,6 +31,7 @@ import torch
 import torchaudio
 
 from validation.number_normalization import normalize_text_for_numbers
+from utils.silence import quiet_imports_and_warnings
 logger = logging.getLogger(__name__)
 
 
@@ -74,9 +75,10 @@ class TailTrimmer:
         if self._webrtcvad is not None:
             return
         try:
-            import webrtcvad  # type: ignore
+            with quiet_imports_and_warnings():
+                import webrtcvad  # type: ignore
 
-            self._webrtcvad = webrtcvad.Vad(int(self.vad_cfg.get("aggressiveness", 2)))
+                self._webrtcvad = webrtcvad.Vad(int(self.vad_cfg.get("aggressiveness", 2)))
         except Exception as e:
             logger.debug(f"WebRTC VAD not available: {e}")
             self._webrtcvad = None
@@ -85,9 +87,10 @@ class TailTrimmer:
         if self._whisperx is not None:
             return
         try:
-            import whisperx  # type: ignore
+            with quiet_imports_and_warnings():
+                import whisperx  # type: ignore
 
-            self._whisperx = whisperx
+                self._whisperx = whisperx
         except Exception as e:
             logger.debug(f"whisperx not available: {e}")
             self._whisperx = None
@@ -128,7 +131,8 @@ class TailTrimmer:
             if self._whisperx is None:
                 return None
             compute_type = "float16" if device == "cuda" else "int8"
-            model = self._whisperx.load_model("small", device=device, compute_type=compute_type)
+            with quiet_imports_and_warnings():
+                model = self._whisperx.load_model("small", device=device, compute_type=compute_type)
             self._whisperx_asr_models[key] = model
             return model
         except Exception:
@@ -141,7 +145,8 @@ class TailTrimmer:
                 return self._whisperx_aligners[lang]
             if self._whisperx is None:
                 return None
-            align_model, metadata = self._whisperx.load_align_model(language_code=lang, device=device)
+            with quiet_imports_and_warnings():
+                align_model, metadata = self._whisperx.load_align_model(language_code=lang, device=device)
             self._whisperx_aligners[lang] = (align_model, metadata)
             return self._whisperx_aligners[lang]
         except Exception:
@@ -208,21 +213,23 @@ class TailTrimmer:
             asr_model = self._get_whisperx_asr_model(device)
             if asr_model is None:
                 return None, meta
-            result = asr_model.transcribe(audio16.cpu().numpy(), language=language)
+            with quiet_imports_and_warnings():
+                result = asr_model.transcribe(audio16.cpu().numpy(), language=language)
 
             # Align
             align_pair = self._get_whisperx_aligner(language, device)
             if align_pair is None:
                 return None, meta
             align_model, metadata = align_pair
-            aligned = self._whisperx.align(
-                result.get("segments", []),
-                align_model,
-                metadata,
-                audio16.cpu().numpy(),
-                device=device,
-                return_char_alignments=False,
-            )
+            with quiet_imports_and_warnings():
+                aligned = self._whisperx.align(
+                    result.get("segments", []),
+                    align_model,
+                    metadata,
+                    audio16.cpu().numpy(),
+                    device=device,
+                    return_char_alignments=False,
+                )
             words = aligned.get("word_segments") or []
             if not words:
                 return None, meta

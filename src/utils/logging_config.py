@@ -36,11 +36,14 @@ try:
 
 except ImportError:  # pragma: no cover – colorama optional
 
-    class _ColorFormatter(logging.Formatter):
+    class _PlainFormatter(logging.Formatter):
         """Fallback formatter without colors."""
 
         def format(self, record: logging.LogRecord) -> str:  # noqa: D401
             return super().format(record)
+
+    # Create an alias so the rest of the module can refer to _ColorFormatter
+    _ColorFormatter = _PlainFormatter  # type: ignore[misc,assignment]
 
 
 class StructuredFormatter(logging.Formatter):
@@ -250,13 +253,9 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
                 StructuredFormatter.__init__(self, fmt, use_icons=use_icons)
 
             def format(self, record: logging.LogRecord) -> str:
-                # Apply structure first, then color
-                record = StructuredFormatter.format(self, record)
-                return (
-                    _ColorFormatter.format(self, record)
-                    if isinstance(record, logging.LogRecord)
-                    else record
-                )
+                # Apply structure first (modifies record.msg), then colorize
+                _ = StructuredFormatter.format(self, record)
+                return _ColorFormatter.format(self, record)
 
         console_formatter = StructuredColorFormatter(console_fmt)
         console_handler.setFormatter(console_formatter)
@@ -327,3 +326,23 @@ class LoggingConfigurator:  # pylint: disable=too-few-public-methods
             logging.getLogger("transformers").setLevel(logging.WARNING)
             logging.getLogger("torch").setLevel(logging.WARNING)
             logging.getLogger("torchaudio").setLevel(logging.WARNING)
+
+            # Silence extremely noisy optional toolkits often used by VERSA or metrics
+            for lib in [
+                "pyannote",
+                "pyannote.audio",
+                "pytorch_lightning",
+                "lightning",
+                "flash_attn",
+                "fairseq",
+                "visqol",
+                "nomad",
+                "scoreq",
+                "srmr",
+                "noresqa",
+            ]:
+                logging.getLogger(lib).setLevel(logging.ERROR)
+
+            # Make WhisperX alignment logs quiet unless verbose
+            logging.getLogger("whisperx").setLevel(logging.WARNING)
+            logging.getLogger("webrtcvad").setLevel(logging.ERROR)

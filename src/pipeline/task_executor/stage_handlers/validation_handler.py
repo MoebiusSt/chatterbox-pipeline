@@ -51,19 +51,28 @@ class ValidationHandler:
             # enforce de/en gate per requirement, even if config wider
             enabled_langs = mos_cfg.get("enabled_languages", ["de", "en"]) or ["de", "en"]
             if provider_name == "utmos":
-                mos_provider = UTMOSProvider(enabled_languages=enabled_langs)
+                mos_provider = UTMOSProvider(
+                    enabled_languages=enabled_langs,
+                    prefer_utmosv2=bool(mos_cfg.get("prefer_utmosv2", False)),
+                )
             elif provider_name == "nisqa":
                 weights_path = mos_cfg.get("nisqa_weights_path")
                 mos_provider = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
             elif provider_name == "combined":
                 weights_path = mos_cfg.get("nisqa_weights_path")
                 nisqa = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
-                utmos = UTMOSProvider(enabled_languages=enabled_langs)
+                utmos = UTMOSProvider(
+                    enabled_languages=enabled_langs,
+                    prefer_utmosv2=bool(mos_cfg.get("prefer_utmosv2", False)),
+                )
                 mos_provider = CombinedMOSProvider([nisqa, utmos], enabled_languages=enabled_langs)
             else:
                 weights_path = mos_cfg.get("nisqa_weights_path")
                 nisqa = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
-                utmos = UTMOSProvider(enabled_languages=enabled_langs)
+                utmos = UTMOSProvider(
+                    enabled_languages=enabled_langs,
+                    prefer_utmosv2=bool(mos_cfg.get("prefer_utmosv2", False)),
+                )
                 mos_provider = CombinedMOSProvider([nisqa, utmos], enabled_languages=enabled_langs)
         except Exception:
             mos_provider = None

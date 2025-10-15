@@ -18,16 +18,23 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 import torchaudio
+from utils.silence import quiet_imports_and_warnings
 
+parselmouth = None
 try:
-    import parselmouth  # Praat bindings
+    with quiet_imports_and_warnings():
+        import parselmouth as _pm  # Praat bindings
+        parselmouth = _pm
 except Exception:
-    parselmouth = None
+    pass
 
+whisperx = None
 try:
-    import whisperx  # for alignment-based semantic score
+    with quiet_imports_and_warnings():
+        import whisperx as _wx  # for alignment-based semantic score
+        whisperx = _wx
 except Exception:
-    whisperx = None
+    pass
 
 from .mos_providers.base import MOSProvider
 
@@ -234,18 +241,20 @@ class ProsodyScorer:
                     lang = language or "en"
                     # Optional: restrict alignment to configured languages for stability
                     if not lang_gate or (lang.split("-")[0].lower() in lang_gate):
-                        asr_result = asr_model.transcribe(audio16.cpu().numpy(), language=lang)
+                        with quiet_imports_and_warnings():
+                            asr_result = asr_model.transcribe(audio16.cpu().numpy(), language=lang)
                         align_pair = self._get_whisperx_aligner(lang, device)
                         if align_pair is not None:
                             align_model, metadata = align_pair
-                            aligned = self._whisperx.align(
-                                asr_result.get("segments", []),
-                                align_model,
-                                metadata,
-                                audio16.cpu().numpy(),
-                                device=device,
-                                return_char_alignments=False,
-                            )
+                            with quiet_imports_and_warnings():
+                                aligned = self._whisperx.align(
+                                    asr_result.get("segments", []),
+                                    align_model,
+                                    metadata,
+                                    audio16.cpu().numpy(),
+                                    device=device,
+                                    return_char_alignments=False,
+                                )
                             words = aligned.get("word_segments") or []
                             if words:
                                 covered = sum(1 for w in words if (w.get("start") is not None and w.get("end") is not None))

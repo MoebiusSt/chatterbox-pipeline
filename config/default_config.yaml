@@ -214,6 +214,7 @@ validation:
     min_mos: 3.0               # MOS-Threshold (1..5); ~>3.5 is good
     scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
     nisqa_weights_path: "NISQA/weights/nisqa_tts.tar"  # NISQA-TTS v1 Naturalness
+    prefer_utmosv2: false      # prefer utmosv2 predictor via VERSA if available; fallback to utmos
 
   # alignment: (removed; alignment language gating handled via preprocessing.tail_trim.smart_match.language_gate)
 

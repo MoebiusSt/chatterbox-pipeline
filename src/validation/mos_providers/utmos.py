@@ -7,6 +7,7 @@ import numpy as np
 import torch
 
 from .base import MOSProvider
+from utils.silence import quiet_imports_and_warnings
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class UTMOSProvider(MOSProvider):
         enabled_languages: Optional[list[str]] = None,
         use_gpu: bool = False,
         cache_dir: str = "versa_cache",
+        prefer_utmosv2: bool = False,
     ):
         # Restrict to languages with acceptable reliability: English primary, German moderate
         self.enabled_languages = set(enabled_languages or ["de", "en"]) 
@@ -38,33 +40,41 @@ class UTMOSProvider(MOSProvider):
         self._predictor_fs: Optional[dict] = None
         self._key: Optional[str] = None  # 'utmosv2' or 'utmos'
         self._last_details: dict | None = None
+        self._prefer_utmosv2 = bool(prefer_utmosv2)
 
     def _lazy_setup(self) -> bool:
         if self._predictor_dict is not None and self._predictor_fs is not None and self._key is not None:
             return True
         try:
-            # Import the pseudo_mos module from VERSA
-            from versa.utterance_metrics import pseudo_mos as pm  # type: ignore
+            # Import the pseudo_mos module from VERSA quietly in non-verbose mode
+            with quiet_imports_and_warnings():
+                from versa.utterance_metrics import pseudo_mos as pm  # type: ignore
 
-            self._pm = pm
+                self._pm = pm
 
-            # Decide which predictor to use
-            try:
-                import utmosv2  # type: ignore  # noqa: F401
+                # Decide which predictor to use
+                predictor_types: list[str]
+                if self._prefer_utmosv2:
+                    # User prefers v2; fall back to v1 if missing
+                    try:
+                        import utmosv2  # type: ignore  # noqa: F401
+                        predictor_types = ["utmosv2"]
+                        self._key = "utmosv2"
+                    except Exception:
+                        predictor_types = ["utmos"]
+                        self._key = "utmos"
+                else:
+                    # Prefer classic utmos unless v2 is explicitly requested
+                    predictor_types = ["utmos"]
+                    self._key = "utmos"
 
-                predictor_types = ["utmosv2"]
-                self._key = "utmosv2"
-            except Exception:
-                predictor_types = ["utmos"]
-                self._key = "utmos"
-
-            # Setup predictors
-            self._predictor_dict, self._predictor_fs = pm.pseudo_mos_setup(
-                predictor_types=predictor_types,
-                predictor_args={},
-                cache_dir=self.cache_dir,
-                use_gpu=self.use_gpu,
-            )
+                # Setup predictors
+                self._predictor_dict, self._predictor_fs = pm.pseudo_mos_setup(
+                    predictor_types=predictor_types,
+                    predictor_args={},
+                    cache_dir=self.cache_dir,
+                    use_gpu=self.use_gpu,
+                )
             self._last_details = {
                 "provider": self._key,
                 "backend": "versa_pseudo_mos",

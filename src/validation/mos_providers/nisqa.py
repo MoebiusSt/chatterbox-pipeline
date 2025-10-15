@@ -8,6 +8,7 @@ import numpy as np
 import torch
 
 from .base import MOSProvider
+from utils.silence import quiet_imports_and_warnings
 
 logger = logging.getLogger(__name__)
 
@@ -62,22 +63,23 @@ class NISQAProvider(MOSProvider):
         if self._model is not None:
             return True
         try:
-            from versa.utterance_metrics import nisqa as ns  # type: ignore
+            with quiet_imports_and_warnings():
+                from versa.utterance_metrics import nisqa as ns  # type: ignore
 
-            self._versa_nisqa = ns
-            weights_path = self.weights_path
-            if not weights_path:
-                resolved = self._resolve_default_weights()
-                if resolved is None:
-                    logger.debug("NISQA weights not found; skipping setup")
-                    return False
-                weights_path = str(resolved)
+                self._versa_nisqa = ns
+                weights_path = self.weights_path
+                if not weights_path:
+                    resolved = self._resolve_default_weights()
+                    if resolved is None:
+                        logger.debug("NISQA weights not found; skipping setup")
+                        return False
+                    weights_path = str(resolved)
 
-            # Setup underlying model via VERSA
-            self._model = ns.nisqa_model_setup(
-                nisqa_model_path=weights_path,
-                use_gpu=self.use_gpu,
-            )
+                # Setup underlying model via VERSA
+                self._model = ns.nisqa_model_setup(
+                    nisqa_model_path=weights_path,
+                    use_gpu=self.use_gpu,
+                )
             self._last_details = {
                 "provider": "nisqa_tts",
                 "backend": "versa",
