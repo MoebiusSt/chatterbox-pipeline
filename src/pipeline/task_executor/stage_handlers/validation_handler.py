@@ -1043,8 +1043,6 @@ class ValidationHandler:
                     logger.debug(f"🔍 Validating candidate {candidate_num}...")
                     try:
                         progress_line.append(str(candidate_num))
-                        # Fallback for terminals that do not support inline updates: concise per-candidate line
-                        logger.info(f"Candidate {candidate_num}")
                         logger.info("\rCandidates: " + ", ".join(progress_line))
                     except Exception:
                         pass
@@ -1292,6 +1290,11 @@ class ValidationHandler:
                             f"❌ Whisper validation failed for candidate {candidate_num}"
                         )
 
+                # Terminate any inline progress line with a newline before summary
+                try:
+                    logger.info("")
+                except Exception:
+                    pass
                 validation_results[chunk.idx] = chunk_results
                 valid_count = sum(
                     1

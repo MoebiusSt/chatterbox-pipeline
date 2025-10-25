@@ -194,14 +194,14 @@ validation:
     enabled: true
     weights:
       semantic_alignment: 0.0   #No deliverer yet
-      flow: 0.40                # Derived from wpm_min and wpm_max
+      flow: 0.30                # Derived from wpm_min and wpm_max
       liveliness: 0.30
       intelligibility: 0.0      #No deliverer yet
-      mos: 0.30                 # MOS-Weight, note: MOS will score double as per gamma_mos
+      mos: 0.40                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
-      wpm_min: 120        
-      wpm_max: 160
-      liveliness_target: 0.42
+      wpm_min: 125        
+      wpm_max: 145
+      liveliness_target: 0.44
     select:
       alpha_quality: 0.50       # Whisper Quality-Weight
       beta_prosody: 0.30        # Prosody-Weight
@@ -221,12 +221,12 @@ validation:
 
   selection:
     gating:
-      require_mos: true        # candidates < min_mos will be rejected
+      require_mos: false        # candidates < min_mos will be rejected
       require_similarity: true # existing Whisper-Gate remains active
 
 audio:
   silence_duration:
-    normal: 0.30  # inserted between chunks if split was between sentences
+    normal: 0.40  # inserted between chunks if split was between sentences
     paragraph: 0.90  # inserted if split was before paragraph break blank line
     long: 1.30  # inserted for explicit long paragraph breaks (>= 2 empty lines)
   sample_rate: 24000
@@ -244,6 +244,6 @@ audio:
   # Audio normalization settings
   normalization:
     enabled: true            # Enable/disable audio normalization
-    target_level: -1.6      # Target loudness level in dB (unit depends on method)
+    target_level: -1.3      # Target loudness level in dB (unit depends on method)
     method: "peak"            # Normalization method: "lufs", "rms", or "peak"
-    saturation_factor: 0.02   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)
+    saturation_factor: 0.03   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)

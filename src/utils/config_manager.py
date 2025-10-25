@@ -21,6 +21,21 @@ logger = logging.getLogger(__name__)
 # All config files will use consistent formatting without quotes for simple strings
 
 
+# YAML reserved words that YAML parsers may coerce to non-strings if unquoted.
+_YAML_RESERVED_WORDS: set[str] = {
+    "no",
+    "yes",
+    "true",
+    "false",
+    "null",
+    "on",
+    "off",
+    "y",
+    "n",
+    "~",
+}
+
+
 @dataclass
 class TaskConfig:
     """Configuration for a task."""
@@ -128,6 +143,85 @@ class ConfigManager:
             logger.debug("Extracted hierarchical default key order")
 
         return self._default_key_order
+
+    # ------------------------------
+    # Identifier Sanitization
+    # ------------------------------
+    def _coerce_to_string_identifier(self, value: Any) -> str:
+        """
+        Coerce YAML-parsed value to a safe string for identifier fields.
+
+        - Booleans/None → canonical lower-case strings ("true"/"false"/"null")
+        - Other non-strings → str(value)
+        - Strings returned as-is
+        """
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if value is None:
+            return "null"
+        return str(value)
+
+    def _sanitize_identifiers_post_load(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize YAML-reserved words that were parsed as non-strings where string IDs are required.
+
+        This only touches string-typed identifier fields and leaves real boolean flags intact.
+        Fields adjusted:
+          - job.name
+          - job.run-label
+          - generation.default_speaker
+          - generation.speakers[].id
+          - generation.speakers[].language
+        """
+        if not isinstance(config, dict):
+            return config
+
+        cfg = copy.deepcopy(config)
+
+        # job identifiers
+        job = cfg.get("job")
+        if isinstance(job, dict):
+            if "name" in job:
+                original = job["name"]
+                job["name"] = self._coerce_to_string_identifier(job["name"])
+                if original != job["name"] or str(original).lower() in _YAML_RESERVED_WORDS:
+                    logger.warning(f"Identifier normalization: job.name '{original}' → '{job['name']}'")
+            if "run-label" in job:
+                original = job["run-label"]
+                job["run-label"] = self._coerce_to_string_identifier(job["run-label"])
+                if original != job["run-label"] or str(original).lower() in _YAML_RESERVED_WORDS:
+                    logger.warning(f"Identifier normalization: job.run-label '{original}' → '{job['run-label']}'")
+
+        # generation identifiers
+        gen = cfg.get("generation")
+        if isinstance(gen, dict):
+            if "default_speaker" in gen:
+                original = gen["default_speaker"]
+                gen["default_speaker"] = self._coerce_to_string_identifier(gen["default_speaker"])
+                if original != gen["default_speaker"] or str(original).lower() in _YAML_RESERVED_WORDS:
+                    logger.warning(
+                        f"Identifier normalization: generation.default_speaker '{original}' → '{gen['default_speaker']}'"
+                    )
+
+            speakers = gen.get("speakers")
+            if isinstance(speakers, list):
+                for spk in speakers:
+                    if not isinstance(spk, dict):
+                        continue
+                    if "id" in spk:
+                        original = spk["id"]
+                        spk["id"] = self._coerce_to_string_identifier(spk["id"])
+                        if original != spk["id"] or str(original).lower() in _YAML_RESERVED_WORDS:
+                            logger.warning(f"Identifier normalization: speaker.id '{original}' → '{spk['id']}'")
+                    if "language" in spk:
+                        original = spk["language"]
+                        spk["language"] = self._coerce_to_string_identifier(spk["language"])
+                        if original != spk["language"] or str(original).lower() in _YAML_RESERVED_WORDS:
+                            logger.warning(f"Identifier normalization: speaker.language '{original}' → '{spk['language']}'")
+
+        return cfg
 
     def _sort_dict_hierarchically(
         self, data: Dict[str, Any], key_order_structure: Dict[str, Any]
@@ -290,7 +384,8 @@ class ConfigManager:
         if "default" not in self._config_cache:
             logger.debug(f"Loading default config: {self.default_config_path}")
             with open(self.default_config_path, "r", encoding="utf-8") as f:
-                self._config_cache["default"] = yaml.safe_load(f)
+                raw = yaml.safe_load(f)
+                self._config_cache["default"] = self._sanitize_identifiers_post_load(raw)
         return copy.deepcopy(self._config_cache["default"])
 
     def load_job_config(self, config_path: Path) -> Dict[str, Any]:
@@ -299,7 +394,8 @@ class ConfigManager:
         if config_key not in self._config_cache:
             logger.debug(f"Loading job config: {config_path}")
             with open(config_path, "r", encoding="utf-8") as f:
-                self._config_cache[config_key] = yaml.safe_load(f)
+                raw = yaml.safe_load(f)
+                self._config_cache[config_key] = self._sanitize_identifiers_post_load(raw)
         return copy.deepcopy(self._config_cache[config_key])
         
     def load_cascading_config(
@@ -1060,7 +1156,8 @@ class ConfigManager:
         # Directly parse the YAML without merging with defaults
         with open(config_path, "r", encoding="utf-8") as f:
             try:
-                config_data = yaml.safe_load(f) or {}
+                raw = yaml.safe_load(f) or {}
+                config_data = self._sanitize_identifiers_post_load(raw)
             except Exception:
                 config_data = {}
 

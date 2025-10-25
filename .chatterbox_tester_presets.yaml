@@ -1,3 +1,10 @@
+david-barnes_DE-fake.wav:
+  exaggeration: 0.9
+  cfg_weight: 0.2
+  temperature: 1.15
+  repetition_penalty: 2.5
+  min_p: 0.17
+  top_p: 1.0
 erik_prochnow_DE.wav:
   exaggeration: 1.58
   cfg_weight: 0.51
@@ -12,11 +19,18 @@ gesine_1.wav:
   repetition_penalty: 2.02
   min_p: 0.12
   top_p: 0.94
+gesine_3.wav:
+  exaggeration: 0.38
+  cfg_weight: 0.55
+  temperature: 1.03
+  repetition_penalty: 2.05
+  min_p: 0.15
+  top_p: 1.0
 hans-juergen-lenhart_DE.wav:
-  exaggeration: 1.25
-  cfg_weight: 0.38
-  temperature: 1.16
-  repetition_penalty: 2.06
+  exaggeration: 1.41
+  cfg_weight: 0.4
+  temperature: 1.13
+  repetition_penalty: 2.02
   min_p: 0.09
   top_p: 1.0
 martina-zimmermann_DE.wav:
@@ -40,3 +54,73 @@ mike_kamp_2_DE.wav:
   repetition_penalty: 2.0
   min_p: 0.07
   top_p: 1.0
+mike_kamp_2_DE_slower.wav:
+  exaggeration: 1.6
+  cfg_weight: 0.22
+  temperature: 1.1
+  repetition_penalty: 2.0
+  min_p: 0.09
+  top_p: 1.0
+peter_yearsley_1.wav:
+  exaggeration: 0.6
+  cfg_weight: 0.3
+  temperature: 0.95
+  repetition_penalty: 1.3
+  min_p: 0.05
+  top_p: 0.94
+petra_ries2_DE.wav:
+  exaggeration: 1.45
+  cfg_weight: 0.27
+  temperature: 1.05
+  repetition_penalty: 2.2
+  min_p: 0.09
+  top_p: 0.99
+petra_ries_DE.wav:
+  exaggeration: 1.45
+  cfg_weight: 0.27
+  temperature: 1.05
+  repetition_penalty: 2.2
+  min_p: 0.09
+  top_p: 0.99
+stefan_backes_DE.wav:
+  exaggeration: 1.45
+  cfg_weight: 0.19
+  temperature: 0.55
+  repetition_penalty: 2.1
+  min_p: 0.17
+  top_p: 0.96
+stefan_backes_DE_kurz.wav:
+  exaggeration: 1.45
+  cfg_weight: 0.19
+  temperature: 0.55
+  repetition_penalty: 2.1
+  min_p: 0.17
+  top_p: 0.96
+stephan_moebius_3.wav:
+  exaggeration: 1.3
+  cfg_weight: 0.41
+  temperature: 1.3
+  repetition_penalty: 2.02
+  min_p: 0.07
+  top_p: 1.0
+ulrich_joosten_1.wav:
+  exaggeration: 1.3
+  cfg_weight: 0.6
+  temperature: 1.3
+  repetition_penalty: 1.9
+  min_p: 0.1
+  top_p: 0.98
+ulrich_joosten_2.wav:
+  exaggeration: 1.3
+  cfg_weight: 0.55
+  temperature: 1.25
+  repetition_penalty: 2.0
+  min_p: 0.12
+  top_p: 0.98
+ulrich_joosten_3.wav:
+  exaggeration: 1.3
+  cfg_weight: 0.6
+  temperature: 1.3
+  repetition_penalty: 1.9
+  min_p: 0.1
+  top_p: 0.98
