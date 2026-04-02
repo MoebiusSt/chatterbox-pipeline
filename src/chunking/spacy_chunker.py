@@ -432,6 +432,37 @@ class SpaCyChunker(BaseChunker):
             if removed > 0:
                 logger.debug(f"Removed {removed} whitespace-only chunks during finalization")
 
+        # Merge paralinguistic-tag-only chunks (e.g. "[laugh]", "[cough]") into the
+        # preceding chunk.  SpaCy may create a tiny sentence from such a token when it
+        # follows a sentence-ending period, producing an extremely short chunk that
+        # cannot be synthesised meaningfully on its own.  The Turbo TTS model handles
+        # these tags inline as long as they remain attached to surrounding speech text.
+        _PARALINGUISTIC_ONLY_RE = re.compile(r'^\s*(\[[\w ]+\]\s*)+$')
+        if chunks:
+            merged: list = []
+            for chunk in chunks:
+                if merged and _PARALINGUISTIC_ONLY_RE.match(chunk.text):
+                    prev = merged[-1]
+                    # Append the tag to the previous chunk's text (space-separated)
+                    separator = " " if prev.text and not prev.text.endswith(" ") else ""
+                    prev.text = prev.text + separator + chunk.text.strip()
+                    prev.end_pos = chunk.end_pos
+                    # Preserve paragraph break info from the paralinguistic chunk
+                    if chunk.has_paragraph_break:
+                        prev.has_paragraph_break = True
+                        prev.paragraph_break_type = chunk.paragraph_break_type
+                    logger.debug(
+                        f"Merged paralinguistic-only chunk '{chunk.text.strip()}' "
+                        f"into preceding chunk"
+                    )
+                else:
+                    merged.append(chunk)
+            if len(merged) != len(chunks):
+                logger.debug(
+                    f"Paralinguistic merge: {len(chunks) - len(merged)} tag-only chunks merged"
+                )
+            chunks = merged
+
         # Set correct indices
         for i, chunk in enumerate(chunks):
             chunk.idx = i

@@ -2,7 +2,7 @@ import logging
 import warnings
 import inspect
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import torch
 import re
@@ -19,6 +19,11 @@ from generation.model_cache import ChatterboxModelCache
 
 # Import the standardized AudioCandidate from file_manager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from utils.language_registry import (
+    MODEL_FEATURES,
+    QWEN3_LANGUAGE_CODE_TO_NAME,
+    filter_params_for_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +32,8 @@ class TTSGenerator:
     """
     Simplified TTS Generator with direct model access.
     Uses direct model access without thread safety for sequential execution.
+    Supports ChatterboxTTS (standard), ChatterboxMultilingualTTS (multilingual),
+    ChatterboxTurboTTS (turbo), and Qwen3TTSModel (qwen3).
     """
 
     def __init__(self, config: Dict[str, Any], device: str = "auto", seed: Optional[int] = None):
@@ -60,12 +67,25 @@ class TTSGenerator:
             logger.info("")
             logger.info("🎲 Using random seed per generation (global_seed = 0)")
             logger.info("")
-        # Get model type and default language from config
+
+        # Get model type from config
         generation_config = config.get("generation", {})
         self.model_type = generation_config.get("model_type", "standard")
-        
+
+        # Model type convenience flags
+        self.is_turbo = (self.model_type == "turbo")
+        self.is_qwen3 = (self.model_type == "qwen3")
+        self.is_chatterbox = self.model_type in ("standard", "multilingual", "turbo")
+
+        # All model types support speaker switching (different reference audio, tts_params, prosody).
+        # Language-only restrictions (standard/turbo are EN-only) are enforced via
+        # generation_handler._validate_languages_for_model() as soft warnings, not by
+        # blocking speaker switches here.
+        features = MODEL_FEATURES.get(self.model_type, {})
+        self.supports_speaker_switch: bool = features.get("speaker_switch", True)
+
         # Use direct model access with model type
-        self.model = ChatterboxModelCache.get_model(self.device, self.model_type)
+        self.model = ChatterboxModelCache.get_model(self.device, self.model_type, config=config)
         
         # Check if we actually got a multilingual model or fallback standard model
         self.is_multilingual = (
@@ -78,28 +98,35 @@ class TTSGenerator:
         self.current_speaker_id = "default"
         self.speakers_config = config.get("generation", {}).get("speakers", [])
 
-        if self.is_multilingual:
-            model_name = "ChatterboxMultilingualTTS"
+        # Qwen3: cache of voice clone prompts keyed by speaker_id
+        self._qwen3_voice_prompts: Dict[str, Any] = {}
+
+        # Set of (model_type:param_key) combos already warned about to avoid log spam
+        self._logged_unsupported_params: Set[str] = set()
+
+        # Determine display name for logging
+        if self.is_qwen3:
+            model_display = "Qwen3TTSModel (1.7B Base)"
+        elif self.is_turbo:
+            model_display = "ChatterboxTurboTTS"
+        elif self.is_multilingual:
+            model_display = "ChatterboxMultilingualTTS"
         elif self.model_type == "multilingual":
-            model_name = "ChatterboxTTS (multilingual fallback)"
+            model_display = "ChatterboxTTS (multilingual fallback)"
         else:
-            model_name = "ChatterboxTTS"
+            model_display = "ChatterboxTTS"
         
         logger.debug(
-            f"TTSGenerator initialized on device: {self.device} with {len(self.speakers_config)} speakers, using {model_name}"
+            f"TTSGenerator initialized on device: {self.device} with {len(self.speakers_config)} speakers, "
+            f"using {model_display}"
         )
 
+    # ------------------------------------------------------------------
+    # Device and seed helpers
+    # ------------------------------------------------------------------
+
     def get_speaker_seed(self, speaker_id: str) -> int:
-        """
-        Get the effective seed for a specific speaker.
-        
-        Args:
-            speaker_id: The speaker ID to get seed for
-            
-        Returns:
-            The effective seed for this speaker (speaker-specific or global)
-        """
-        # Find speaker configuration
+        """Get the effective seed for a specific speaker."""
         speaker_config = None
         for speaker in self.speakers_config:
             if speaker.get("id") == speaker_id:
@@ -110,16 +137,11 @@ class TTSGenerator:
             logger.warning(f"Speaker '{speaker_id}' not found in config, using global seed")
             return self.global_seed
             
-        # Get speaker-specific seed
         speaker_seed = speaker_config.get("seed")
-        
-        # If speaker_seed is None (not defined), use global_seed
         if speaker_seed is None:
             return self.global_seed
-        # If speaker_seed is 0, use random seed (0)
         elif speaker_seed == 0:
             return 0
-        # If speaker_seed is > 0, use speaker-specific seed
         else:
             return speaker_seed
 
@@ -132,9 +154,16 @@ class TTSGenerator:
         else:
             return "cpu"
 
+    # ------------------------------------------------------------------
+    # Voice / conditionals preparation
+    # ------------------------------------------------------------------
+
     def prepare_conditionals(self, wav_fpath: str):
         """
-        Prepares model conditionals for voice cloning.
+        Prepares model conditionals for voice cloning (Chatterbox models only).
+
+        For Qwen3, voice prompts are built via _prepare_qwen3_voice_clone_prompt;
+        calling this method for a Qwen3 model is a no-op with a warning.
 
         Args:
             wav_fpath: Path to reference audio file
@@ -143,15 +172,409 @@ class TTSGenerator:
             logger.warning("🚨 No model loaded - cannot prepare conditionals")
             return
 
+        if self.is_qwen3:
+            logger.warning(
+                "prepare_conditionals() called for Qwen3 model - "
+                "use switch_speaker() to build the voice clone prompt instead."
+            )
+            return
+
         logger.debug(f"🔄 Preparing conditionals for {Path(wav_fpath).name}")
 
         try:
-            # Direct model access - no thread safety needed
             self.model.prepare_conditionals(wav_fpath=wav_fpath)
             logger.debug("✅ Conditionals prepared")
         except Exception as e:
             logger.error(f"🚨 Error preparing conditionals: {e}")
             raise
+
+    def _load_qwen3_ref_text(
+        self,
+        speaker_id: str,
+        audio_path: Path,
+        speaker_config: Dict[str, Any],
+    ) -> Optional[str]:
+        """
+        Load the reference text transcript for a Qwen3 speaker.
+
+        Resolution order:
+        1. Inline text in speaker_config["reference_text"] (if multi-line or > 100 chars)
+        2. File path in speaker_config["reference_text"] (relative to reference_audio dir)
+        3. Sidecar .txt file next to the .wav (same stem, .txt extension)
+
+        Returns the transcript string, or None when not found.
+        """
+        ref_text_config = speaker_config.get("reference_text")
+        if ref_text_config:
+            text_val = str(ref_text_config).strip()
+            # Treat as inline text if it looks like prose (newlines or long)
+            if "\n" in text_val or len(text_val) > 100:
+                logger.debug(f"Using inline reference_text for speaker '{speaker_id}'")
+                return text_val
+            # Treat as filename relative to the reference audio directory
+            ref_text_path = audio_path.parent / text_val
+            if ref_text_path.exists():
+                content = ref_text_path.read_text(encoding="utf-8").strip()
+                logger.info(
+                    f"Loaded reference text for speaker '{speaker_id}' from config path: {ref_text_path.name}"
+                )
+                return content
+            logger.warning(
+                f"reference_text '{text_val}' for speaker '{speaker_id}' not found at {ref_text_path}"
+            )
+
+        # Fallback: sidecar .txt file alongside the reference audio
+        ref_text_path = audio_path.with_suffix(".txt")
+        if ref_text_path.exists():
+            content = ref_text_path.read_text(encoding="utf-8").strip()
+            logger.info(
+                f"Loaded reference text for speaker '{speaker_id}' from sidecar: {ref_text_path.name}"
+            )
+            return content
+
+        logger.info(
+            f"No reference text found for speaker '{speaker_id}' (no .txt sidecar, no config field) - "
+            "will use x_vector_only mode (reduced cloning quality)"
+        )
+        return None
+
+    def _prepare_qwen3_voice_clone_prompt(
+        self,
+        speaker_id: str,
+        audio_path: Path,
+        ref_text: Optional[str],
+    ) -> None:
+        """
+        Build and cache the Qwen3 voice clone prompt for a speaker.
+
+        Performs a reference-audio duration check and warns if > 3 s.
+        Falls back to x_vector_only_mode if no ref_text is available.
+        Result is stored in self._qwen3_voice_prompts[speaker_id].
+        """
+        if self.model is None:
+            logger.error("No Qwen3 model loaded - cannot build voice clone prompt")
+            return
+
+        # Duration check
+        try:
+            import torchaudio
+            info = torchaudio.info(str(audio_path))
+            duration = info.num_frames / info.sample_rate
+            if duration > 3.0:
+                logger.warning(
+                    f"⚠️ Reference audio '{audio_path.name}' is {duration:.1f}s; "
+                    "Qwen3 recommends <=3s for optimal voice cloning quality. "
+                    "Consider trimming to the most expressive 3-second segment."
+                )
+        except Exception as e:
+            logger.debug(f"Could not check reference audio duration: {e}")
+
+        x_vector_only = ref_text is None
+        if x_vector_only:
+            logger.warning(
+                f"⚠️ Speaker '{speaker_id}': no reference text available - "
+                "using x_vector_only mode (lower cloning quality). "
+                "Add a .txt sidecar file next to the reference .wav for better results."
+            )
+
+        try:
+            prompt = self.model.create_voice_clone_prompt(
+                ref_audio=str(audio_path),
+                ref_text=ref_text,
+                x_vector_only_mode=x_vector_only,
+            )
+            self._qwen3_voice_prompts[speaker_id] = prompt
+            mode = "x_vector_only" if x_vector_only else "ICL"
+            logger.info(
+                f"✅ Qwen3 voice prompt cached for speaker '{speaker_id}' ({mode} mode)"
+            )
+        except Exception as e:
+            logger.error(
+                f"🚨 Failed to create Qwen3 voice clone prompt for speaker '{speaker_id}': {e}"
+            )
+
+    # ------------------------------------------------------------------
+    # Parameter helpers
+    # ------------------------------------------------------------------
+
+    def _filter_params_for_model(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Filter a tts_params dict to only include keys supported by self.model_type.
+
+        Unsupported keys are dropped with a one-time info log.
+        Internal deviation/control keys are always silently dropped.
+        """
+        return filter_params_for_model(
+            self.model_type,
+            params,
+            logged_keys=self._logged_unsupported_params,
+        )
+
+    def _normalize_generation_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize generation kwargs to align with the underlying Chatterbox model.generate signature.
+
+        This method is only used for Chatterbox models (standard/multilingual/turbo).
+        For Qwen3, parameters are passed directly via generate_voice_clone().
+
+        Behavior:
+        - If model.generate has **kwargs, do NOT filter unknown keys (only alias-remap).
+        - If model.generate does NOT have **kwargs, filter to accepted names to avoid TypeError.
+        - Attempt common alias remaps (cfg_weight, temperature, exaggeration, top_p, min_p,
+          language_id, repetition_penalty).
+        """
+        model_ref = self.model
+        if model_ref is None or not hasattr(model_ref, "generate"):
+            return params
+
+        try:
+            sig = inspect.signature(model_ref.generate)
+            accepted_params = set(sig.parameters.keys())
+            has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+        except Exception:
+            return params
+
+        normalized: Dict[str, Any] = dict(params)
+
+        def remap(src_key: str, candidates: List[str]):
+            if src_key in normalized and src_key not in accepted_params:
+                for cand in candidates:
+                    if cand in accepted_params:
+                        normalized[cand] = normalized.pop(src_key)
+                        return
+
+        remap("cfg_weight", ["cfg_weight", "cfg", "guidance_scale", "classifier_free_guidance_weight"])
+        remap("temperature", ["temperature", "temp"])
+        remap("exaggeration", ["exaggeration", "style_exaggeration", "expressiveness"])
+        remap("top_p", ["top_p", "nucleus_p"])
+        remap("min_p", ["min_p", "p_min"])
+        remap("language_id", ["language_id", "language", "lang"])
+        remap("repetition_penalty", ["repetition_penalty", "repeat_penalty"])
+
+        if has_var_kw:
+            logger.debug(
+                f"Model.generate accepts **kwargs; passing params without filtering. Keys: {sorted(normalized.keys())}"
+            )
+            return normalized
+
+        filtered = {k: v for k, v in normalized.items() if k in accepted_params}
+        dropped = [k for k in normalized.keys() if k not in accepted_params]
+        if dropped:
+            logger.debug(f"Dropping unsupported TTS params for model.generate (no **kwargs): {dropped}")
+        logger.debug(f"Params passed to model.generate: {sorted(filtered.keys())}")
+        return filtered
+
+    def _calculate_ramped_params(
+        self,
+        base_params: Dict[str, Any],
+        i: int,
+        num_expressive_minus_one: int,
+    ) -> Dict[str, Any]:
+        """
+        Calculate ramped TTS parameters for candidate variation.
+
+        For Chatterbox models (standard/multilingual/turbo):
+          - exaggeration: ramp DOWN from base to (base - max_deviation)
+          - cfg_weight:   ramp UP   from base to (base + max_deviation)
+          - temperature:  ramp UP   from base to (base + max_deviation)
+
+        For Qwen3:
+          - Only temperature is ramped UP; exaggeration/cfg_weight are not applicable.
+        """
+        if num_expressive_minus_one <= 0:
+            return dict(base_params)
+
+        ramp_position = i / max(1, num_expressive_minus_one)
+        params = dict(base_params)
+
+        base_temp = base_params.get("temperature", 1.0)
+        temp_dev = base_params.get("temperature_max_deviation", 0.2)
+        params["temperature"] = base_temp + (temp_dev * ramp_position)
+
+        if not self.is_qwen3:
+            base_exag = base_params.get("exaggeration", 0.6)
+            exag_dev = base_params.get("exaggeration_max_deviation", 0.15)
+            base_cfg = base_params.get("cfg_weight", 0.7)
+            cfg_dev = base_params.get("cfg_weight_max_deviation", 0.15)
+            params["exaggeration"] = base_exag - (exag_dev * ramp_position)
+            params["cfg_weight"] = base_cfg + (cfg_dev * ramp_position)
+
+        return params
+
+    # ------------------------------------------------------------------
+    # Qwen3-specific generation path
+    # ------------------------------------------------------------------
+
+    def _generate_qwen3_single(
+        self,
+        text: str,
+        language_name: str,
+        params: Dict[str, Any],
+        voice_prompt: Any,
+        speaker_id: str,
+        attempt_seed: int,
+    ) -> torch.Tensor:
+        """
+        Generate a single audio sample using the Qwen3 voice clone API.
+
+        Args:
+            text: Text to synthesize.
+            language_name: Full language name, e.g. "English", "German".
+            params: Filtered tts_params (only Qwen3-supported keys).
+            voice_prompt: Pre-built voice clone prompt from create_voice_clone_prompt().
+            speaker_id: Speaker ID (used only for logging).
+            attempt_seed: Seed for reproducibility via torch.manual_seed.
+
+        Returns:
+            1D audio tensor.
+        """
+        if self.model is None:
+            logger.warning("🚨 No Qwen3 model loaded - generating silence")
+            return torch.zeros(24000, device=self.device)
+
+        if voice_prompt is None:
+            logger.warning(
+                f"🚨 No voice prompt for speaker '{speaker_id}' - generating silence"
+            )
+            return torch.zeros(24000, device=self.device)
+
+        # Apply seed for reproducibility (Qwen3 has no native seed param)
+        if attempt_seed > 0:
+            try:
+                torch.manual_seed(attempt_seed)
+            except Exception:
+                pass
+
+        # Build generation kwargs from filtered params
+        gen_kwargs: Dict[str, Any] = {}
+        for key in (
+            "top_k", "top_p", "temperature", "repetition_penalty",
+            "max_new_tokens", "do_sample",
+            "subtalker_dosample", "subtalker_top_k", "subtalker_top_p",
+            "subtalker_temperature",
+        ):
+            if key in params:
+                gen_kwargs[key] = params[key]
+
+        try:
+            wavs, _sr = self.model.generate_voice_clone(
+                text=text,
+                language=language_name,
+                voice_clone_prompt=voice_prompt,
+                **gen_kwargs,
+            )
+        except Exception as e:
+            logger.error(f"Qwen3 generate_voice_clone failed: {e}")
+            return torch.zeros(24000, device=self.device)
+
+        audio = torch.tensor(wavs[0], dtype=torch.float32)
+        if audio.ndim == 2:
+            audio = audio.squeeze(0)
+        return audio.to(self.device)
+
+    def _generate_qwen3_candidates(
+        self,
+        text: str,
+        speaker_id: str,
+        speaker_config: Dict[str, Any],
+        num_candidates: int,
+        language_id: str,
+    ) -> List[AudioCandidate]:
+        """
+        Generate multiple Qwen3 voice clone candidates with temperature ramping.
+        """
+        language_name = QWEN3_LANGUAGE_CODE_TO_NAME.get(language_id, "English")
+        if language_id not in QWEN3_LANGUAGE_CODE_TO_NAME:
+            logger.warning(
+                f"Unknown language code '{language_id}' for Qwen3 - defaulting to 'English'"
+            )
+
+        raw_tts_params = speaker_config.get("tts_params", {})
+        raw_conservative = speaker_config.get("conservative_candidate", {})
+        conservative_enabled = raw_conservative.get("enabled", False)
+
+        # Filter to Qwen3-supported parameters only
+        filtered_base = self._filter_params_for_model(raw_tts_params)
+        filtered_conservative = (
+            self._filter_params_for_model(raw_conservative)
+            if conservative_enabled
+            else {}
+        )
+
+        base_temperature = filtered_base.get("temperature", 0.9)
+        temp_deviation = raw_tts_params.get("temperature_max_deviation", 0.2)
+
+        num_expressive = num_candidates - 1 if conservative_enabled else num_candidates
+        voice_prompt = self._qwen3_voice_prompts.get(speaker_id)
+
+        if voice_prompt is None:
+            logger.warning(
+                f"⚠️ Qwen3 voice prompt for speaker '{speaker_id}' is not cached - "
+                "generation will produce silence. Ensure switch_speaker() was called first."
+            )
+
+        base_seed = self.get_speaker_seed(speaker_id)
+        candidates: List[AudioCandidate] = []
+
+        for i in range(num_candidates):
+            is_conservative = conservative_enabled and (i + 1) == num_candidates
+            candidate_seed = base_seed + (i * 1000) + hash(text) % 10000
+
+            if is_conservative:
+                params = dict(filtered_base)
+                params.update(filtered_conservative)
+                # Conservative: use base temperature * 0.85 if not explicitly set
+                if "temperature" not in filtered_conservative:
+                    params["temperature"] = base_temperature * 0.85
+                candidate_type = "CONSERVATIVE"
+            else:
+                params = dict(filtered_base)
+                if i > 0 and num_expressive > 1:
+                    ramp_pos = i / max(1, num_expressive - 1)
+                    params["temperature"] = base_temperature + (temp_deviation * ramp_pos)
+                candidate_type = "EXPRESSIVE"
+
+            try:
+                log_temp = params.get("temperature", base_temperature)
+                logger.info(
+                    f"QWEN3 CAND {i+1}/{num_candidates} (lang={language_name}) "
+                    f"({'CONS' if is_conservative else 'EXP'}): "
+                    f"temp={log_temp:.3f}, top_k={params.get('top_k', '-')}, "
+                    f"top_p={params.get('top_p', '-')}, rep_pen={params.get('repetition_penalty', '-')}"
+                )
+                audio = self._generate_qwen3_single(
+                    text=text,
+                    language_name=language_name,
+                    params=params,
+                    voice_prompt=voice_prompt,
+                    speaker_id=speaker_id,
+                    attempt_seed=candidate_seed,
+                )
+                candidate = AudioCandidate(
+                    chunk_idx=0,
+                    candidate_idx=i,
+                    audio_path=Path(),
+                    audio_tensor=audio,
+                    generation_params={
+                        **params,
+                        "language_id": language_id,
+                        "type": candidate_type,
+                        "seed": candidate_seed,
+                    },
+                )
+                candidates.append(candidate)
+                logger.debug(
+                    f"Qwen3 candidate {i+1}: duration={audio.shape[-1]/24000:.2f}s"
+                )
+            except Exception as e:
+                logger.error(f"Failed to generate Qwen3 candidate {i+1}: {e}")
+                continue
+
+        return candidates
+
+    # ------------------------------------------------------------------
+    # Chatterbox generation path
+    # ------------------------------------------------------------------
 
     def generate_single(
         self,
@@ -164,20 +587,10 @@ class TTSGenerator:
         **kwargs,
     ) -> torch.Tensor:
         """
-        Generate single audio using direct model access.
+        Generate single audio using direct Chatterbox model access.
 
-        Args:
-            text: Text to synthesize
-            exaggeration: Voice exaggeration parameter (0.0-1.0)
-            cfg_weight: Classifier-free guidance weight
-            temperature: Sampling temperature for diversity
-            reference_audio_path: Path to reference audio (only used if no conditionals loaded)
-            **kwargs: Additional arguments passed to the TTS model
-
-        Returns:
-            Generated audio tensor (1D)
+        Not used for Qwen3 (see _generate_qwen3_single).
         """
-        # Validate inputs
         if not text or not text.strip():
             logger.warning("Empty text provided for generation")
             return torch.zeros(1000, device=self.device)
@@ -188,71 +601,28 @@ class TTSGenerator:
 
         logger.debug("Starting TTS generation")
 
-        # Conditionals should always be loaded through speaker system
-        # Removed redundant safety checks to avoid unnecessary prepare_conditionals calls
         if not hasattr(self.model, "conds") or self.model.conds is None:
             logger.warning("🚨 No conditionals loaded - this should not happen with speaker system")
             return torch.zeros(48000, device=self.device)
         
         logger.debug("Using loaded conditionals (speaker-specific)")
 
-        # Suppress PyTorch and Transformers warnings during model generation
         with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=".*torch.backends.cuda.sdp_kernel.*",
-                category=FutureWarning,
-            )
-            warnings.filterwarnings(
-                "ignore", message=".*LlamaModel is using LlamaSdpaAttention.*"
-            )
-            warnings.filterwarnings(
-                "ignore", 
-                message=".*torch.nn.functional.scaled_dot_product_attention.*does not support.*output_attentions=True.*"
-            )
-            warnings.filterwarnings(
-                "ignore", 
-                message=".*Falling back to the manual attention implementation.*"
-            )
-            warnings.filterwarnings(
-                "ignore", 
-                message=".*specifying the manual implementation will be required from Transformers version v5.0.0.*"
-            )
-            warnings.filterwarnings(
-                "ignore", 
-                message=".*This warning can be removed using the argument.*attn_implementation.*eager.*"
-            )
-            warnings.filterwarnings(
-                "ignore", message=".*does not support `output_attentions=True`.*"
-            )
-            warnings.filterwarnings(
-                "ignore", 
-                message=".*return_dict_in_generate.*is NOT set to.*True.*but.*output_attentions.*is.*"
-            )
-            warnings.filterwarnings(
-                "ignore",
-                message=".*past_key_values.*tuple of tuples.*",
-                category=FutureWarning,
-            )
-            warnings.filterwarnings(
-                "ignore",
-                message=".*detected that you are passing.*past_key_values.*as a tuple of tuples.*",
-                category=FutureWarning,
-            )
-            warnings.filterwarnings(
-                "ignore",
-                message=".*convert your cache or use an appropriate.*Cache.*class.*",
-                category=FutureWarning,
-            )
-            warnings.filterwarnings(
-                "ignore", message=".*attn_implementation.*", category=FutureWarning
-            )
+            warnings.filterwarnings("ignore", message=".*torch.backends.cuda.sdp_kernel.*", category=FutureWarning)
+            warnings.filterwarnings("ignore", message=".*LlamaModel is using LlamaSdpaAttention.*")
+            warnings.filterwarnings("ignore", message=".*torch.nn.functional.scaled_dot_product_attention.*does not support.*output_attentions=True.*")
+            warnings.filterwarnings("ignore", message=".*Falling back to the manual attention implementation.*")
+            warnings.filterwarnings("ignore", message=".*specifying the manual implementation will be required from Transformers version v5.0.0.*")
+            warnings.filterwarnings("ignore", message=".*This warning can be removed using the argument.*attn_implementation.*eager.*")
+            warnings.filterwarnings("ignore", message=".*does not support `output_attentions=True`.*")
+            warnings.filterwarnings("ignore", message=".*return_dict_in_generate.*is NOT set to.*True.*but.*output_attentions.*is.*")
+            warnings.filterwarnings("ignore", message=".*past_key_values.*tuple of tuples.*", category=FutureWarning)
+            warnings.filterwarnings("ignore", message=".*detected that you are passing.*past_key_values.*as a tuple of tuples.*", category=FutureWarning)
+            warnings.filterwarnings("ignore", message=".*convert your cache or use an appropriate.*Cache.*class.*", category=FutureWarning)
+            warnings.filterwarnings("ignore", message=".*attn_implementation.*", category=FutureWarning)
 
-            logger.debug(
-                f"Generating audio for text (len={len(text)}): '{text[:50]}...'"
-            )
+            logger.debug(f"Generating audio for text (len={len(text)}): '{text[:50]}...'")
 
-            # Generate audio using the model directly
             generate_params = {
                 "exaggeration": exaggeration,
                 "cfg_weight": cfg_weight,
@@ -260,14 +630,12 @@ class TTSGenerator:
                 **kwargs,
             }
             
-            # Add language_id for multilingual model (only if actually multilingual)
             if self.is_multilingual and language_id is not None:
                 generate_params["language_id"] = language_id
                 logger.debug(f"Using language_id: {language_id} for multilingual model")
             elif self.model_type == "multilingual" and not self.is_multilingual:
                 logger.debug("Multilingual model requested but not available, using standard model without language_id")
             
-            # Normalize parameters to what the model accepts
             try:
                 generate_params = self._normalize_generation_params(generate_params)
             except Exception as e:
@@ -275,9 +643,8 @@ class TTSGenerator:
 
             audio = self.model.generate(text, **generate_params)
 
-        # ChatterboxTTS returns 1D tensor - ensure consistency
         if audio.ndim == 2:
-            audio = audio.squeeze(0)  # Remove batch dimension if present
+            audio = audio.squeeze(0)
         audio = audio.to(self.device)
 
         logger.debug(f"Generated audio with shape: {audio.shape}")
@@ -296,7 +663,7 @@ class TTSGenerator:
         reference_audio_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Generate audio with immediate retries if Chatterbox reports artifact-related warnings.
+        Generate Chatterbox audio with immediate retries on artifact warnings.
 
         Strategy per retry (attempt >= 1):
         - Change seed deterministically based on base_seed and attempt
@@ -304,33 +671,27 @@ class TTSGenerator:
         - Decrease top_p by -0.05 per attempt (clamped to [0.0, 1.0])
         - Decrease temperature by -0.05 per attempt (>= 0.05)
 
-        Retries stop early if logs contain a clean EOS without repetition/long_tail flags.
-
         Returns:
             {
               "audio": torch.Tensor,
-              "used_params": Dict[str, Any],  # actual params used on final attempt
-              "attempts": int,                # number of attempts performed
-              "flags": Dict[str, bool]        # detected flags from logs on final attempt
+              "used_params": Dict[str, Any],
+              "attempts": int,
+              "flags": Dict[str, bool]
             }
         """
         generation_config = self.config.get("generation", {})
         max_retries: int = int(generation_config.get("max_retries", 0))
 
-        # Extract and prepare adjustable parameters
         base_min_p = float(additional_params.get("min_p", 0.05))
         base_top_p = float(additional_params.get("top_p", 0.95))
         base_temperature = float(temperature)
 
-        # Non-adjustable passthrough params (copy to avoid side effects)
         static_params: Dict[str, Any] = {
             k: v
             for k, v in additional_params.items()
             if k not in {"min_p", "top_p"}
         }
 
-        # Ensure speaker conditionals are loaded; if missing and a reference audio is provided,
-        # prepare conditionals now as a safety net for speaker-aware generation paths.
         try:
             model_ref = self.model
             if (
@@ -349,7 +710,6 @@ class TTSGenerator:
             return max(lo, min(hi, v))
 
         def _parse_generation_logs(log_text: str) -> Dict[str, Any]:
-            # Default flags
             flags = {
                 "long_tail": False,
                 "alignment_repetition": False,
@@ -357,13 +717,9 @@ class TTSGenerator:
                 "eos_success": False,
                 "forcing_eos": False,
             }
-
             if not log_text:
                 return flags
 
-            # Evaluate only the LAST occurrence of a "forcing EOS token" line within this attempt.
-            # Earlier we searched the entire log blob which could contain both True and False,
-            # and any True would force a retry. Here we restrict to the last forcing line.
             last_forcing_line: Optional[str] = None
             eos_ok: bool = False
 
@@ -374,7 +730,6 @@ class TTSGenerator:
                     last_forcing_line = line
 
             def _extract_bool(name: str, text: str) -> Optional[bool]:
-                # Matches: name=tensor(True|False) or name=True|False
                 m = re.search(rf"{name}\\s*=\\s*(tensor\\((True|False)\\)|True|False)", text)
                 if not m:
                     return None
@@ -385,7 +740,6 @@ class TTSGenerator:
                 lt = _extract_bool("long_tail", last_forcing_line)
                 ar = _extract_bool("alignment_repetition", last_forcing_line)
                 tr = _extract_bool("token_repetition", last_forcing_line)
-
                 flags["long_tail"] = bool(lt) if lt is not None else False
                 flags["alignment_repetition"] = bool(ar) if ar is not None else False
                 flags["token_repetition"] = bool(tr) if tr is not None else False
@@ -395,7 +749,6 @@ class TTSGenerator:
             return flags
 
         def _should_retry(flags: Dict[str, Any]) -> bool:
-            # Retry only if long_tail is True (removed other conditions from retry logic)
             return bool(flags.get("long_tail"))
 
         attempts = 0
@@ -404,19 +757,16 @@ class TTSGenerator:
         used_params: Dict[str, Any] = {}
 
         while True:
-            # Compute attempt-adjusted parameters
             min_p = _clamp(base_min_p + 0.05 * attempts, 0.0, 1.0)
             top_p = _clamp(base_top_p - 0.05 * attempts, 0.0, 1.0)
             temp = _clamp(base_temperature - 0.05 * attempts, 0.05, 2.0)
             attempt_seed = int(base_seed + attempts * 9973)
 
-            # Re-seed for this attempt
             try:
                 torch.manual_seed(attempt_seed)
             except Exception:
                 pass
 
-            # Build parameter set for this attempt
             gen_params = {
                 "exaggeration": exaggeration,
                 "cfg_weight": cfg_weight,
@@ -426,18 +776,15 @@ class TTSGenerator:
                 **static_params,
             }
 
-            # Add language_id only for true multilingual
             if self.is_multilingual and language_id is not None:
                 gen_params["language_id"] = language_id
 
-            # Capture logs during generation
             captured_messages: List[str] = []
 
             class _MemoryHandler(logging.Handler):
-                def emit(self, record: logging.LogRecord) -> None:  # noqa: D401
+                def emit(self, record: logging.LogRecord) -> None:
                     try:
                         msg = record.getMessage()
-                        # Only capture chatterbox-related or EOS messages
                         if (
                             "chatterbox" in record.name
                             or "EOS token" in msg
@@ -450,7 +797,6 @@ class TTSGenerator:
             root_logger = logging.getLogger()
             mem_handler = _MemoryHandler(level=logging.DEBUG)
             root_logger.addHandler(mem_handler)
-            # Normalize parameters to what the model accepts
             try:
                 gen_params = self._normalize_generation_params(gen_params)
             except Exception as e:
@@ -459,24 +805,20 @@ class TTSGenerator:
             try:
                 audio_tensor = self.model.generate(text, **gen_params)
             except Exception as e:
-                # On hard error, decide to retry if possible
                 logger.error(f"Immediate retry attempt {attempts+1} failed with exception: {e}")
                 final_flags = {"exception": True}
             finally:
                 root_logger.removeHandler(mem_handler)
 
-            # Normalize audio tensor shape/device if we have a result
             if isinstance(audio_tensor, torch.Tensor):
                 if audio_tensor.ndim == 2:
                     audio_tensor = audio_tensor.squeeze(0)
                 audio_tensor = audio_tensor.to(self.device)
 
-            # Analyze logs
             log_text = "\n".join(captured_messages)
             flags = _parse_generation_logs(log_text)
             final_flags = flags
 
-            # Decide to stop or retry
             if not _should_retry(flags):
                 used_params = {
                     "exaggeration": exaggeration,
@@ -487,11 +829,10 @@ class TTSGenerator:
                     "seed": attempt_seed,
                 }
                 if attempts > 0 and max_retries > 0:
-                    logger.info("Retry succesful")
+                    logger.info("Retry successful")
                 break
 
             if attempts >= max_retries:
-                # Give up and return the latest attempt (even if flagged)
                 if max_retries > 0:
                     logger.warning(
                         "Exceeded immediate retries; returning last attempt despite warnings"
@@ -532,20 +873,16 @@ class TTSGenerator:
         """
         Generates multiple audio candidates for the same text input with parameter variation.
 
-        PARAMETER SEMANTICS (as specified by user requirements):
+        PARAMETER SEMANTICS (Chatterbox models):
         - exaggeration: Config value = MAX, ramps DOWN to (config - max_deviation)
         - cfg_weight: Config value = MIN, ramps UP to (config + max_deviation)
         - temperature: Config value = MIN, ramps UP to (config + max_deviation)
 
-        CANDIDATE LOGIC:
-        - num_candidates=1 + conservative_enabled=true  → 1 conservative candidate
-        - num_candidates=1 + conservative_enabled=false → 1 expressive candidate (exact config)
-        - num_candidates>1 + conservative_enabled=true  → N-1 expressive + 1 conservative (last)
-        - num_candidates>1 + conservative_enabled=false → N expressive (1 exact + N-1 ramped)
+        For Qwen3: only temperature is ramped.
+        Unsupported parameters for the current model are gracefully skipped.
         """
         candidates = []
         
-        # Get speaker-specific seed if speaker_id is provided
         effective_seed = self.seed
         if speaker_id is not None:
             effective_seed = self.get_speaker_seed(speaker_id)
@@ -554,84 +891,50 @@ class TTSGenerator:
         elif effective_seed == 0:
             logger.debug("Using random seed per generation (seed = 0)")
 
-        # Get parameters from config if not provided
         if tts_params is None:
             generation_config = self.config.get("generation", {})
             tts_params = generation_config.get("tts_params", {})
 
-        # Ensure non-None dict for downstream access
         resolved_tts_params: Dict[str, Any] = tts_params or {}
 
-        # Use config values as defaults - these are now the starting points for ramping
-        base_exaggeration = (
-            exaggeration
-            if exaggeration is not None
-            else resolved_tts_params.get("exaggeration", 0.6)
-        )  # MAX value
-        base_cfg_weight = (
-            cfg_weight if cfg_weight is not None else resolved_tts_params.get("cfg_weight", 0.7)
-        )  # MIN value
-        base_temperature = (
-            temperature
-            if temperature is not None
-            else resolved_tts_params.get("temperature", 1.0)
-        )  # MIN value
+        # Filter params to supported set for current model (warn once per unsupported key)
+        filtered_tts_params = self._filter_params_for_model(resolved_tts_params)
 
-        # Get deviation ranges from config
+        base_exaggeration = (
+            exaggeration if exaggeration is not None
+            else resolved_tts_params.get("exaggeration", 0.6)
+        )
+        base_cfg_weight = (
+            cfg_weight if cfg_weight is not None
+            else resolved_tts_params.get("cfg_weight", 0.7)
+        )
+        base_temperature = (
+            temperature if temperature is not None
+            else resolved_tts_params.get("temperature", 1.0)
+        )
+
         exag_max_deviation = resolved_tts_params.get("exaggeration_max_deviation", 0.15)
         cfg_max_deviation = resolved_tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = resolved_tts_params.get("temperature_max_deviation", 0.2)
 
-        logger.info(
-            f"Generating {num_candidates} diverse candidates for text (len={len(text)})"
-        )
-        logger.debug(
-            f"Expressive ranges: exag=[{base_exaggeration-exag_max_deviation:.2f}, {base_exaggeration:.2f}], "
-            f"cfg=[{base_cfg_weight:.2f}, {base_cfg_weight+cfg_max_deviation:.2f}], "
-            f"temp=[{base_temperature:.2f}, {base_temperature+temp_max_deviation:.2f}]"
-        )
+        logger.info(f"Generating {num_candidates} diverse candidates for text (len={len(text)})")
+
+        is_conservative_enabled = conservative_config and conservative_config.get("enabled", False)
+        num_expressive = num_candidates - 1 if is_conservative_enabled else num_candidates
 
         # Special case: 1 candidate + conservative enabled = only conservative
-        if (
-            num_candidates == 1
-            and conservative_config
-            and conservative_config.get("enabled", False)
-        ):
-            logger.debug(
-                "Single candidate mode with conservative enabled - generating only conservative candidate"
-            )
+        if num_candidates == 1 and is_conservative_enabled:
+            logger.debug("Single candidate mode with conservative enabled - generating only conservative candidate")
             try:
                 candidate_seed = effective_seed + hash(text) % 10000
-
-                # Use conservative parameters
                 var_exaggeration = conservative_config.get("exaggeration", 0.4)
                 var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                 var_temperature = conservative_config.get("temperature", 0.5)
-                # Use conservative min_p and top_p with fallback to regular tts_params
                 var_min_p = conservative_config.get("min_p", resolved_tts_params.get("min_p", 0.1))
                 var_top_p = conservative_config.get("top_p", resolved_tts_params.get("top_p", 0.8))
-                candidate_type = "CONSERVATIVE"
 
-                # Debug: Log tts_params before extracting additional_params
-                logger.info(f"🔍 tts_params for candidate 1: {resolved_tts_params}")
-                # Extract additional TTS parameters from tts_params (excluding the ones we handle explicitly)
-                additional_params = {
-                    k: v
-                    for k, v in resolved_tts_params.items()
-                    if k
-                    not in [
-                        "exaggeration",
-                        "cfg_weight",
-                        "temperature",
-                        "min_p",
-                        "top_p",
-                        "exaggeration_max_deviation",
-                        "cfg_weight_max_deviation",
-                        "temperature_max_deviation",
-                    ]
-                }
-
-                # Add the candidate-specific min_p and top_p to additional_params
+                additional_params = {k: v for k, v in filtered_tts_params.items()
+                                     if k not in {"exaggeration", "cfg_weight", "temperature", "min_p", "top_p"}}
                 additional_params["min_p"] = var_min_p
                 additional_params["top_p"] = var_top_p
 
@@ -640,147 +943,64 @@ class TTSGenerator:
                     "cfg_weight": var_cfg_weight,
                     "temperature": var_temperature,
                     "seed": candidate_seed,
-                    "type": candidate_type,
-                    **additional_params,  # Include repetition_penalty and other TTS params
+                    "type": "CONSERVATIVE",
+                    **additional_params,
                     **kwargs,
                 }
 
-                logger.debug(
-                    f"Candidate 1 ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}, seed={candidate_seed}"
-                )
-
                 result = self._generate_single_with_immediate_retries(
-                    text=text,
-                    exaggeration=var_exaggeration,
-                    cfg_weight=var_cfg_weight,
-                    temperature=var_temperature,
-                    base_seed=candidate_seed,
-                    language_id=language_id,
-                    additional_params=additional_params,
+                    text=text, exaggeration=var_exaggeration, cfg_weight=var_cfg_weight,
+                    temperature=var_temperature, base_seed=candidate_seed,
+                    language_id=language_id, additional_params=additional_params,
                     reference_audio_path=reference_audio_path,
                 )
                 audio = result["audio"]
 
-                candidate = AudioCandidate(
-                    chunk_idx=0,  # Will be set by caller
-                    candidate_idx=0,
-                    audio_path=Path(),  # Will be set when saving
-                    audio_tensor=audio,
-                    generation_params={
-                        **generation_params,
-                        **{k: v for k, v in result.get("used_params", {}).items()},
-                    },
-                )
-
-                candidates.append(candidate)
-                logger.debug(
-                    f"Generated candidate 1/{num_candidates}: duration={audio.shape[-1]/24000:.2f}s\n"
-                )
-
+                candidates.append(AudioCandidate(
+                    chunk_idx=0, candidate_idx=0, audio_path=Path(), audio_tensor=audio,
+                    generation_params={**generation_params, **result.get("used_params", {})},
+                ))
+                logger.debug(f"Generated candidate 1/1: duration={audio.shape[-1]/24000:.2f}s")
             except Exception as e:
                 logger.error(f"Failed to generate conservative candidate: {e}")
-
-            logger.debug(
-                f"Successfully generated {len(candidates)}/1 conservative candidate"
-            )
             return candidates
-
-        # Multi-candidate mode or single expressive mode
-        is_conservative_enabled = conservative_config and conservative_config.get(
-            "enabled", False
-        )
-        num_expressive = (
-            num_candidates - 1 if is_conservative_enabled else num_candidates
-        )
 
         for i in range(num_candidates):
             try:
-                # Set unique seed for this candidate
                 candidate_seed = effective_seed + (i * 1000) + hash(text) % 10000
-
-                # Check if this should be a conservative candidate (always last)
                 is_conservative = is_conservative_enabled and (i + 1) == num_candidates
 
                 if is_conservative:
-                    # Use conservative parameters for guaranteed correctness
-                    logger.debug(
-                        f"Applying conservative parameters for candidate {i+1}"
-                    )
-                    if conservative_config is None:
-                        raise RuntimeError(
-                            "Conservative config is None but conservative mode is enabled"
-                        )
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
-                    # Use conservative min_p and top_p with fallback to regular tts_params
                     var_min_p = conservative_config.get("min_p", resolved_tts_params.get("min_p", 0.1))
                     var_top_p = conservative_config.get("top_p", resolved_tts_params.get("top_p", 0.8))
                     candidate_type = "CONSERVATIVE"
                 else:
-                    # Expressive candidate logic
-                    if num_expressive == 1:
-                        # Only one expressive candidate: use exact config values
-                        var_exaggeration = base_exaggeration
-                        var_cfg_weight = base_cfg_weight
-                        var_temperature = base_temperature
-                    elif i == 0:
-                        # First expressive candidate: always use exact config values
+                    if num_expressive == 1 or i == 0:
                         var_exaggeration = base_exaggeration
                         var_cfg_weight = base_cfg_weight
                         var_temperature = base_temperature
                     else:
-                        # Subsequent expressive candidates: apply RAMP strategy
-                        # Calculate ramp position: candidate 2 = 0.25, candidate 3 = 0.5, ..., last = 1.0
-                        ramp_position = i / (
-                            num_expressive - 1
-                        )  # i=1 → 1/4=0.25, i=2 → 2/4=0.5, etc.
+                        ramp_position = i / (num_expressive - 1)
+                        var_exaggeration = base_exaggeration - (exag_max_deviation * ramp_position)
+                        var_cfg_weight = base_cfg_weight + (cfg_max_deviation * ramp_position)
+                        var_temperature = base_temperature + (temp_max_deviation * ramp_position)
 
-                        # Apply user-specified ramp directions:
-                        # exaggeration: RAMP-DOWN from MAX (config) to MIN (config - deviation)
-                        var_exaggeration = base_exaggeration - (
-                            exag_max_deviation * ramp_position
-                        )
-
-                        # cfg_weight: RAMP-UP from MIN (config) to MAX (config + deviation)
-                        var_cfg_weight = base_cfg_weight + (
-                            cfg_max_deviation * ramp_position
-                        )
-
-                        # temperature: RAMP-UP from MIN (config) to MAX (config + deviation)
-                        var_temperature = base_temperature + (
-                            temp_max_deviation * ramp_position
-                        )
-
-                    # Use regular min_p and top_p for expressive candidates
                     var_min_p = resolved_tts_params.get("min_p", 0.05)
                     var_top_p = resolved_tts_params.get("top_p", 0.95)
                     candidate_type = "EXPRESSIVE"
 
-                # Extract additional TTS parameters from tts_params (excluding the ones we handle explicitly)
-                additional_params = {
-                    k: v
-                    for k, v in resolved_tts_params.items()
-                    if k
-                    not in [
-                        "exaggeration",
-                        "cfg_weight",
-                        "temperature",
-                        "min_p",
-                        "top_p",
-                        "exaggeration_max_deviation",
-                        "cfg_weight_max_deviation",
-                        "temperature_max_deviation",
-                    ]
-                }
-
-                # Add the candidate-specific min_p and top_p to additional_params
+                additional_params = {k: v for k, v in filtered_tts_params.items()
+                                     if k not in {"exaggeration", "cfg_weight", "temperature", "min_p", "top_p"}}
                 additional_params["min_p"] = var_min_p
                 additional_params["top_p"] = var_top_p
 
-                # Debug: Log tts_params with all parameters
                 logger.info(
-                    f"CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}"
+                    f"CANDIDATE {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, "
+                    f"cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, "
+                    f"min_p={var_min_p:.2f}, top_p={var_top_p:.2f}"
                 )
 
                 generation_params = {
@@ -789,110 +1009,30 @@ class TTSGenerator:
                     "temperature": var_temperature,
                     "seed": candidate_seed,
                     "type": candidate_type,
-                    **additional_params,  # Include repetition_penalty and other TTS params
+                    **additional_params,
                     **kwargs,
                 }
 
                 result = self._generate_single_with_immediate_retries(
-                    text=text,
-                    exaggeration=var_exaggeration,
-                    cfg_weight=var_cfg_weight,
-                    temperature=var_temperature,
-                    base_seed=candidate_seed,
-                    language_id=language_id,
-                    additional_params=additional_params,
+                    text=text, exaggeration=var_exaggeration, cfg_weight=var_cfg_weight,
+                    temperature=var_temperature, base_seed=candidate_seed,
+                    language_id=language_id, additional_params=additional_params,
                     reference_audio_path=reference_audio_path,
                 )
                 audio = result["audio"]
 
-                candidate = AudioCandidate(
-                    chunk_idx=0,  # Will be set by caller
-                    candidate_idx=i,
-                    audio_path=Path(),  # Will be set when saving
-                    audio_tensor=audio,
-                    generation_params={
-                        **generation_params,
-                        **{k: v for k, v in result.get("used_params", {}).items()},
-                    },
-                )
-
-                candidates.append(candidate)
-                # NOTE: Using ChatterboxTTS native sample rate (24kHz) for duration calculation
-                logger.debug(
-                    f"Generated: duration={audio.shape[-1]/24000:.2f}s, seed={candidate_seed}"
-                )
+                candidates.append(AudioCandidate(
+                    chunk_idx=0, candidate_idx=i, audio_path=Path(), audio_tensor=audio,
+                    generation_params={**generation_params, **result.get("used_params", {})},
+                ))
+                logger.debug(f"Generated: duration={audio.shape[-1]/24000:.2f}s, seed={candidate_seed}")
 
             except Exception as e:
-                logger.error(
-                    f"Failed to generate candidate {i+1}/{num_candidates}: {e}"
-                )
-                # Continue with remaining candidates
+                logger.error(f"Failed to generate candidate {i+1}/{num_candidates}: {e}")
                 continue
 
-        logger.debug(
-            f"Successfully generated {len(candidates)}/{num_candidates} diverse candidates"
-        )
+        logger.debug(f"Successfully generated {len(candidates)}/{num_candidates} diverse candidates")
         return candidates
-
-    def _normalize_generation_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Normalize generation kwargs to align with the underlying model.generate signature.
-
-        Behavior:
-        - If model.generate has **kwargs (VAR_KEYWORD), do NOT filter unknown keys (only alias-remap).
-        - If model.generate does NOT have **kwargs, filter to accepted names to avoid TypeError.
-        - Attempt common alias remaps (cfg_weight, temperature, exaggeration, top_p, min_p, language_id, repetition_penalty).
-        """
-        model_ref = self.model
-        if model_ref is None or not hasattr(model_ref, "generate"):
-            return params
-
-        try:
-            sig = inspect.signature(model_ref.generate)
-            accepted_params = set(sig.parameters.keys())
-            has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
-        except Exception:
-            return params
-
-        normalized: Dict[str, Any] = dict(params)
-
-        def remap(src_key: str, candidates: List[str]):
-            if src_key in normalized and src_key not in accepted_params:
-                for cand in candidates:
-                    if cand in accepted_params:
-                        normalized[cand] = normalized.pop(src_key)
-                        return
-                # keep original; it may be filtered below
-
-        # Attempt common alias remaps
-        remap("cfg_weight", ["cfg_weight", "cfg", "guidance_scale", "classifier_free_guidance_weight"]) 
-        remap("temperature", ["temperature", "temp"]) 
-        remap("exaggeration", ["exaggeration", "style_exaggeration", "expressiveness"]) 
-        remap("top_p", ["top_p", "nucleus_p"]) 
-        remap("min_p", ["min_p", "p_min"]) 
-        remap("language_id", ["language_id", "language", "lang"]) 
-        remap("repetition_penalty", ["repetition_penalty", "repeat_penalty"]) 
-
-        # If model accepts **kwargs, retain all keys (no filtering) to allow the model to consume kwargs.
-        if has_var_kw:
-            try:
-                logger.debug(
-                    f"Model.generate accepts **kwargs; passing params without filtering. Keys: {sorted(normalized.keys())}"
-                )
-            except Exception:
-                pass
-            return normalized
-
-        # Otherwise, filter to accepted names to avoid TypeError
-        filtered = {k: v for k, v in normalized.items() if k in accepted_params}
-        dropped = [k for k in normalized.keys() if k not in accepted_params]
-        if dropped:
-            logger.debug(f"Dropping unsupported TTS params for model.generate (no **kwargs): {dropped}")
-        try:
-            logger.debug(f"Params passed to model.generate: {sorted(filtered.keys())}")
-        except Exception:
-            pass
-        return filtered
 
     def generate_specific_candidates(
         self,
@@ -910,18 +1050,8 @@ class TTSGenerator:
         **kwargs,
     ) -> List[AudioCandidate]:
         """
-        Generates specific audio candidates for the same text input with parameter variation.
-        This method is designed to regenerate specific candidates for recovery or targeted testing.
-
-        PARAMETER SEMANTICS (as specified by user requirements):
-        - exaggeration: Config value = MAX, ramps DOWN to (config - max_deviation)
-        - cfg_weight: Config value = MIN, ramps UP to (config + max_deviation)
-        - temperature: Config value = MIN, ramps UP to (config + max_deviation)
-
-        CANDIDATE LOGIC (for the specified candidates):
-        - The provided `candidate_indices` will be generated using parameters determined
-          by their position in the full `num_candidates` range, respecting the ramping logic.
-        - If a conservative candidate is requested, its parameters will be used.
+        Generates specific audio candidates for recovery or targeted testing.
+        Unsupported parameters for the current model are gracefully skipped.
         """
         if not candidate_indices:
             logger.warning("No candidate indices provided for specific generation")
@@ -934,123 +1064,67 @@ class TTSGenerator:
 
         candidates: List[AudioCandidate] = []
         
-        # Get speaker-specific seed if speaker_id is provided
         effective_seed = self.seed
         if speaker_id is not None:
             effective_seed = self.get_speaker_seed(speaker_id)
-            if effective_seed != self.seed:
-                logger.debug(f"Using speaker-specific seed {effective_seed} for speaker '{speaker_id}'")
         elif effective_seed == 0:
             logger.debug("Using random seed per generation (seed = 0)")
 
-        # Get parameters from config if not provided
         if tts_params is None:
             generation_config = self.config.get("generation", {})
             tts_params = generation_config.get("tts_params", {})
 
-        # Ensure non-None dict for downstream access
         resolved_tts_params: Dict[str, Any] = tts_params or {}
+        filtered_tts_params = self._filter_params_for_model(resolved_tts_params)
 
-        # Use config values as defaults
-        base_exaggeration = (
-            exaggeration
-            if exaggeration is not None
-            else resolved_tts_params.get("exaggeration", 0.6)
-        )
-        base_cfg_weight = (
-            cfg_weight if cfg_weight is not None else resolved_tts_params.get("cfg_weight", 0.7)
-        )
-        base_temperature = (
-            temperature
-            if temperature is not None
-            else resolved_tts_params.get("temperature", 1.0)
-        )
+        base_exaggeration = exaggeration if exaggeration is not None else resolved_tts_params.get("exaggeration", 0.6)
+        base_cfg_weight = cfg_weight if cfg_weight is not None else resolved_tts_params.get("cfg_weight", 0.7)
+        base_temperature = temperature if temperature is not None else resolved_tts_params.get("temperature", 1.0)
 
-        # Get deviation ranges from config
         exag_max_deviation = resolved_tts_params.get("exaggeration_max_deviation", 0.15)
         cfg_max_deviation = resolved_tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = resolved_tts_params.get("temperature_max_deviation", 0.2)
 
-        is_conservative_enabled = conservative_config and conservative_config.get(
-            "enabled", False
-        )
-        num_expressive = (
-            total_candidates - 1 if is_conservative_enabled else total_candidates
-        )
+        is_conservative_enabled = conservative_config and conservative_config.get("enabled", False)
+        num_expressive = total_candidates - 1 if is_conservative_enabled else total_candidates
 
         for i in candidate_indices:
             try:
-                # Set unique seed for this candidate
                 candidate_seed = effective_seed + (i * 1000) + hash(text) % 10000
-
-                # Check if this should be a conservative candidate (always last)
-                is_conservative = (
-                    is_conservative_enabled and (i + 1) == total_candidates
-                )
+                is_conservative = is_conservative_enabled and (i + 1) == total_candidates
 
                 if is_conservative:
-                    # Use conservative parameters
-                    logger.debug(
-                        f"Applying conservative parameters for candidate {i+1}"
-                    )
-                    if conservative_config is None:
-                        raise RuntimeError(
-                            "Conservative config is None but conservative mode is enabled"
-                        )
                     var_exaggeration = conservative_config.get("exaggeration", 0.4)
                     var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
                     var_temperature = conservative_config.get("temperature", 0.5)
-                    # Use conservative min_p and top_p with fallback to regular tts_params
                     var_min_p = conservative_config.get("min_p", resolved_tts_params.get("min_p", 0.1))
                     var_top_p = conservative_config.get("top_p", resolved_tts_params.get("top_p", 0.8))
                     candidate_type = "CONSERVATIVE"
                 else:
-                    # Expressive candidate logic - same as in generate_candidates
-                    if num_expressive == 1:
-                        var_exaggeration = base_exaggeration
-                        var_cfg_weight = base_cfg_weight
-                        var_temperature = base_temperature
-                    elif i == 0:
+                    if num_expressive == 1 or i == 0:
                         var_exaggeration = base_exaggeration
                         var_cfg_weight = base_cfg_weight
                         var_temperature = base_temperature
                     else:
                         ramp_position = i / (num_expressive - 1)
-                        var_exaggeration = base_exaggeration - (
-                            exag_max_deviation * ramp_position
-                        )
-                        var_cfg_weight = base_cfg_weight + (
-                            cfg_max_deviation * ramp_position
-                        )
-                        var_temperature = base_temperature + (
-                            temp_max_deviation * ramp_position
-                        )
+                        var_exaggeration = base_exaggeration - (exag_max_deviation * ramp_position)
+                        var_cfg_weight = base_cfg_weight + (cfg_max_deviation * ramp_position)
+                        var_temperature = base_temperature + (temp_max_deviation * ramp_position)
 
-                    # Use regular min_p and top_p for expressive candidates
                     var_min_p = resolved_tts_params.get("min_p", 0.05)
                     var_top_p = resolved_tts_params.get("top_p", 0.95)
                     candidate_type = "EXPRESSIVE"
 
-                # Extract additional TTS parameters (excluding the ones we handle explicitly)
-                additional_params = {
-                    k: v
-                    for k, v in resolved_tts_params.items()
-                    if k
-                    not in [
-                        "exaggeration",
-                        "cfg_weight",
-                        "temperature",
-                        "min_p",
-                        "top_p",
-                        "exaggeration_max_deviation",
-                        "cfg_weight_max_deviation",
-                        "temperature_max_deviation",
-                    ]
-                }
-
-                # Add the candidate-specific min_p and top_p to additional_params
+                additional_params = {k: v for k, v in filtered_tts_params.items()
+                                     if k not in {"exaggeration", "cfg_weight", "temperature", "min_p", "top_p"}}
                 additional_params["min_p"] = var_min_p
                 additional_params["top_p"] = var_top_p
+
+                logger.debug(
+                    f"Candidate {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, "
+                    f"cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, "
+                    f"min_p={var_min_p:.2f}, top_p={var_top_p:.2f}, seed={candidate_seed}"
+                )
 
                 generation_params = {
                     "exaggeration": var_exaggeration,
@@ -1062,144 +1136,104 @@ class TTSGenerator:
                     **kwargs,
                 }
 
-                logger.debug(
-                    f"Candidate {i+1} ({candidate_type}): exag={var_exaggeration:.2f}, cfg={var_cfg_weight:.2f}, temp={var_temperature:.2f}, min_p={var_min_p:.2f}, top_p={var_top_p:.2f}, seed={candidate_seed}"
-                )
-
                 result = self._generate_single_with_immediate_retries(
-                    text=text,
-                    exaggeration=var_exaggeration,
-                    cfg_weight=var_cfg_weight,
-                    temperature=var_temperature,
-                    base_seed=candidate_seed,
-                    language_id=language_id,
-                    additional_params=additional_params,
+                    text=text, exaggeration=var_exaggeration, cfg_weight=var_cfg_weight,
+                    temperature=var_temperature, base_seed=candidate_seed,
+                    language_id=language_id, additional_params=additional_params,
                     reference_audio_path=reference_audio_path,
                 )
                 audio = result["audio"]
 
-                candidate = AudioCandidate(
-                    chunk_idx=0,  # Will be set by caller
-                    candidate_idx=i,
-                    audio_path=Path(),  # Will be set when saving
-                    audio_tensor=audio,
-                    generation_params={
-                        **generation_params,
-                        **{k: v for k, v in result.get("used_params", {}).items()},
-                    },
-                )
-
-                candidates.append(candidate)
-                logger.debug(
-                    f"Generated candidate {i+1}: duration={audio.shape[-1]/24000:.2f}s"
-                )
+                candidates.append(AudioCandidate(
+                    chunk_idx=0, candidate_idx=i, audio_path=Path(), audio_tensor=audio,
+                    generation_params={**generation_params, **result.get("used_params", {})},
+                ))
+                logger.debug(f"Generated candidate {i+1}: duration={audio.shape[-1]/24000:.2f}s")
 
             except Exception as e:
-                logger.error(
-                    f"Failed to generate candidate {i+1}/{total_candidates}: {e}"
-                )
+                logger.error(f"Failed to generate candidate {i+1}/{total_candidates}: {e}")
                 continue
 
         logger.debug(f"Successfully generated {len(candidates)} specific candidates")
         return candidates
 
-
-
     def get_current_params(self) -> Dict[str, Any]:
-        """
-        Get current TTS generation parameters.
-
-        Returns:
-            Dictionary of current generation parameters
-        """
+        """Get current TTS generation parameters."""
         generation_config = self.config.get("generation", {})
         tts_params = generation_config.get("tts_params", {})
-
         return {
             "device": self.device,
             "seed": self.seed,
+            "model_type": self.model_type,
             "tts_params": tts_params,
             "model_loaded": self.model is not None,
         }
 
+    # ------------------------------------------------------------------
     # Speaker system methods
+    # ------------------------------------------------------------------
+
     def switch_speaker(self, speaker_id: str, config_manager=None):
         """
-        Switch to different speaker with new reference_audio.
+        Switch to a different speaker with the appropriate voice loading mechanism.
+
+        - Chatterbox (standard/multilingual/turbo): calls prepare_conditionals()
+        - Qwen3: builds and caches a voice clone prompt via _prepare_qwen3_voice_clone_prompt()
 
         Args:
             speaker_id: Target speaker ID
-            config_manager: Optional ConfigManager for file access
+            config_manager: FileManager or ConfigManager for file access
         """
-        # Resolve actual speaker ID first (handle fallbacks before Guard check)
         actual_speaker_id = self._resolve_speaker_id(speaker_id, config_manager)
         
-        # Check if we're already using the resolved speaker
         if self.current_speaker_id == actual_speaker_id:
             logger.debug(f"Speaker '{actual_speaker_id}' already active, skipping switch")
             return
 
-        # Get speaker configuration for the resolved speaker
-        speaker_config = None
-        for speaker in self.speakers_config:
-            if speaker.get("id") == actual_speaker_id:
-                speaker_config = speaker
-                break
-
+        speaker_config = self._get_speaker_config(actual_speaker_id)
         if not speaker_config:
             logger.error(f"Resolved speaker '{actual_speaker_id}' not found in configuration")
             return
 
-        # Load new reference_audio
         reference_audio = speaker_config.get("reference_audio")
-        if reference_audio and config_manager:
-            try:
-                audio_path = config_manager.get_reference_audio_for_speaker(actual_speaker_id)
-                logger.info(
-                    f"🎭 Switching to speaker '{actual_speaker_id}' with voice: {audio_path.name}"
-                )
-                self.prepare_conditionals(str(audio_path))
+        if not (reference_audio and config_manager):
+            logger.warning(f"No reference_audio or config_manager for speaker '{actual_speaker_id}'")
+            return
 
-                # Verify conditionals are loaded
+        try:
+            audio_path = config_manager.get_reference_audio_for_speaker(actual_speaker_id)
+            logger.info(f"🎭 Switching to speaker '{actual_speaker_id}' with voice: {audio_path.name}")
+
+            if self.is_qwen3:
+                ref_text = self._load_qwen3_ref_text(actual_speaker_id, audio_path, speaker_config)
+                self._prepare_qwen3_voice_clone_prompt(actual_speaker_id, audio_path, ref_text)
+                if actual_speaker_id in self._qwen3_voice_prompts:
+                    self.current_speaker_id = actual_speaker_id
+                    logger.debug(f"✅ Qwen3 voice prompt ready for speaker '{actual_speaker_id}'")
+                else:
+                    logger.error(f"❌ Failed to build Qwen3 voice prompt for speaker '{actual_speaker_id}'")
+            else:
+                self.prepare_conditionals(str(audio_path))
                 model_ref = self.model
                 if model_ref is not None and getattr(model_ref, "conds", None) is not None:
-                    logger.debug(
-                        f"✅ Conditionals successfully loaded for speaker '{actual_speaker_id}'"
-                    )
+                    logger.debug(f"✅ Conditionals successfully loaded for speaker '{actual_speaker_id}'")
                     self.current_speaker_id = actual_speaker_id
                 else:
-                    logger.error(
-                        f"❌ Failed to load conditionals for speaker '{actual_speaker_id}'"
-                    )
+                    logger.error(f"❌ Failed to load conditionals for speaker '{actual_speaker_id}'")
 
-            except Exception as e:
-                logger.error(f"Failed to switch to speaker '{actual_speaker_id}': {e}")
-        else:
-            logger.warning(
-                f"No reference_audio or config_manager for speaker '{actual_speaker_id}'"
-            )
+        except Exception as e:
+            logger.error(f"Failed to switch to speaker '{actual_speaker_id}': {e}")
 
     def _resolve_speaker_id(self, speaker_id: str, config_manager=None) -> str:
-        """
-        Resolve speaker ID with fallback logic, but don't log warnings here.
-        
-        Args:
-            speaker_id: Requested speaker ID
-            config_manager: Optional ConfigManager for file access
-            
-        Returns:
-            Actual speaker ID to use
-        """
-        # Check if requested speaker exists
+        """Resolve speaker ID with fallback logic."""
         for speaker in self.speakers_config:
             if speaker.get("id") == speaker_id:
                 return speaker_id
 
-        # Speaker not found - use cascading fallback logic
-        if config_manager and hasattr(config_manager, 'get_default_speaker_id'):
+        if config_manager and hasattr(config_manager, "get_default_speaker_id"):
             try:
                 fallback_speaker_id = config_manager.get_default_speaker_id()
-                if speaker_id != fallback_speaker_id:  # Only log if there was actually a fallback
+                if speaker_id != fallback_speaker_id:
                     logger.warning(
                         f"Speaker '{speaker_id}' not found, using default speaker '{fallback_speaker_id}'"
                     )
@@ -1207,7 +1241,6 @@ class TTSGenerator:
             except Exception as e:
                 logger.debug(f"Could not get default speaker from config_manager: {e}")
 
-        # Final fallback to first speaker
         if self.speakers_config:
             fallback_speaker_id = self.speakers_config[0].get("id", "default")
             logger.warning(f"Using first speaker as fallback: '{fallback_speaker_id}'")
@@ -1219,28 +1252,26 @@ class TTSGenerator:
         self, text: str, speaker_id: str, num_candidates: int, config_manager
     ) -> List[AudioCandidate]:
         """
-        Generate candidates for given text using specified speaker.
+        Generate candidates for given text using the specified speaker.
+
+        Speaker switching (different reference audio, tts_params, prosody) works for all
+        model types.  Language restrictions (standard/turbo are EN-only) are already
+        enforced as soft warnings in generation_handler._validate_languages_for_model()
+        and are NOT enforced here.
+
+        For Qwen3, dispatches to _generate_qwen3_candidates().
         """
-        # Get speaker config from internal config and resolve reference audio via file/config manager
         speaker_config = self._get_speaker_config(speaker_id)
         reference_audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
- 
-        # Activate the requested speaker to load/update conditionals before generation.
-        # This is idempotent if the speaker is already active.
+
         try:
             self.switch_speaker(speaker_id, config_manager)
         except Exception as e:
             logger.error(f"Failed to switch to speaker '{speaker_id}': {e}")
 
-        # Prepare generation parameters
-        base_params = speaker_config["tts_params"]
-        conservative_params = speaker_config.get("conservative_candidate", {})
-        conservative_enabled = conservative_params.get("enabled", False)
- 
-        # Language from speaker
+        # -- Language resolution --
         language_id = speaker_config.get("language")
         if not language_id:
-            # Fallback to default speaker's language via internal config
             default_speaker_id = (
                 config_manager.get_default_speaker_id()
                 if hasattr(config_manager, "get_default_speaker_id")
@@ -1248,72 +1279,86 @@ class TTSGenerator:
             )
             default_speaker_config = self._get_speaker_config(default_speaker_id)
             language_id = default_speaker_config.get("language")
-            # Next fallback: generation.default_language
             if not language_id:
                 try:
-                    generation_cfg = self.config.get("generation", {})
-                    language_id = generation_cfg.get("default_language")
+                    language_id = self.config.get("generation", {}).get("default_language")
                 except Exception:
                     language_id = None
-            # Final fallback to English
             if not language_id:
                 language_id = "en"
             logger.warning(
-                f"No language defined for speaker '{speaker_id}', using fallback language: {language_id}"
+                f"No language defined for speaker '{speaker_id}', using fallback: {language_id}"
             )
- 
-        candidates = []
+
+        # -- Dispatch to Qwen3 path --
+        if self.is_qwen3:
+            return self._generate_qwen3_candidates(
+                text=text,
+                speaker_id=speaker_id,
+                speaker_config=speaker_config,
+                num_candidates=num_candidates,
+                language_id=language_id,
+            )
+
+        # -- Chatterbox path --
+        base_params = speaker_config["tts_params"]
+        conservative_params = speaker_config.get("conservative_candidate", {})
+        conservative_enabled = conservative_params.get("enabled", False)
+
+        # Filter params to supported set
+        filtered_base = self._filter_params_for_model(base_params)
+        filtered_conservative = (
+            self._filter_params_for_model(conservative_params)
+            if conservative_enabled
+            else {}
+        )
+
+        num_expressive = num_candidates - 1 if conservative_enabled else num_candidates
+        candidates: List[AudioCandidate] = []
+
         for i in range(num_candidates):
             if i == num_candidates - 1 and conservative_enabled:
-                # Last candidate: Use conservative parameters
-                params = conservative_params
+                params = dict(filtered_base)
+                params.update(filtered_conservative)
+                is_conservative_this = True
             elif i == 0:
-                # First candidate: Exact base parameters
-                params = base_params
+                params = dict(filtered_base)
+                is_conservative_this = False
             else:
-                # Intermediate candidates: Ramped parameters
-                params = self._calculate_ramped_params(base_params, i, num_candidates - 1)
- 
-            # Merge with base tts_params to ensure fallbacks (e.g., repetition_penalty)
-            # Conservative params override base; for ramped/base, params already contains core values
-            effective_params = dict(base_params)
+                params = self._calculate_ramped_params(filtered_base, i, num_expressive - 1)
+                is_conservative_this = False
+
+            effective_params = dict(filtered_base)
             effective_params.update(params)
 
-            # Generate with speaker and language
-            # Split core params to avoid duplicate kwargs
             core_exaggeration = effective_params.get("exaggeration", 0.6)
             core_cfg_weight = effective_params.get("cfg_weight", 0.7)
             core_temperature = effective_params.get("temperature", 1.0)
+
             additional_params = {
-                k: v
-                for k, v in effective_params.items()
-                if k
-                not in [
-                    "exaggeration",
-                    "cfg_weight",
-                    "temperature",
-                    "exaggeration_max_deviation",
-                    "cfg_weight_max_deviation",
-                    "temperature_max_deviation",
-                    "enabled",  # do not pass control flag into model.generate
-                ]
+                k: v for k, v in effective_params.items()
+                if k not in {
+                    "exaggeration", "cfg_weight", "temperature",
+                    "exaggeration_max_deviation", "cfg_weight_max_deviation",
+                    "temperature_max_deviation", "enabled",
+                }
             }
- 
-            # Compact per-candidate parameter log for runtime verification
+
             try:
                 log_min_p = additional_params.get("min_p")
                 log_top_p = additional_params.get("top_p")
                 log_rep = additional_params.get("repetition_penalty")
                 logger.info(
                     f"CAND {i+1}/{num_candidates} (lang={language_id}) "
-                    f"({'CONS' if (i == num_candidates - 1 and conservative_enabled) else 'EXP'}): "
+                    f"({'CONS' if is_conservative_this else 'EXP'}): "
                     f"exag={core_exaggeration:.2f}, cfg={core_cfg_weight:.2f}, temp={core_temperature:.2f}, "
-                    f"min_p={log_min_p if log_min_p is not None else '-'}, top_p={log_top_p if log_top_p is not None else '-'}, rep_pen={log_rep if log_rep is not None else '-'}"
+                    f"min_p={log_min_p if log_min_p is not None else '-'}, "
+                    f"top_p={log_top_p if log_top_p is not None else '-'}, "
+                    f"rep_pen={log_rep if log_rep is not None else '-'}"
                 )
             except Exception:
-                # Never fail generation due to logging
                 pass
- 
+
             result = self._generate_single_with_immediate_retries(
                 text=text,
                 exaggeration=core_exaggeration,
@@ -1325,66 +1370,29 @@ class TTSGenerator:
                 reference_audio_path=str(reference_audio_path),
             )
             audio = result["audio"]
- 
+
             candidate = AudioCandidate(
-                chunk_idx=0,  # Will be set by caller
+                chunk_idx=0,
                 candidate_idx=i,
-                audio_path=Path(),  # Will be set by saver
+                audio_path=Path(),
                 audio_tensor=audio,
                 generation_params={
                     **params,
                     "language_id": language_id,
-                    **{k: v for k, v in result.get("used_params", {}).items()},
+                    **result.get("used_params", {}),
                 },
             )
             candidates.append(candidate)
- 
+
         return candidates
 
     def _get_speaker_config(self, speaker_id: str) -> Dict[str, Any]:
-        """
-        Get configuration for specific speaker.
-
-        Args:
-            speaker_id: Speaker ID
-
-        Returns:
-            Speaker configuration or default speaker
-        """
-        # Use the same resolution logic as switch_speaker
+        """Get configuration for a specific speaker."""
         actual_speaker_id = self._resolve_speaker_id(speaker_id)
         
         for speaker in self.speakers_config:
             if speaker.get("id") == actual_speaker_id:
                 return speaker
 
-        # This should not happen if _resolve_speaker_id works correctly
         logger.error(f"Could not find configuration for resolved speaker '{actual_speaker_id}'")
         return {}
-
-    def _calculate_ramped_params(self, base_params: Dict[str, Any], i: int, num_expressive_minus_one: int) -> Dict[str, Any]:
-        """
-        Calculate ramped TTS parameters for candidate variation based on base_params.
-
-        Ramping semantics:
-        - exaggeration: ramp DOWN from base to (base - max_deviation)
-        - cfg_weight:  ramp UP   from base to (base + max_deviation)
-        - temperature: ramp UP   from base to (base + max_deviation)
-        """
-        if num_expressive_minus_one <= 0:
-            return dict(base_params)
-
-        ramp_position = i / max(1, num_expressive_minus_one)
-
-        base_exag = base_params.get("exaggeration", 0.6)
-        exag_dev = base_params.get("exaggeration_max_deviation", 0.15)
-        base_cfg = base_params.get("cfg_weight", 0.7)
-        cfg_dev = base_params.get("cfg_weight_max_deviation", 0.15)
-        base_temp = base_params.get("temperature", 1.0)
-        temp_dev = base_params.get("temperature_max_deviation", 0.2)
-
-        params = dict(base_params)
-        params["exaggeration"] = base_exag - (exag_dev * ramp_position)
-        params["cfg_weight"] = base_cfg + (cfg_dev * ramp_position)
-        params["temperature"] = base_temp + (temp_dev * ramp_position)
-        return params

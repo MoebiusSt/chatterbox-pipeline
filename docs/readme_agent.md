@@ -65,20 +65,53 @@ SpaCyChunker.chunk_text() → List[TextChunk]
 # Core Generation
 TTSGenerator.generate_candidates() → List[AudioCandidate]
 
-# Multilingual Support
-# - model_type: "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
-# - default_language: Default language ID for multilingual model (e.g., "en", "de")
-# - language_id: Optional per-generation language override
+# Supported model types (generation.model_type):
+# - "standard"     ChatterboxTTS           EN-only, full speaker switching
+# - "multilingual" ChatterboxMultilingualTTS  23 languages, full speaker switching
+# - "turbo"        ChatterboxTurboTTS      EN-only, full speaker switching, norm_loudness, paralinguistic tags
+# - "qwen3"        Qwen3TTSModel 1.7B Base 10 languages, full speaker switching, voice clone, requires .txt sidecar
+
+# Speaker switching: works for ALL model types
+# - Each speaker may have its own reference_audio + tts_params (prosody/kwargs)
+# - Speaker transitions change voice, exaggeration, cfg_weight, temperature etc.
+# - Language restrictions (standard/turbo are EN-only) are soft WARNINGs at startup only;
+#   they do NOT block speaker switching
+
+# Language validation (generation_handler.execute_generation)
+# - Collects all speaker languages from config
+# - Warns if any language code is unsupported for the active model_type
+# - Soft check: warns but does not abort
 
 # RAMP Strategy (N candidates per chunk)
 # - Candidate 1: Exact config parameters (baseline)
 # - Candidates 2-N: Linear interpolation from config to deviation limits
 # - Last candidate: Conservative parameters (optional, for stability)
+# - Qwen3: only temperature is ramped (exaggeration/cfg_weight not applicable)
 
-# Parameter Behavior
+# Parameter behavior (Chatterbox models)
 exaggeration: RAMP-DOWN from MAX (config) to MIN (config - max_deviation)
-cfg_weight: RAMP-UP from MIN (config) to MAX (config + max_deviation)  
+cfg_weight: RAMP-UP from MIN (config) to MAX (config + max_deviation)
 temperature: RAMP-UP from MIN (config) to MAX (config + max_deviation)
+
+# Parameter filtering (all models)
+# - Unsupported params in tts_params are gracefully skipped with a one-time info log
+# - SUPPORTED_TTS_PARAMS per model type defined in src/utils/language_registry.py
+# - conservative_candidate unsupported keys also gracefully skipped
+
+# Turbo-specific
+# - norm_loudness: bool in tts_params → enables built-in loudness normalization
+#   When active, the external AudioNormalizer in assembly is automatically skipped
+# - top_k: int (default 1000)
+# - Paralinguistic tags [laugh], [cough], etc. are preserved through chunking and preprocessing
+
+# Qwen3-specific
+# - Voice clone requires reference audio + reference text transcript
+# - Reference text auto-loaded from .txt sidecar file (same stem as reference .wav)
+#   or via speaker config field: reference_text: "path/to/transcript.txt" or inline text
+# - Reference audio duration warning if > 3s (recommended max for optimal cloning quality)
+# - x_vector_only_mode=True used as fallback when no ref_text is available
+# - Voice clone prompts are cached per speaker_id (no recomputation across chunks)
+# - Seed: torch.manual_seed(seed) called before each generation (Qwen3 has no native seed param)
 ```
 
 ### 3. Quality Validation Pipeline
@@ -194,19 +227,21 @@ chunking:
 generation:
   num_candidates: 3              # More candidates = better quality, higher compute
   max_retries: 1
-  model_type: "standard"         # "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
-  default_language: "en"         # Default language for multilingual model (e.g., "en", "de", "fr")
+  model_type: "standard"         # "standard" | "multilingual" | "turbo" | "qwen3"
+  default_language: "en"         # Default language for multilingual model
   
-# TTS Parameters (per speaker)
+# TTS Parameters (per speaker) – unsupported params for the active model are gracefully skipped
 tts_params:
-  exaggeration: 0.40             # MAX value for RAMP-DOWN
+  exaggeration: 0.40             # MAX value for RAMP-DOWN (Chatterbox only)
   exaggeration_max_deviation: 0.20
-  cfg_weight: 0.2                # MIN value for RAMP-UP  
+  cfg_weight: 0.2                # MIN value for RAMP-UP (Chatterbox only)
   cfg_weight_max_deviation: 0.20
-  temperature: 0.9               # MIN value for RAMP-UP
+  temperature: 0.9               # MIN value for RAMP-UP (all models)
   temperature_max_deviation: 0.3
-  min_p: 0.03                    # Stability: higher = more conservative
-  top_p: 0.99                    # Creativity: lower = more conservative
+  min_p: 0.03                    # Stability (Chatterbox only)
+  top_p: 0.99                    # Creativity (Chatterbox + Qwen3)
+  # turbo extras: top_k: 1000, norm_loudness: false
+  # qwen3 extras: top_k, repetition_penalty, max_new_tokens, do_sample, subtalker_*
 
 # Quality Gates
 validation:
@@ -361,6 +396,22 @@ Solution: Tune TTS parameters (lower temperature, higher min_p), generate more c
 "⚠️ forcing EOS token, token_repetition=True"
 Solution: Increase repetition_penalty (1.8-2.0), lower temperature (0.75-0.8), 
          increase min_p (0.08-0.10), decrease top_p (0.88-0.92)
+
+# Turbo/standard model: EN-only language warning
+# "Language 'de' is not supported by model type 'turbo'"
+# The speaker switch itself is NOT blocked – only language-specific TTS quality may suffer.
+Solution: Use speakers with language: en for standard/turbo models, or switch to multilingual/qwen3.
+
+# Qwen3: no reference text / low cloning quality
+Solution: Add a .txt sidecar file with the transcript next to the reference .wav file.
+         Without it, x_vector_only mode is used (weaker voice cloning).
+
+# Qwen3: reference audio too long
+Warning logged when reference audio > 3s. Trim to best 3-second segment for optimal quality.
+
+# Unsupported tts_params for model type
+e.g. "Skipping unsupported tts_param 'exaggeration' for model type 'qwen3'"
+Solution: This is expected and harmless. params are filtered per model type automatically.
 
 # Cache Miss on Every Run
 Expected: Normal behavior, model loads once per process

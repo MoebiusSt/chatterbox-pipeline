@@ -145,7 +145,7 @@ class ProsodyScorer:
             idx_floor = idx.long().clamp_(0, audio.shape[-1] - 1)
             return audio.index_select(-1, idx_floor)
 
-    def _get_whisperx_asr_model(self, device: str) -> Optional[Any]:
+    def _get_whisperx_asr_model(self, device: str, language: str = "en") -> Optional[Any]:
         try:
             key = f"small:{device}"
             if key in self._whisperx_asr_models:
@@ -153,7 +153,11 @@ class ProsodyScorer:
             if self._whisperx is None:
                 return None
             compute_type = "float16" if device == "cuda" else "int8"
-            model = self._whisperx.load_model("small", device=device, compute_type=compute_type)
+            # Pass language so whisperx does not emit "No language specified" print
+            with quiet_imports_and_warnings():
+                model = self._whisperx.load_model(
+                    "small", device=device, compute_type=compute_type, language=language
+                )
             self._whisperx_asr_models[key] = model
             return model
         except Exception:
@@ -166,7 +170,8 @@ class ProsodyScorer:
                 return self._whisperx_aligners[lang]
             if self._whisperx is None:
                 return None
-            align_model, metadata = self._whisperx.load_align_model(language_code=lang, device=device)
+            with quiet_imports_and_warnings():
+                align_model, metadata = self._whisperx.load_align_model(language_code=lang, device=device)
             self._whisperx_aligners[lang] = (align_model, metadata)
             return self._whisperx_aligners[lang]
         except Exception:
@@ -240,11 +245,10 @@ class ProsodyScorer:
 
             if self._whisperx is not None and asr_len > 0:
                 device = self.whisperx_device if self.whisperx_device in {"cpu", "cuda"} else "cpu"
-                asr_model = self._get_whisperx_asr_model(device)
+                lang = language or "en"
+                asr_model = self._get_whisperx_asr_model(device, lang)
                 if asr_model is not None:
                     audio16 = self._resample_to_16k(audio)
-                    # Guard against empty/None language
-                    lang = language or "en"
                     # Optional: restrict alignment to configured languages for stability
                     if not lang_gate or (lang.split("-")[0].lower() in lang_gate):
                         with quiet_imports_and_warnings():

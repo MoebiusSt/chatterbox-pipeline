@@ -187,9 +187,30 @@ class AssemblyHandler:
             logger.error(f"Assembly stage failed: {e}", exc_info=True)
             return False
 
+    def _turbo_builtin_normalization_active(self) -> bool:
+        """
+        Return True if the Turbo model's built-in loudness normalization (norm_loudness)
+        is enabled via any speaker's tts_params.
+
+        When active, running the external AudioNormalizer on top would double-normalize.
+        """
+        model_type = self.config.get("generation", {}).get("model_type", "standard")
+        if model_type != "turbo":
+            return False
+
+        speakers = self.config.get("generation", {}).get("speakers", [])
+        for speaker in speakers:
+            tts_params = speaker.get("tts_params", {})
+            if tts_params.get("norm_loudness", False):
+                return True
+        return False
+
     def _apply_post_processing(self, audio: torch.Tensor) -> torch.Tensor:
         """
         Apply post-processing to final audio (normalization, etc.).
+
+        Skips external AudioNormalizer when the Turbo model's built-in norm_loudness
+        is active to avoid double normalization.
         
         Args:
             audio: Input audio tensor
@@ -199,7 +220,14 @@ class AssemblyHandler:
         """
         try:
             sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
-            
+
+            if self._turbo_builtin_normalization_active():
+                logger.info(
+                    "ℹ️ Turbo model norm_loudness is active - skipping external "
+                    "AudioNormalizer to avoid double normalization"
+                )
+                return audio
+
             # Apply audio normalization
             processed_audio = self.audio_normalizer.normalize(audio, sample_rate)
             

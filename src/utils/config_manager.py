@@ -7,6 +7,7 @@ Supports default-yaml + job-yaml merging and task-yaml creation.
 import copy
 import logging
 from collections import OrderedDict
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -186,13 +187,20 @@ class ConfigManager:
             if "name" in job:
                 original = job["name"]
                 job["name"] = self._coerce_to_string_identifier(job["name"])
-                if original != job["name"] or str(original).lower() in _YAML_RESERVED_WORDS:
-                    logger.warning(f"Identifier normalization: job.name '{original}' → '{job['name']}'")
+                if original != job["name"]:
+                    logger.debug(f"Identifier normalization: job.name '{original}' → '{job['name']}'")
             if "run-label" in job:
                 original = job["run-label"]
-                job["run-label"] = self._coerce_to_string_identifier(job["run-label"])
-                if original != job["run-label"] or str(original).lower() in _YAML_RESERVED_WORDS:
-                    logger.warning(f"Identifier normalization: job.run-label '{original}' → '{job['run-label']}'")
+                # Gracefully handle None/False/True for run-label → empty string
+                val = original
+                if val is None:
+                    job["run-label"] = ""
+                elif isinstance(val, bool):
+                    job["run-label"] = ""  # booleans are never valid labels
+                else:
+                    job["run-label"] = self._coerce_to_string_identifier(val)
+                if original != job["run-label"]:
+                    logger.debug(f"Identifier normalization: job.run-label '{original}' → '{job['run-label']}'")
 
         # generation identifiers
         gen = cfg.get("generation")
@@ -200,8 +208,8 @@ class ConfigManager:
             if "default_speaker" in gen:
                 original = gen["default_speaker"]
                 gen["default_speaker"] = self._coerce_to_string_identifier(gen["default_speaker"])
-                if original != gen["default_speaker"] or str(original).lower() in _YAML_RESERVED_WORDS:
-                    logger.warning(
+                if original != gen["default_speaker"]:
+                    logger.debug(
                         f"Identifier normalization: generation.default_speaker '{original}' → '{gen['default_speaker']}'"
                     )
 
@@ -213,13 +221,35 @@ class ConfigManager:
                     if "id" in spk:
                         original = spk["id"]
                         spk["id"] = self._coerce_to_string_identifier(spk["id"])
-                        if original != spk["id"] or str(original).lower() in _YAML_RESERVED_WORDS:
-                            logger.warning(f"Identifier normalization: speaker.id '{original}' → '{spk['id']}'")
+                        if original != spk["id"]:
+                            logger.debug(f"Identifier normalization: speaker.id '{original}' → '{spk['id']}'")
                     if "language" in spk:
-                        original = spk["language"]
-                        spk["language"] = self._coerce_to_string_identifier(spk["language"])
-                        if original != spk["language"] or str(original).lower() in _YAML_RESERVED_WORDS:
-                            logger.warning(f"Identifier normalization: speaker.language '{original}' → '{spk['language']}'")
+                        original_lang = spk["language"]
+                        new_lang: str = ""
+                        # Graceful normalization for language field
+                        if original_lang is None:
+                            new_lang = ""  # will fall back later
+                        elif isinstance(original_lang, bool):
+                            # Unquoted YAML 'no' becomes False → map to 'no'; True is invalid → fallback
+                            new_lang = "no" if original_lang is False else ""
+                        else:
+                            str_lang = str(original_lang).strip()
+                            low = str_lang.lower()
+                            if low == "no":
+                                new_lang = "no"
+                            elif self._is_valid_language_code(str_lang):
+                                new_lang = low
+                            elif low == "false" and str(spk.get("id", "")).lower() in {"norwegian", "no", "nb", "nn"}:
+                                # Heuristic: previous runs may have persisted 'false' when user intended 'no'
+                                new_lang = "no"
+                            else:
+                                # Invalid/ambiguous → empty to trigger fallback
+                                new_lang = ""
+                        spk["language"] = new_lang
+                        if original_lang != spk["language"]:
+                            logger.debug(
+                                f"Identifier normalization: speaker.language '{original_lang}' → '{spk['language']}'"
+                            )
 
         return cfg
 
@@ -289,6 +319,35 @@ class ConfigManager:
             return [self._convert_ordered_dict_to_dict(item) for item in data]
         else:
             return data
+
+    def _is_valid_language_code(self, value: Any) -> bool:
+        """
+        Validate a language code for speakers.
+
+        Rules:
+        - Must be a string
+        - Accept explicit 'no' (Norwegian) even though it's a YAML reserved token when unquoted
+        - Must not be other YAML-reserved words (true, false, null, yes, on, off, ...)
+        - Must match a simple language pattern: 2-3 letters optionally followed by '-' and 2-3 letters
+          Examples: 'de', 'en', 'fr', 'nl', 'no', 'pt-br', 'zh-cn'
+        """
+        if not isinstance(value, str):
+            return False
+        code = value.strip().lower()
+
+        # Special-case: allow Norwegian 'no' explicitly
+        if code == "no":
+            return True
+
+        # Disallow other YAML reserved literals
+        if code in _YAML_RESERVED_WORDS:
+            return False
+
+        # Basic ISO 639-1/2 pattern with optional region/script suffix
+        if re.fullmatch(r"[a-z]{2,3}(?:-[a-z]{2,3})?", code) is None:
+            return False
+
+        return True
 
     def _sanitize_path_identifier(self, value: str) -> str:
         """
@@ -829,6 +888,15 @@ class ConfigManager:
                 logger.error(f"Missing required input field: {field}")
                 return False
 
+        # Validate model_type against known values (soft check: warn only)
+        known_model_types = {"standard", "multilingual", "turbo", "qwen3"}
+        model_type = config.get("generation", {}).get("model_type", "standard")
+        if model_type not in known_model_types:
+            logger.warning(
+                f"Unknown model_type '{model_type}' in generation config. "
+                f"Supported values: {sorted(known_model_types)}"
+            )
+
         # Validate speaker configuration
         if not self.validate_speakers_config(config):
             logger.error("Speaker configuration validation failed")
@@ -888,25 +956,53 @@ class ConfigManager:
                 logger.error(f"Speaker '{speaker_id}' missing tts_params")
                 return False
 
-            # Validate tts_params structure
+            # Validate tts_params structure.
+            # For Chatterbox models (standard/multilingual/turbo), the core Chatterbox params
+            # are required.  For qwen3 these params are not applicable (gracefully skipped at
+            # runtime), so we only check that tts_params itself is present and non-empty.
             tts_params = speaker.get("tts_params", {})
-            required_tts_params = ["exaggeration", "cfg_weight", "temperature", "min_p", "top_p"]
-            for param in required_tts_params:
-                if param not in tts_params:
-                    logger.error(f"Speaker '{speaker_id}' missing tts_params.{param}")
-                    return False
+            model_type_for_validation = generation_config.get("model_type", "standard")
+            if model_type_for_validation == "qwen3":
+                if not tts_params:
+                    logger.warning(
+                        f"Speaker '{speaker_id}' has empty tts_params. "
+                        "For qwen3, at least temperature is recommended."
+                    )
+            else:
+                required_tts_params = ["exaggeration", "cfg_weight", "temperature", "min_p", "top_p"]
+                for param in required_tts_params:
+                    if param not in tts_params:
+                        logger.error(f"Speaker '{speaker_id}' missing tts_params.{param}")
+                        return False
             
-            # Validate language: Required only for default_speaker; others inherit via cascading
+            # Validate language: Graceful behavior; do not abort on invalid/missing values
             if speaker_id == default_speaker:
-                if not speaker.get("language"):
-                    logger.error(f"Default speaker '{speaker_id}' missing required 'language' field")
-                    return False
-                logger.debug(f"Default speaker '{speaker_id}' language validated: {speaker.get('language')}")
+                lang_value = speaker.get("language")
+                if not lang_value or not self._is_valid_language_code(lang_value):
+                    # Degrade to info and allow fallbacks downstream (default_language → 'en')
+                    logger.info(
+                        "Default speaker '%s' has missing/invalid language '%s' – falling back at runtime (e.g. generation.default_language or 'en')",
+                        speaker_id,
+                        lang_value,
+                    )
+                else:
+                    logger.debug(
+                        f"Default speaker '{speaker_id}' language validated: {str(lang_value).strip().lower()}"
+                    )
 
-            # Validate optional language field (for multilingual support) for non-default speakers
-            speaker_language = speaker.get("language")
-            if speaker_language and speaker_id != default_speaker:
-                logger.debug(f"Speaker '{speaker_id}' configured for language: {speaker_language}")
+            # Validate optional language field for non-default speakers
+            if "language" in speaker and speaker_id != default_speaker:
+                lang_value = speaker.get("language")
+                if lang_value:
+                    if not self._is_valid_language_code(lang_value):
+                        # Do not fail – let downstream fallbacks handle it
+                        logger.info(
+                            "Speaker '%s' has invalid language '%s' – falling back at runtime (e.g. default_language or 'en')",
+                            speaker_id,
+                            lang_value,
+                        )
+                    else:
+                        logger.debug(f"Speaker '{speaker_id}' configured for language: {lang_value}")
 
         logger.debug(f"✅ Validated {len(speakers)} speakers: {speaker_ids}")
         return True

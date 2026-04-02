@@ -89,7 +89,9 @@ class TextPreprocessor:
             if len(processed_text) != original_length:
                 logger.info("✅ Normalized line endings")
 
-        # Optional punctuation normalization (simulates Chatterbox internal processing)
+        # Optional punctuation normalization (simulates Chatterbox internal processing).
+        # IMPORTANT: No replacement here must touch square-bracket patterns such as [laugh]
+        # or [cough] because these are paralinguistic tags consumed by the Turbo TTS model.
         if self.config.get("normalize_punct", True):
             original_length = len(processed_text)
             replacements = [

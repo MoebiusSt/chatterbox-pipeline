@@ -19,6 +19,13 @@ gesine_1.wav:
   repetition_penalty: 2.02
   min_p: 0.12
   top_p: 0.94
+gesine_2.wav:
+  exaggeration: 0.45
+  cfg_weight: 0.4
+  temperature: 0.99
+  repetition_penalty: 2.05
+  min_p: 0.19
+  top_p: 1.0
 gesine_3.wav:
   exaggeration: 0.38
   cfg_weight: 0.55

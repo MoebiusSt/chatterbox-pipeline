@@ -1562,7 +1562,8 @@ class ValidationHandler:
             # Enhance chunks with language_id using safe fallback
             for chunk in chunks:
                 mapped_lang = speaker_language_map.get(chunk.speaker_id)
-                chunk_language = mapped_lang or default_language or "en"
+                # Graceful fallback: if language is missing/invalid, prefer speaker language, else default_language, else 'en'
+                chunk_language = (mapped_lang or default_language or "en")
                 chunk.language_id = chunk_language
                 logger.debug(f"Chunk {chunk.idx + 1} (speaker: {chunk.speaker_id}) → language: {chunk_language}")
 

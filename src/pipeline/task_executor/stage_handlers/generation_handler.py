@@ -1,13 +1,14 @@
 """Generation stage handler."""
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from chunking.base_chunker import TextChunk
 from generation.candidate_manager import CandidateManager
 from generation.tts_generator import TTSGenerator
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from utils.language_registry import validate_languages_for_model
 
 from ..retry_logic import RetryLogic
 
@@ -30,6 +31,40 @@ class GenerationHandler:
         self.candidate_manager = candidate_manager
         self.retry_logic = RetryLogic(config, tts_generator)
 
+    def _validate_languages_for_model(self) -> None:
+        """
+        Check whether all speaker languages defined in the config are supported by the
+        active model type, and emit warnings for any unsupported language codes.
+
+        This is a soft check: warnings are logged but execution continues.
+        """
+        model_type = self.config.get("generation", {}).get("model_type", "standard")
+        speakers: List[Dict[str, Any]] = self.config.get("generation", {}).get("speakers", [])
+        default_speaker_id = self.config.get("generation", {}).get("default_speaker", "")
+
+        # Collect language codes that will actually be used by configured speakers
+        used_languages: Set[str] = set()
+        for speaker in speakers:
+            lang = speaker.get("language")
+            if lang:
+                used_languages.add(str(lang).strip().lower())
+
+        # Also include the default_speaker language explicitly (should be in speakers already,
+        # but keep as belt-and-suspenders)
+        for speaker in speakers:
+            if speaker.get("id") == default_speaker_id:
+                lang = speaker.get("language")
+                if lang:
+                    used_languages.add(str(lang).strip().lower())
+                break
+
+        if not used_languages:
+            return
+
+        warnings = validate_languages_for_model(model_type, used_languages)
+        for msg in warnings:
+            logger.warning(f"⚠️ Language validation: {msg}")
+
     def execute_generation(self) -> bool:
         """Execute the candidate generation stage with multi-speaker support."""
         logger.info("🎙️ Starting Generation Stage")
@@ -40,6 +75,9 @@ class GenerationHandler:
             # 1. Validate speaker configuration
             if not self._validate_speakers():
                 return False
+
+            # 1b. Soft language check: warn if any speaker language is not supported by model
+            self._validate_languages_for_model()
 
             chunks = self.file_manager.get_chunks()
             if not chunks:

@@ -35,17 +35,26 @@ class ChatterboxModelCache:
             cls._instance = super(ChatterboxModelCache, cls).__new__(cls)
         return cls._instance
 
+    _MODEL_DISPLAY_NAMES: Dict[str, str] = {
+        "standard": "ChatterboxTTS",
+        "multilingual": "ChatterboxMultilingualTTS",
+        "turbo": "ChatterboxTurboTTS",
+        "qwen3": "Qwen3TTSModel (1.7B Base)",
+    }
+
     @classmethod
-    def get_model(cls, device: str = "auto", model_type: str = "standard"):
+    def get_model(cls, device: str = "auto", model_type: str = "standard", config: Optional[Dict] = None):
         """
-        Get cached ChatterboxTTS or ChatterboxMultilingualTTS model for the specified device.
+        Get a cached TTS model for the specified device and model type.
 
         Args:
             device: Target device ("auto", "cuda", "mps", "cpu")
-            model_type: Model type ("standard" for ChatterboxTTS or "multilingual" for ChatterboxMultilingualTTS)
+            model_type: Model type ("standard", "multilingual", "turbo", or "qwen3")
+            config: Optional full pipeline config dict (used for model-specific load options)
 
         Returns:
-            ChatterboxTTS or ChatterboxMultilingualTTS model instance
+            Model instance (ChatterboxTTS, ChatterboxMultilingualTTS, ChatterboxTurboTTS,
+            or Qwen3TTSModel) or None on failure.
         """
         # Resolve auto device
         actual_device = cls._detect_device() if device == "auto" else device
@@ -54,7 +63,7 @@ class ChatterboxModelCache:
         # Check in-memory cache first
         if cache_key in cls._model_cache:
             load_time = cls._load_times.get(cache_key, 0)
-            model_name = "ChatterboxTTS" if model_type == "standard" else "ChatterboxMultilingualTTS"
+            model_name = cls._MODEL_DISPLAY_NAMES.get(model_type, model_type)
             logger.info(
                 f"♻️ Using cached {model_name} model for device: {actual_device} (cache hit, originally loaded in {load_time:.1f}s)"
             )
@@ -69,14 +78,14 @@ class ChatterboxModelCache:
             return cls._model_cache[cache_key]
 
         # Load fresh model
-        model_name = "ChatterboxTTS" if model_type == "standard" else "ChatterboxMultilingualTTS"
+        model_name = cls._MODEL_DISPLAY_NAMES.get(model_type, model_type)
         logger.info(
             f"🔄 Loading {model_name} model for device: {actual_device} (cache miss)"
         )
         
         # Track loading time
         start_time = time.time()
-        model = cls._load_fresh_model(actual_device, model_type)
+        model = cls._load_fresh_model(actual_device, model_type, config=config)
         load_time = time.time() - start_time
         
         # OPTIMIZE FRESHLY LOADED MODEL
@@ -110,8 +119,9 @@ class ChatterboxModelCache:
             return "cpu"
 
     @classmethod
-    def _load_fresh_model(cls, device: str, model_type: str = "standard"):
-        """Load a fresh ChatterboxTTS or ChatterboxMultilingualTTS model instance with optimized settings."""
+    def _load_fresh_model(cls, device: str, model_type: str = "standard", config: Optional[Dict] = None):
+        """Load a fresh TTS model instance for the requested model_type."""
+        model_name = cls._MODEL_DISPLAY_NAMES.get(model_type, model_type)
         try:
             # Suppress PyTorch and Transformers warnings during model loading
             with warnings.catch_warnings():
@@ -130,31 +140,67 @@ class ChatterboxModelCache:
                     "ignore", message=".*attn_implementation.*", category=FutureWarning
                 )
 
-                # Import the appropriate model class based on model_type
+                device_obj = torch.device(device)
+
                 if model_type == "multilingual":
                     try:
                         from chatterbox.mtl_tts import ChatterboxMultilingualTTS as ModelClass
                         model_name = "ChatterboxMultilingualTTS"
                     except ImportError:
-                        logger.warning("ChatterboxMultilingualTTS not available, falling back to standard ChatterboxTTS")
+                        logger.warning(
+                            "ChatterboxMultilingualTTS not available, falling back to standard ChatterboxTTS"
+                        )
                         from chatterbox.tts import ChatterboxTTS as ModelClass
                         model_name = "ChatterboxTTS (multilingual fallback)"
+                    model = ModelClass.from_pretrained(device=device_obj)
+
+                elif model_type == "turbo":
+                    try:
+                        from chatterbox.tts_turbo import ChatterboxTurboTTS as ModelClass
+                    except ImportError as exc:
+                        logger.warning(
+                            f"ChatterboxTurboTTS not available ({exc}), falling back to standard ChatterboxTTS"
+                        )
+                        from chatterbox.tts import ChatterboxTTS as ModelClass
+                        model_name = "ChatterboxTTS (turbo fallback)"
+                    model = ModelClass.from_pretrained(device=device_obj)
+
+                elif model_type == "qwen3":
+                    import os
+                    from qwen_tts import Qwen3TTSModel
+                    # Attention implementation: sdpa by default.
+                    # flash_attention_2 is theoretically supported but measured slower than sdpa
+                    # for typical TTS workloads (batch=1, short sequences) due to kernel overhead.
+                    # Can be overridden via env var or the hidden config key
+                    # generation.qwen3_attn_impl (sdpa | flash_attention_2 | eager).
+                    cfg_override = str(
+                        (config or {}).get("generation", {}).get("qwen3_attn_impl", "")
+                    ).strip().lower()
+                    env_override = os.environ.get("QWEN3_ATTN_IMPL", "").strip().lower()
+                    explicit = env_override or cfg_override
+                    if explicit in ("sdpa", "eager", "flash_attention_2"):
+                        attn_impl = explicit
+                        source = "QWEN3_ATTN_IMPL env" if env_override else "config qwen3_attn_impl"
+                        logger.info(f"ℹ️ Qwen3: attention implementation forced to '{attn_impl}' (via {source})")
+                    else:
+                        attn_impl = "sdpa"
+                        logger.info("ℹ️ Qwen3: using sdpa attention")
+                    model = Qwen3TTSModel.from_pretrained(
+                        "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+                        device_map=device,
+                        dtype=torch.bfloat16,
+                        attn_implementation=attn_impl,
+                    )
+
                 else:
+                    # "standard" and any unknown type
                     from chatterbox.tts import ChatterboxTTS as ModelClass
-                    model_name = "ChatterboxTTS"
+                    model = ModelClass.from_pretrained(device=device_obj)
 
-                # Load model with standard settings
-                device_obj = torch.device(device)
-                model = ModelClass.from_pretrained(device=device_obj)
-
-
-            logger.debug(
-                f"{model_name} model loaded successfully for device: {device}"
-            )
+            logger.debug(f"{model_name} model loaded successfully for device: {device}")
             return model
 
         except Exception as e:
-            model_name = "ChatterboxTTS" if model_type == "standard" else "ChatterboxMultilingualTTS"
             logger.error(
                 f"🚨 CRITICAL: Failed to load {model_name} model for device {device}: {e}"
             )
@@ -166,14 +212,21 @@ class ChatterboxModelCache:
             logger.error("⚠️  Your final audio output will contain NO SPEECH!")
             logger.error("=" * 80)
             logger.error("💡 To fix this issue:")
-            logger.error(
-                "   1. Check ChatterboxTTS installation: pip install chatterbox-tts"
-            )
-            logger.error("   2. Check perth dependency: pip install perth")
-            logger.error(
-                "   3. Update dependencies: pip install --upgrade chatterbox-tts perth"
-            )
-            logger.error("   4. If issue persists, check GPU/CUDA compatibility")
+            if model_type == "qwen3":
+                logger.error("   1. Install qwen-tts: pip install qwen-tts")
+                logger.error(
+                    "   2. Download model: huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+                )
+            elif model_type == "turbo":
+                logger.error(
+                    "   1. Check ChatterboxTurboTTS availability in chatterbox-tts package"
+                )
+            else:
+                logger.error(
+                    "   1. Check ChatterboxTTS installation: pip install chatterbox-tts"
+                )
+                logger.error("   2. Check perth dependency: pip install perth")
+            logger.error("   3. If issue persists, check GPU/CUDA compatibility")
             logger.error("=" * 80)
             logger.info("Returning None - will use mock mode for testing")
             return None

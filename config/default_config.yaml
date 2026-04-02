@@ -20,7 +20,8 @@ chunking:
 generation:
   num_candidates: 2
   max_retries: 1
-  model_type: standard  # Options: "standard" (ChatterboxTTS) or "multilingual" (ChatterboxMultilingualTTS)
+  model_type: standard  # Options: "standard" (ChatterboxTTS), "multilingual" (ChatterboxMultilingualTTS), "turbo" (ChatterboxTurboTTS), "qwen3" (Qwen3)
+                        # qwen3 expert: add  qwen3_attn_impl: flash_attention_2  here to override the default sdpa attention (not recommended – measured slower for TTS batch-1 workloads)
   default_speaker: stephan_moebius_1
   global_seed: 12345  # Global seed for all TTS generations. 0 = random seed per generation
   
@@ -31,10 +32,27 @@ generation:
       reference_audio: stephan_moebius_1.wav   # file in data/input/reference_audio folder
       language: en
       tts_params:
-        # Base TTS parameters - these define the STARTING POINTS for candidate ramping:
+        # Base TTS parameters - these define the STARTING POINTS for candidate ramping.
+        # Parameters not supported by the active model_type are gracefully skipped at runtime.
+        #
+        # Chatterbox models (standard / multilingual / turbo):
         # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
-        # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)  
+        # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)
         # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
+        # - min_p, top_p, repetition_penalty: passed as-is
+        # - turbo only: top_k (default 1000), norm_loudness (bool, enables built-in loudness normalization)
+        #
+        # Qwen3 model (qwen3):
+        # - temperature   default 0.9  | MIN value; ramped UP across candidates only
+        #                               <1 more confident/deterministic, >1 more random/creative
+        # - top_k         default 50   | lower = more deterministic, higher = more diverse/creative
+        # - top_p         default 1.0  | lower = more focused, reduce diversity
+        # - repetition_penalty  default 1.05  | raise to 1.1–1.15 to suppress repetitions
+        # - max_new_tokens  default 2048 | hard cap on output length (stops at limit or EOS)
+        # - do_sample     default true  | false = greedy decoding selects highest probability token(deterministic, less natural)
+        # - subtalker_top_k / subtalker_top_p / subtalker_temperature / subtalker_dosample
+        #     control the acoustic sub-model; higher subtalker_temperature → more prosodic variation while maintaining linguistic consistency; Lower subtalker sampling: More stable acoustic features with variable primary sequence
+        # - exaggeration / cfg_weight / min_p are not supported and will be silently skipped
         exaggeration: 0.45                  # give MAX here
         exaggeration_max_deviation: 0.10    # ramp DOWN 
 
@@ -47,7 +65,7 @@ generation:
         repetition_penalty: 1.5             # Penalty for repeated output tokens (default is 1.2, was 2.0 earlier) 
         
         # Additional sampling parameters for fine-tuning generation
-        min_p: 0.06                         # Minimum probability threshold for token sampling
+        min_p: 0.06                         # Minimum probability threshold for token sampling (Chatterbox only)
         top_p: 0.94                         # Top-p (nucleus) sampling threshold
         
       # Conservative candidate params for most likely success. Also fallback for retries when the generation fails.
@@ -230,16 +248,17 @@ audio:
     paragraph: 0.90  # inserted if split was before paragraph break blank line
     long: 1.30  # inserted for explicit long paragraph breaks (>= 2 empty lines)
   sample_rate: 24000
+  # ChatterboxTTS and Qwen3tts native sample rate - NOT a user setting!
+  # This must match the actual output sample rate of ChatterboxTTS and Qwen3tts (24kHz)
+  # Only change this if ChatterboxTTS and Qwen3tts itself changes its output sample rate
 
   # Optional trimming of leading/trailing silence on segment boundaries during assembly
   silence_trim:
     enabled: true   # if true, trim low-amplitude leading/trailing samples at boundaries
-    threshold: 0.10  # absolute amplitude threshold used for trimming
-    fade_duration: 0.15  # fade duration (seconds) applied at start/end after trimming
+    threshold: 0.06  # absolute amplitude threshold used for trimming
+    fade_duration: 0.3  # fade duration (seconds) applied at start/end after trimming
 
-  # ChatterboxTTS native sample rate - NOT a user setting!
-  # This must match the actual output sample rate of ChatterboxTTS (24kHz)
-  # Only change this if ChatterboxTTS itself changes its output sample rate
+
   
   # Audio normalization settings
   normalization:
