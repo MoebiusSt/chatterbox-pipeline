@@ -8,7 +8,7 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - a Command Line Interface with a prompt menu system 
 - CLI arguments to execute almost all functions non-interactivly. 
 - YAML-based a job and task pipeline to prepare job rendering queues (like magazines or books with chapters). Configurations are cascading! Only specify what you need.
-- **TTSGenerator**: Wrapper for ChatterboxTTS with candidate generation and multilingual support
+- **TTSGenerator**: Unified generation wrapper for all four supported TTS backends: ChatterboxTTS (standard), ChatterboxMultilingualTTS, ChatterboxTurboTTS, and Qwen3 TTS (voice cloning) — with model-aware parameter routing, candidate generation, and language validation
 - **SpaCyChunker**: intelligent SpaCy-based text chunking  at sentence boundaries for long text generations,  with configurable length specifications.
 - **Parameter Variations**: automatic variation generation. Ramping values for exaggeration and other tts parameters to create more varied candidates
 - **CandidateManager**: Management of multiple candidates with retry logic
@@ -31,6 +31,19 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - **Language Switching**: Configure default language and override per generation
 - **Multiple Language Support**: Generate audio in different languages (English, German, French, etc.)
 - **Automatic Fallback**: Graceful fallback to standard model if multilingual not available
+
+#### ⚡ ChatterboxTurboTTS Support
+- **Turbo Model**: Switch to `model_type: turbo` in config for the faster, lower-VRAM English-only Chatterbox variant
+- **Paralinguistic Tags**: `[laugh]`, `[cough]` and similar tags are preserved through the full text and chunking pipeline and passed directly to the Turbo model
+- **Built-in Loudness Normalization**: Enable `norm_loudness: true` in `tts_params` to use the Turbo model's native normalization; cbpipe then automatically skips the external `AudioNormalizer` to avoid double-processing
+- **Language Guard**: Soft warning if input speakers use a non-English language with the English-only Turbo (or standard) model
+
+#### 🎙️ Qwen3 TTS Voice Cloning Support
+- **Voice Clone Model**: Switch to `model_type: qwen3` to use `Qwen3-TTS-12Hz-1.7B-Base` — a 3-second rapid voice cloning model supporting 10 languages (EN, DE, ZH, JA, KO, FR, RU, PT, ES, IT)
+- **Reference Text**: Place a `.txt` sidecar file next to your reference `.wav` (e.g. `speaker.wav` + `speaker.txt`) — cbpipe discovers and passes it automatically as `ref_text` for higher cloning quality; falls back to x-vector-only mode if no transcript is found
+- **Prompt Caching**: Voice-clone prompts are built once per speaker with `create_voice_clone_prompt` and cached in-session, avoiding redundant re-encoding across chunks
+- **Reference Audio Check**: cbpipe warns if a reference audio clip exceeds the recommended 3-second limit for this model
+- **Dedicated Parameter Set**: `temperature` (ramped across candidates), `top_k`, `top_p`, `repetition_penalty`, `max_new_tokens`, `do_sample`, and the full `subtalker_*` parameter set are all configurable via `tts_params`; unsupported Chatterbox-specific params (e.g. `exaggeration`, `min_p`) are silently skipped
 
 #### Validation
 - **WhisperValidator**: Speech-to-text re-validation of generated audio candidates using local Whisper models (base/small/medium/large).
@@ -622,7 +635,7 @@ generation:
       language: en  # Required for multilingual mode
 ```
 
-**Supported Languages**: 
+**Supported Languages** (chatterbox multilingial): 
 {
   "ar": "Arabic",
   "da": "Danish",
@@ -648,6 +661,8 @@ generation:
   "tr": "Turkish",
   "zh": "Chinese",
 }
+Qwen3 (Chinese, English, Japanese, Korean, German, French, Russian, Portuguese, Spanish, and Italian) 
+
 ### Debugging Common Issues
 - **Memory Errors**: Reduce `num_candidates` in config
 - **Validation Failures**: Lower `similarity_threshold` 

@@ -5,6 +5,14 @@ david-barnes_DE-fake.wav:
   repetition_penalty: 2.5
   min_p: 0.17
   top_p: 1.0
+david_barnes_1_3s.wav::qwen3:
+  temperature: 1.67
+  top_k: 120.0
+  top_p: 0.98
+  subtalker_temperature: 1.48
+  subtalker_top_k: 191.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.06
 erik_prochnow_DE.wav:
   exaggeration: 1.58
   cfg_weight: 0.51

@@ -83,15 +83,22 @@ TTSGenerator.generate_candidates() → List[AudioCandidate]
 # - Soft check: warns but does not abort
 
 # RAMP Strategy (N candidates per chunk)
-# - Candidate 1: Exact config parameters (baseline)
+# - Candidate 1: Exact config parameters (baseline, with center-offset for RAMP-DOWN-OVER-CENTER params)
 # - Candidates 2-N: Linear interpolation from config to deviation limits
 # - Last candidate: Conservative parameters (optional, for stability)
-# - Qwen3: only temperature is ramped (exaggeration/cfg_weight not applicable)
+# - conservative_candidate + num_candidates == 2 → Ramping disabled (only 1 expressive slot)
 
-# Parameter behavior (Chatterbox models)
+# Parameter behavior (Chatterbox models: standard / multilingual / turbo)
 exaggeration: RAMP-DOWN from MAX (config) to MIN (config - max_deviation)
 cfg_weight: RAMP-UP from MIN (config) to MAX (config + max_deviation)
 temperature: RAMP-UP from MIN (config) to MAX (config + max_deviation)
+
+# Parameter behavior (Qwen3)
+temperature:           RAMP-UP from MIN (config) to MAX (config + temperature_max_deviation)
+top_k:                 RAMP-UP from MIN (config) to MAX (config + top_k_max_deviation)
+subtalker_top_k:       RAMP-UP from MIN (config) to MAX (config + subtalker_top_k_max_deviation)
+subtalker_temperature: RAMP-DOWN-OVER-CENTER: config value is CENTER
+                       Candidate 1 = config + dev/2 (max), last expressive = config - dev/2 (min)
 
 # Parameter filtering (all models)
 # - Unsupported params in tts_params are gracefully skipped with a one-time info log
@@ -241,7 +248,11 @@ tts_params:
   min_p: 0.03                    # Stability (Chatterbox only)
   top_p: 0.99                    # Creativity (Chatterbox + Qwen3)
   # turbo extras: top_k: 1000, norm_loudness: false
-  # qwen3 extras: top_k, repetition_penalty, max_new_tokens, do_sample, subtalker_*
+  # qwen3 extras: top_k, top_k_max_deviation,
+  #               repetition_penalty, max_new_tokens, do_sample,
+  #               subtalker_top_k, subtalker_top_k_max_deviation,
+  #               subtalker_temperature, subtalker_temperature_max_deviation,
+  #               subtalker_top_p, subtalker_dosample
 
 # Quality Gates
 validation:

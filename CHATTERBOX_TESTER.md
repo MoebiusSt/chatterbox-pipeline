@@ -1,45 +1,49 @@
 # Chatterbox TTS Tester
 
-A lightweight standalone GUI tool for quickly testing and tuning Chatterbox TTS parameters.
+A lightweight standalone GUI tool for quickly testing and tuning TTS parameters across all four supported models.
 
 ## Purpose
 
-This tool allows you to rapidly experiment with different:
+Rapidly experiment with different:
 - Reference audio files
-- TTS models (classic vs multilanguage)
-- Languages (for multilanguage model)
-- TTS parameters (exaggeration, cfg_weight, temperature, etc.)
+- TTS models (classic / multilanguage / turbo / qwen3)
+- Languages (multilanguage: 24 languages; qwen3: 10 languages)
+- TTS parameters — with model-specific sliders shown/hidden automatically
 
-Perfect for finding optimal voice settings before integrating them into your cbpipe configurations.
+Perfect for finding optimal voice settings before integrating them into cbpipe configurations.
 
 ## Features
 
 - **Reference Audio Selection**: Choose from available WAV files in `data/input/reference_audio/`
-- **Model Switching**: Toggle between classic and multilanguage models
-- **Language Selection**: Pick target language when using multilanguage model (24 languages: Arabic, Danish, German, Dutch, English, Spanish, Finnish, French, Greek, Hebrew, Hindi, Italian, Japanese, Korean, Malay, Norwegian, Polish, Portuguese, Russian, Swahili, Swedish, Turkish, Chinese)
+- **Four TTS Models**: classic, multilanguage, turbo, qwen3 — selected via dropdown
+- **Adaptive Sliders**: Parameters automatically shown or hidden based on the active model
+- **Language Selection**: Available for multilanguage (24 languages) and qwen3 (10 languages)
+- **ref_text Indicator** (qwen3): Shows whether a `.txt` sidecar transcript exists next to the reference WAV
 - **Seed Control**: Set random seed for reproducibility (with 🎲 Random button)
 - **Text Input**: Enter up to 500 characters of text to synthesize
-- **Parameter Sliders**: Adjust TTS parameters:
-  - exaggeration (0.0 - 2.0)
-  - cfg_weight (0.0 - 2.0)
-  - temperature (0.0 - 2.0)
-  - repetition_penalty (1.0 - 3.0)
-  - min_p (0.01 - 0.5)
-  - top_p (0.5 - 1.0)
 - **Manual Generation**: REFRESH button triggers audio generation and playback
 - **Audio Playback**: Play, pause, and scrub through generated audio
-- **Save Audio**: Save generated audio to `output/` directory with timestamp and metadata YAML
-- **Settings Persistence**: All settings (voice, model, language, text, parameters) are automatically saved
-- **Copy Settings**: Export current parameters as YAML for cbpipe configs (clipboard)
+- **A/B Comparison**: Two independent parameter states (1 / 2) with copy arrows
+- **Undo/Redo**: Full history of parameter changes (Ctrl+Z / Ctrl+Y)
+- **Presets**: Save and load per-audio, per-model parameter presets (YAML file)
+- **Copy YAML**: Export current parameters as cbpipe-ready YAML to clipboard
+- **Insert from Clipboard**: Paste a cbpipe YAML block back to restore all sliders
+- **Save Audio**: Save generated audio to `output/` with timestamp and metadata YAML
+- **Settings Persistence**: All settings automatically saved/restored on restart
 
-## Performance
+## Model Comparison
 
-This tool uses **Chatterbox TTS v0.1.3** (stable release):
-- **Reliable performance**: ~40-50 it/s generation speed
-- **No CUDA graph crashes**: Stable with varying parameters
-- **All parameters work correctly**: exaggeration, cfg_weight, temperature, etc.
-
-**Note**: Experimental faster/faster-multi branches offer ~3x speedup but have CUDA graph stability issues when parameters change during testing. For a testing tool with frequent parameter adjustments, stability is more important than raw speed.
+| Feature                 | classic | multilanguage | turbo   | qwen3        |
+|-------------------------|---------|---------------|---------|--------------|
+| Language                | EN only | 24 languages  | EN only | 10 languages |
+| exaggeration            | ✓       | ✓             | ✓       | —            |
+| cfg_weight              | ✓       | ✓             | ✓       | —            |
+| temperature             | ✓       | ✓             | ✓       | ✓            |
+| repetition_penalty      | ✓       | ✓             | ✓       | ✓            |
+| min_p                   | ✓       | ✓             | ✓       | —            |
+| top_p                   | ✓       | ✓             | ✓       | ✓            |
+| top_k                   | —       | —             | 0–2000  | 0–300        |
+| ref_text sidecar        | —       | —             | —       | ✓            |
 
 ## Usage
 
@@ -57,50 +61,63 @@ source venv/bin/activate
 python chatterbox_tester.py
 ```
 
-**Note on Audio Playback:**
-- The tool automatically uses `ffplay` or `aplay` if available (better quality)
-- Falls back to pygame mixer if external players not found
-- If playback has crackling/distortion, use the "Save Audio" button - saved WAV files are clean
-
 ### Workflow
 
 1. **Select Reference Audio**: Choose your target voice from the dropdown
-2. **Choose Model**: Select classic or multilanguage
-3. **Select Language**: (multilanguage only) Pick target language
-4. **Set Seed**: Enter a seed value for reproducibility (or use 🎲 Random button)
+2. **Choose Model**: Select from the model dropdown (classic / multilanguage / turbo / qwen3)
+3. **Select Language**: (multilanguage / qwen3 only) Pick target language
+4. **Set Seed**: Enter a seed value for reproducibility (or use 🎲 Random)
 5. **Enter Text**: Type or paste text to synthesize (max 500 chars)
-6. **Adjust Parameters**: Move sliders to tune the voice
-7. **Click REFRESH**: Press the green REFRESH button to generate audio
+6. **Adjust Parameters**: Move the visible sliders — irrelevant sliders are hidden per model
+7. **Click REFRESH**: Generate audio (button turns bright green when parameters changed)
 8. **Listen**: Generated audio plays automatically
-9. **Fine-tune**: Adjust parameters/seed and click REFRESH again to hear changes
-10. **Copy Settings**: When satisfied, click "copy parameter JSON to clipboard" to export YAML
+9. **Fine-tune & Compare**: Use states 1/2 for A/B comparison
+10. **Copy Settings**: Click "📋 Copy YAML to Clipboard" to export for cbpipe
 
-### Playback Controls
+### Qwen3 Voice Cloning
 
-- **Timeline**: Click anywhere to jump to that position
-- **Play (▶)**: Start/resume playback (restarts from beginning if at end)
-- **Pause (⏸)**: Pause playback at current position
+Qwen3 requires a reference audio clip for voice cloning. For best quality (ICL mode), place a `.txt` transcript next to your reference `.wav`:
 
-### Settings Persistence
+```
+data/input/reference_audio/my_speaker.wav
+data/input/reference_audio/my_speaker.txt   ← transcript of the WAV content
+```
 
-**Automatic Saving**: All settings are automatically saved when:
-- You click the REFRESH button
-- You close the application
+The tester shows a status indicator below the reference audio dropdown:
+- **✓ ref_text: my_speaker.txt** — ICL mode active (full voice cloning)
+- **⚠ no .txt sidecar – x_vector only** — reduced quality, but still works
 
-Settings are stored in `.chatterbox_tester_settings.json` and restored on next launch.
+If no transcript is found, the model falls back to `x_vector_only_mode=True` (speaker embedding only).
 
-**Saved Settings Include**:
-- Reference audio selection
-- Model type (classic/multilanguage)
-- Language selection
-- Seed value
-- Input text
-- All TTS parameters
+### Parameter Defaults by Model
+
+| Parameter          | classic / multilanguage / turbo | qwen3  |
+|--------------------|---------------------------------|--------|
+| exaggeration       | 0.70                            | —      |
+| cfg_weight         | 0.45                            | —      |
+| temperature        | 0.80                            | 0.80*  |
+| repetition_penalty | 2.20                            | 2.20*  |
+| min_p              | 0.05                            | —      |
+| top_p              | 0.98                            | 0.98*  |
+| top_k              | — / — / 1000                    | 50     |
+
+*Qwen3 native defaults differ (temperature 0.9, repetition_penalty 1.05, top_p 1.0, top_k 50). The sliders start at the Chatterbox defaults on first run; adjust manually to match Qwen3's typical operating range.
+
+### Presets
+
+Presets are stored in `.chatterbox_tester_presets.yaml`. They are keyed per reference audio and model:
+
+- classic / multilanguage: key = `filename.wav` (backward compatible with old presets)
+- turbo: key = `filename.wav::turbo`
+- qwen3: key = `filename.wav::qwen3`
+
+This means you can have separate presets for the same voice file across different models.
 
 ### Exporting Settings
 
-The "📋 Copy YAML to Clipboard" button copies settings in this format:
+The "📋 Copy YAML to Clipboard" button copies model-aware settings:
 
+**classic / multilanguage:**
 ```yaml
 tts_params:
         exaggeration: 0.70
@@ -114,62 +131,62 @@ tts_params:
         top_p: 0.95
 ```
 
-Simply paste this into your cbpipe YAML configuration.
+**turbo** (adds `top_k`):
+```yaml
+tts_params:
+        exaggeration: 0.70
+        exaggeration_max_deviation: 0.0
+        cfg_weight: 0.45
+        cfg_weight_max_deviation: 0.0
+        temperature: 0.80
+        temperature_max_deviation: 0.0
+        repetition_penalty: 2.20
+        min_p: 0.05
+        top_p: 0.95
+        top_k: 1000
+```
+
+**qwen3** (no exaggeration / cfg_weight / min_p):
+```yaml
+tts_params:
+        temperature: 0.90
+        temperature_max_deviation: 0.0
+        repetition_penalty: 1.05
+        top_k: 50
+        top_p: 1.00
+        subtalker_temperature: 0.90
+        subtalker_top_k: 50
+        subtalker_top_p: 1.00
+```
+
+Paste directly into any cbpipe speaker definition.
 
 ### Audio Metadata
 
-When you save audio using the "💾 Save Audio" button, two files are created:
+When you save audio with "💾 Save Audio", two files are created:
 
-1. **WAV file**: `test_[reference]_[timestamp].wav`
-2. **YAML metadata**: `test_[reference]_[timestamp].yaml`
+1. **WAV file**: `output/test_[reference]_[timestamp].wav`
+2. **YAML metadata**: `output/test_[reference]_[timestamp].yaml` — includes model, language, ref_text info, seed, and full `tts_params` block
 
-Example YAML metadata (ready for cbpipe):
-```yaml
-# Chatterbox TTS Test - 20250130_143022
-# Reference Audio: stephan_moebius_1.wav
-# Model: multilanguage
-# Language: Deutsch (de)
-# Seed: 12345
+## Audio Playback
 
-# Text:
-# Your input text here...
-
-tts_params:
-        exaggeration: 0.70
-        exaggeration_max_deviation: 0.0
-        cfg_weight: 0.45
-        cfg_weight_max_deviation: 0.0
-        temperature: 0.80
-        temperature_max_deviation: 0.0
-        repetition_penalty: 2.20
-        min_p: 0.05
-        top_p: 0.95
-```
-
-This YAML metadata can be directly copied into your cbpipe configuration. It includes all settings needed to reproduce the exact generation.
+- Uses `ffplay` (from ffmpeg) if available — best quality with seeking support
+- Falls back to `aplay` if ffplay is not found
+- If playback has issues, use "💾 Save Audio" and open the WAV directly
 
 ## Dependencies
 
-The tool requires minimal additional dependencies beyond the main pipeline:
-- `pygame>=2.6.0` - for audio playback (already included)
-- `tkinter` - GUI framework (system package: `python3-tk`)
+- `tkinter` — GUI framework (system package: `sudo apt-get install python3-tk`)
+- `pygame>=2.6.0` — bundled with project
+- All TTS dependencies already part of the project (`chatterbox-tts`, `qwen-tts`, etc.)
 
 Optional for better audio quality in WSL:
-- `ffmpeg` - provides ffplay for high-quality audio playback
-
-All other dependencies (torch, chatterbox-tts, etc.) are already part of the project.
+- `ffmpeg` — provides `ffplay` for high-quality audio playback with seeking
 
 ## Technical Details
 
-- **Independent**: Runs standalone, not integrated with cbpipe
-- **Lightweight**: Minimal UI using tkinter (Python stdlib)
-- **Direct API**: Uses Chatterbox models directly via `ChatterboxModelCache`
-- **No Logging**: Suppresses Chatterbox log output for clean UI
-- **No Persistence**: Settings are not saved (use copy-to-clipboard feature)
-
-## Limitations
-
-- Maximum text length: 500 characters
-- No file saving (use clipboard export)
-- No generation history
-- Single audio output at a time (no candidate comparison)
+- Uses `ChatterboxModelCache` directly for all four model types
+- Qwen3 calls `generate_voice_clone()` directly (no prompt caching in the tester — acceptable latency for single generations)
+- Model-specific slider visibility controlled via tkinter `grid` / `grid_remove()`
+- Settings stored in `.chatterbox_tester_settings.json` (JSON)
+- Presets stored in `.chatterbox_tester_presets.yaml` (YAML)

@@ -504,6 +504,14 @@ class TTSGenerator:
         base_temperature = filtered_base.get("temperature", 0.9)
         temp_deviation = raw_tts_params.get("temperature_max_deviation", 0.2)
 
+        # Qwen3 ramped params – read deviations from raw (unfiltered) params
+        top_k_dev = raw_tts_params.get("top_k_max_deviation", 0)
+        subtalker_temp_dev = raw_tts_params.get("subtalker_temperature_max_deviation", 0)
+        subtalker_top_k_dev = raw_tts_params.get("subtalker_top_k_max_deviation", 0)
+        top_k_base = filtered_base.get("top_k")
+        subtalker_temp_base = filtered_base.get("subtalker_temperature")
+        subtalker_top_k_base = filtered_base.get("subtalker_top_k")
+
         num_expressive = num_candidates - 1 if conservative_enabled else num_candidates
         voice_prompt = self._qwen3_voice_prompts.get(speaker_id)
 
@@ -529,18 +537,41 @@ class TTSGenerator:
                 candidate_type = "CONSERVATIVE"
             else:
                 params = dict(filtered_base)
+
+                # RAMP-DOWN-OVER-CENTER: subtalker_temperature center-offset applies to all
+                # expressive candidates (including i=0 which is the maximum)
+                if subtalker_temp_base is not None and subtalker_temp_dev > 0:
+                    params["subtalker_temperature"] = subtalker_temp_base + subtalker_temp_dev / 2
+
                 if i > 0 and num_expressive > 1:
                     ramp_pos = i / max(1, num_expressive - 1)
+                    # temperature: RAMP-UP
                     params["temperature"] = base_temperature + (temp_deviation * ramp_pos)
+                    # top_k: RAMP-UP
+                    if top_k_base is not None and top_k_dev > 0:
+                        params["top_k"] = int(round(top_k_base + top_k_dev * ramp_pos))
+                    # subtalker_temperature: RAMP-DOWN-OVER-CENTER
+                    if subtalker_temp_base is not None and subtalker_temp_dev > 0:
+                        params["subtalker_temperature"] = (
+                            subtalker_temp_base + subtalker_temp_dev / 2 - subtalker_temp_dev * ramp_pos
+                        )
+                    # subtalker_top_k: RAMP-UP
+                    if subtalker_top_k_base is not None and subtalker_top_k_dev > 0:
+                        params["subtalker_top_k"] = int(round(subtalker_top_k_base + subtalker_top_k_dev * ramp_pos))
+
                 candidate_type = "EXPRESSIVE"
 
             try:
                 log_temp = params.get("temperature", base_temperature)
+                log_sub_temp = params.get("subtalker_temperature")
+                log_sub_top_k = params.get("subtalker_top_k")
                 logger.info(
                     f"QWEN3 CAND {i+1}/{num_candidates} (lang={language_name}) "
                     f"({'CONS' if is_conservative else 'EXP'}): "
                     f"temp={log_temp:.3f}, top_k={params.get('top_k', '-')}, "
-                    f"top_p={params.get('top_p', '-')}, rep_pen={params.get('repetition_penalty', '-')}"
+                    f"top_p={params.get('top_p', '-')}, rep_pen={params.get('repetition_penalty', '-')}, "
+                    f"sub_temp={log_sub_temp if log_sub_temp is None else f'{log_sub_temp:.3f}'}, "
+                    f"sub_top_k={log_sub_top_k if log_sub_top_k is not None else '-'}"
                 )
                 audio = self._generate_qwen3_single(
                     text=text,
