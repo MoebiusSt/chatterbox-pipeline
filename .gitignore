@@ -75,14 +75,28 @@ output/
 
 # Keep reference audio samples
 !data/input/reference_audio/stephan_moebius_1.wav
+!data/input/reference_audio/stephan_moebius_1_3s.wav
+!data/input/reference_audio/stephan_moebius_1_3s.txt
 !data/input/reference_audio/stephan_moebius_2.wav
+!data/input/reference_audio/stephan_moebius_2_3s.wav
+!data/input/reference_audio/stephan_moebius_2_3s.txt
 !data/input/reference_audio/stephan_moebius_3.wav
+!data/input/reference_audio/stephan_moebius_3_3s.wav
+!data/input/reference_audio/stephan_moebius_3_3s.txt
 !data/input/reference_audio/stephan_moebius_4.wav
+!data/input/reference_audio/stephan_moebius_4_3s.wav
+!data/input/reference_audio/stephan_moebius_4_3s.txt
 !data/input/reference_audio/stephan_moebius_5.wav
 !data/input/reference_audio/stephan_moebius_6.wav
 !data/input/reference_audio/stephan_moebius_7_DE.wav
+!data/input/reference_audio/stephan_moebius_7_DE_3s.wav
+!data/input/reference_audio/stephan_moebius_7_DE_3s.txt
 !data/input/reference_audio/30s-radio1.wav
+!data/input/reference_audio/30s-radio1_3s.wav
+!data/input/reference_audio/30s-radio1_3s.txt
 !data/input/reference_audio/30s-radio2.wav
+!data/input/reference_audio/30s-radio2_3s.wav
+!data/input/reference_audio/30s-radio2_3s.txt
 
 # Model files and checkpoints
 models/
@@ -150,8 +164,6 @@ scripts/github_token.txt
  
 # External repositories and local model folders
 NISQA/
-data/input/reference_audio/30s-radio1_3s.txt
-data/input/reference_audio/30s-radio2_3s.txt
 data/input/reference_audio/annie_coleman_rothenberg_1_3s.txt
 data/input/reference_audio/annie_coleman_rothenberg_2_3s.txt
 data/input/reference_audio/cori_samuel_1_3s.txt
@@ -186,11 +198,6 @@ data/input/reference_audio/peter_yearsley_1_3s.txt
 data/input/reference_audio/petra_ries_DE_3s.txt
 data/input/reference_audio/petra_ries2_DE_3s.txt
 data/input/reference_audio/stefan_backes_DE_3s.txt
-data/input/reference_audio/stephan_moebius_1_3s.txt
-data/input/reference_audio/stephan_moebius_2_3s.txt
-data/input/reference_audio/stephan_moebius_3_3s.txt
-data/input/reference_audio/stephan_moebius_4_3s.txt
-data/input/reference_audio/stephan_moebius_7_DE_3s.txt
 data/input/reference_audio/ulrich_joosten_1_3s.txt
 data/input/reference_audio/ulrich_joosten_2_3s.txt
 .chatterbox_tester_presets.yaml
