@@ -20,6 +20,14 @@ erik_prochnow_DE.wav:
   repetition_penalty: 2.0
   min_p: 0.09
   top_p: 0.98
+erik_prochnow_DE_3s.wav::qwen3:
+  temperature: 1.14
+  top_k: 94.0
+  top_p: 1.0
+  subtalker_temperature: 1.38
+  subtalker_top_k: 166.0
+  subtalker_top_p: 1.0
+  repetition_penalty: 1.2
 gesine_1.wav:
   exaggeration: 1.6
   cfg_weight: 0.2
