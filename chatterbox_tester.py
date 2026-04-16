@@ -173,7 +173,7 @@ class ChatterboxTester:
 
         # Model and generation state
         self.device = self._detect_device()
-        self.current_model = None
+        self.current_model: Optional[Any] = None
         self.current_model_type = "multilanguage"
 
         self.is_generating: bool = False
@@ -1206,6 +1206,9 @@ class ChatterboxTester:
 
         try:
             model_ui = self.model_var.get()
+            current_model = self.current_model
+            if current_model is None:
+                raise RuntimeError("No TTS model loaded")
 
             # ---- Qwen3 voice cloning ------------------------------------
             if model_ui == "qwen3":
@@ -1229,7 +1232,7 @@ class ChatterboxTester:
                 }
                 print(f"🎙️ Qwen3 | lang={lang_name} | x_vec_only={x_vec_only} | {gen_kwargs}")
 
-                wavs, sr = self.current_model.generate_voice_clone(
+                wavs, sr = current_model.generate_voice_clone(
                     text=text,
                     language=lang_name,
                     ref_audio=ref_audio_path,
@@ -1242,9 +1245,9 @@ class ChatterboxTester:
 
             # ---- VibeVoice-Large-Q8 --------------------------------------
             elif model_ui in _VIBEVOICE_UI_MODELS:
-                if not hasattr(self.current_model, "_vv_processor"):
+                if not hasattr(current_model, "_vv_processor"):
                     raise RuntimeError("VibeVoice processor not available on loaded model")
-                processor = self.current_model._vv_processor
+                processor = current_model._vv_processor
 
                 if not ref_audio_file or not os.path.exists(ref_audio_path):
                     raise RuntimeError("VibeVoice requires a valid reference audio file")
@@ -1269,13 +1272,13 @@ class ChatterboxTester:
                     return_tensors="pt",
                     return_attention_mask=True,
                 )
-                model_device = next(self.current_model.parameters()).device
+                model_device = next(current_model.parameters()).device
                 inputs = {
                     k: v.to(model_device) if isinstance(v, torch.Tensor) else v
                     for k, v in inputs.items()
                 }
 
-                self.current_model.set_ddpm_inference_steps(
+                current_model.set_ddpm_inference_steps(
                     int(self.param_vars["diffusion_steps"].get())
                 )
 
@@ -1295,7 +1298,7 @@ class ChatterboxTester:
                 print(f"🎙️ VibeVoice | {gen_kwargs}")
 
                 with torch.no_grad():
-                    output = self.current_model.generate(**inputs, **gen_kwargs)
+                    output = current_model.generate(**inputs, **gen_kwargs)
 
                 if not hasattr(output, "speech_outputs") or not output.speech_outputs:
                     raise RuntimeError("VibeVoice generation returned no speech outputs")
@@ -1322,7 +1325,7 @@ class ChatterboxTester:
                     "top_k":              int(self.param_vars["top_k"].get()),
                 }
                 print(f"⚡ Turbo | {params}")
-                audio_tensor = self.current_model.generate(text, **params)
+                audio_tensor = current_model.generate(text, **params)
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
                             else audio_tensor).astype(np.float32)
@@ -1341,7 +1344,7 @@ class ChatterboxTester:
                     "min_p":              self.param_vars["min_p"].get(),
                     "top_p":              self.param_vars["top_p"].get(),
                 }
-                audio_tensor = self.current_model.generate(text, language_id=language_id, **params)
+                audio_tensor = current_model.generate(text, language_id=language_id, **params)
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
                             else audio_tensor).astype(np.float32)
@@ -1358,7 +1361,7 @@ class ChatterboxTester:
                     "min_p":              self.param_vars["min_p"].get(),
                     "top_p":              self.param_vars["top_p"].get(),
                 }
-                audio_tensor = self.current_model.generate(text, **params)
+                audio_tensor = current_model.generate(text, **params)
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
                             else audio_tensor).astype(np.float32)

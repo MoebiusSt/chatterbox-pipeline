@@ -251,6 +251,7 @@ at load time and raise a clear error.
 Without a `parent:` field the behavior is identical to the previous 2-level system
 (job → default_config.yaml).
 
+**Config Cascade**: any job- or task.yaml should reference as parent one of the Pre-built model defaults:
 **Pre-built model defaults** in `config/defaults/`:
 - `defaults/chatterbox.yaml` — standard / multilingual Chatterbox models
 - `defaults/turbo.yaml`      — ChatterboxTurboTTS
