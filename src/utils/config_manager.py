@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, TextIO
 
 import yaml
 
+from utils.language_registry import VIBEVOICE_MODEL_TYPES
+
 logger = logging.getLogger(__name__)
 
 
@@ -889,7 +891,7 @@ class ConfigManager:
                 return False
 
         # Validate model_type against known values (soft check: warn only)
-        known_model_types = {"standard", "multilingual", "turbo", "qwen3"}
+        known_model_types = {"standard", "multilingual", "turbo", "qwen3"} | set(VIBEVOICE_MODEL_TYPES)
         model_type = config.get("generation", {}).get("model_type", "standard")
         if model_type not in known_model_types:
             logger.warning(
@@ -967,6 +969,12 @@ class ConfigManager:
                     logger.warning(
                         f"Speaker '{speaker_id}' has empty tts_params. "
                         "For qwen3, at least temperature is recommended."
+                    )
+            elif model_type_for_validation in VIBEVOICE_MODEL_TYPES:
+                if not tts_params:
+                    logger.warning(
+                        f"Speaker '{speaker_id}' has empty tts_params. "
+                        "For VibeVoice variants, cfg_scale, temperature, diffusion_steps, etc. are recommended."
                     )
             else:
                 required_tts_params = ["exaggeration", "cfg_weight", "temperature", "min_p", "top_p"]

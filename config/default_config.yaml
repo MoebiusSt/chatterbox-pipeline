@@ -20,7 +20,7 @@ chunking:
 generation:
   num_candidates: 2
   max_retries: 1
-  model_type: standard  # Options: "standard" (ChatterboxTTS), "multilingual" (ChatterboxMultilingualTTS), "turbo" (ChatterboxTurboTTS), "qwen3" (Qwen3)
+  model_type: standard  # Options: "standard", "multilingual", "turbo", "qwen3", and VibeVoice Hub: "vibevoice" (7B Q8), "vibevoice_1_5b" (1.5B), "vibevoice_q4" (7B Q4 low-VRAM) — same tts_params for all three
                         # qwen3 expert: add  qwen3_attn_impl: flash_attention_2  here to override the default sdpa attention (not recommended – measured slower for TTS batch-1 workloads)
   default_speaker: stephan_moebius_1
   global_seed: 12345  # Global seed for all TTS generations. 0 = random seed per generation
@@ -60,6 +60,15 @@ generation:
         # - subtalker_temperature_max_deviation   | full range (half above, half below center)
         # - subtalker_top_p / subtalker_dosample  | not ramped
         # - exaggeration / cfg_weight / min_p are not supported and will be silently skipped
+        #
+        # VibeVoice models (vibevoice / vibevoice_1_5b / vibevoice_q4):
+        # - cfg_scale                default 1.3  | MIN value; optional RAMP-UP with cfg_scale_max_deviation
+        # - cfg_scale_max_deviation               | ramp UP by this amount over candidates
+        # - temperature              default 0.95 | MIN value; RAMP-UP with temperature_max_deviation (ignored if use_sampling=false)
+        # - top_p                    default 0.95 | only used when use_sampling=true; otherwise ignored
+        # - diffusion_steps          default 20   | diffusion denoising steps
+        # - voice_speed_factor       default 1.0  | adjusts reference voice speed (0.8..1.2)
+        # - use_sampling             default false| false=deterministic, true=sampling with temperature/top_p
         exaggeration: 0.45                  # give MAX here
         exaggeration_max_deviation: 0.10    # ramp DOWN 
 

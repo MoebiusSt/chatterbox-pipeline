@@ -10,6 +10,17 @@ Supported models:
   multilanguage  ChatterboxMultilingualTTS (24 languages)
   turbo          ChatterboxTurboTTS (English only, adds top_k, paralinguistic tags)
   qwen3          Qwen3-TTS-12Hz-1.7B-Base voice cloning (10 languages, needs ref_audio)
+  vibevoice      VibeVoice-Large-Q8 (long-form with voice cloning)
+  vibevoice_1_5b VibeVoice-1.5B (reference model)
+  vibevoice_q4   VibeVoice-Large-Q4 (DevParker low-VRAM quant)
+
+Environment (VibeVoice only):
+  CHATTERBOX_TESTER_VIBEVOICE_ATTN  Override attention backend for the Qwen2 LM (all VV models).
+    If unset, per-model defaults are used:
+      vibevoice (7B Q8) → flash_attention_2  (large model, FA2 amortised)
+      vibevoice_1_5b    → sdpa              (small model, FA2 overhead > gain)
+      vibevoice_q4      → sdpa              (4-bit + FA2 unreliable)
+    Allowed values: flash_attention_2, sdpa, eager.
 
 This version uses pygame for audio playback (better WSL compatibility).
 """
@@ -50,21 +61,35 @@ _SLIDER_CONFIG = [
     ("cfg_weight",           0.0,  1.5,    0.45,   0.01,  ["classic", "multilanguage", "turbo"],    False),
     ("min_p",                0.01, 0.5,    0.05,   0.01,  ["classic", "multilanguage", "turbo"],    False),
     # --- shared + qwen3 params (qwen3 order: temp, top_k, top_p, sub_temp, sub_k, sub_p, rep) ---
+    # VibeVoice: temperature/top_p are applied BEFORE the 5-token structural constraint.
+    # They affect relative probabilities of speech_diffusion vs speech_end at segment boundaries
+    # (= segment length / rhythm variation). Effect is subtle; primary controls are cfg_scale,
+    # diffusion_steps, and seed. Only active when use_sampling=True (do_sample=True).
     ("temperature",          0.05, 2.5,    0.80,   0.01,  ["classic", "multilanguage", "turbo",
-                                                            "qwen3"],                                False),
+                                                            "qwen3", "vibevoice", "vibevoice_1_5b", "vibevoice_q4"], False),
     # top_k range/default reconfigured per model in _update_model_ui()
     ("top_k",                1.0,  2000.0, 1000.0, 1.0,   ["turbo", "qwen3"],                      True),
     ("top_p",                0.5,  1.0,    0.98,   0.01,  ["classic", "multilanguage", "turbo",
-                                                            "qwen3"],                                False),
+                                                            "qwen3", "vibevoice", "vibevoice_1_5b", "vibevoice_q4"], False),
     # subtalker: acoustic sub-model (Qwen3 residual VQ codes 2..Q)
     ("subtalker_temperature", 0.05, 2.5,   0.9,    0.01,  ["qwen3"],                               False),
     ("subtalker_top_k",      1.0,  400.0,  50.0,   1.0,   ["qwen3"],                               True),
     ("subtalker_top_p",      0.5,  1.0,    1.0,    0.01,  ["qwen3"],                               False),
     ("repetition_penalty",   1.0,  3.0,    2.20,   0.01,  ["classic", "multilanguage", "turbo",
                                                             "qwen3"],                                False),
+    ("cfg_scale",            1.0,  2.0,    1.30,   0.05,  ["vibevoice", "vibevoice_1_5b", "vibevoice_q4"], False),
+    ("diffusion_steps",      5.0,  100.0,  20.0,   1.0,   ["vibevoice", "vibevoice_1_5b", "vibevoice_q4"], True),
+    ("voice_speed_factor",   0.8,  1.2,    1.00,   0.01,  ["vibevoice", "vibevoice_1_5b", "vibevoice_q4"], False),
 ]
 
 _SLIDER_MODELS: Dict[str, list] = {row[0]: row[5] for row in _SLIDER_CONFIG}
+_VIBEVOICE_UI_MODELS = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
+# Optional global override. Empty string → per-model defaults in model_cache.py take effect.
+_VIBEVOICE_TESTER_ATTN: str = os.environ.get(
+    "CHATTERBOX_TESTER_VIBEVOICE_ATTN", ""
+).strip().lower()
+if _VIBEVOICE_TESTER_ATTN not in ("flash_attention_2", "sdpa", "eager"):
+    _VIBEVOICE_TESTER_ATTN = ""
 
 
 class ChatterboxTester:
@@ -235,7 +260,7 @@ class ChatterboxTester:
         """Return preset dict key for current ref_audio + model combination."""
         ref   = self.ref_audio_var.get()
         model = self.model_var.get()
-        if model in ("turbo", "qwen3"):
+        if model in ("turbo", "qwen3") or model in _VIBEVOICE_UI_MODELS:
             return f"{ref}::{model}"
         # classic / multilanguage keep the old-style key for backward compat
         return ref
@@ -256,6 +281,8 @@ class ChatterboxTester:
                         self._format_label(param_name)
                     except Exception:
                         pass
+                elif param_name == "use_sampling":
+                    self.use_sampling_var.set(bool(value))
             self.is_restoring_state = False
             self._mark_needs_refresh()
             self._save_state_to_history()
@@ -326,7 +353,15 @@ class ChatterboxTester:
         self.model_var = tk.StringVar(value="multilanguage")
         model_dropdown = ttk.Combobox(
             model_frame, textvariable=self.model_var,
-            values=["classic", "multilanguage", "turbo", "qwen3"],
+            values=[
+                "classic",
+                "multilanguage",
+                "turbo",
+                "qwen3",
+                "vibevoice",
+                "vibevoice_1_5b",
+                "vibevoice_q4",
+            ],
             state="readonly", font=("Arial", 12), width=16
         )
         model_dropdown.pack(side=tk.LEFT, padx=5)
@@ -344,6 +379,21 @@ class ChatterboxTester:
             '<<ComboboxSelected>>',
             lambda e: (self._on_text_change(), self._mark_needs_refresh())
         )
+
+        # ---- VibeVoice sampling toggle -----------------------------------
+        # When checked: do_sample=True → temperature/top_p applied before the 5-token constraint.
+        # Effect is subtle (segment length / boundary variation); primary controls remain
+        # cfg_scale, diffusion_steps, and seed.
+        self.sampling_frame = tk.Frame(self.root)
+        self.sampling_frame.pack(fill=tk.X, padx=10, pady=(0, 3))
+        self.use_sampling_var = tk.BooleanVar(value=False)
+        self.sampling_check = ttk.Checkbutton(
+            self.sampling_frame,
+            text="VibeVoice sampling mode (temperature/top_p active)",
+            variable=self.use_sampling_var,
+            command=lambda: (self._on_text_change(), self._mark_needs_refresh()),
+        )
+        self.sampling_check.pack(anchor=tk.W)
 
         # ---- Seed row ----------------------------------------------------
         seed_frame = tk.Frame(self.root)
@@ -366,8 +416,12 @@ class ChatterboxTester:
                   font=("Arial", 9)).pack(side=tk.LEFT, padx=5)
 
         # ---- Text input --------------------------------------------------
-        tk.Label(self.root, text="Text to speak (max. 500 characters):",
-                 font=("Arial", 10)).pack(anchor=tk.W, padx=10, pady=(10, 0))
+        self.text_limit_label = tk.Label(
+            self.root,
+            text="Text to speak (max. 500 characters):",
+            font=("Arial", 10),
+        )
+        self.text_limit_label.pack(anchor=tk.W, padx=10, pady=(10, 0))
         text_frame = tk.Frame(self.root)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         self.text_widget = tk.Text(text_frame, wrap=tk.WORD, font=("Arial", 11), height=6)
@@ -554,6 +608,9 @@ class ChatterboxTester:
                 if cur > 400 or cur < 1:
                     self.param_vars["top_k"].set(50)
                 self._format_label("top_k")
+            elif model in _VIBEVOICE_UI_MODELS:
+                # Hidden for vibevoice but reset to broad defaults when switching back.
+                self.slider_scales["top_k"].config(from_=1, to=2000, resolution=1)
 
         # Language dropdown options
         if model == "multilanguage":
@@ -569,8 +626,16 @@ class ChatterboxTester:
             if self.lang_var.get() not in self.QWEN3_LANGUAGES:
                 self.lang_var.set("English (en)")
         else:
-            # classic / turbo: no language selection
+            # classic / turbo / vibevoice: no language selection
             self.lang_dropdown.config(state="disabled")
+
+        if model in _VIBEVOICE_UI_MODELS:
+            self.sampling_frame.pack(fill=tk.X, padx=10, pady=(0, 3))
+        else:
+            self.sampling_frame.pack_forget()
+
+        text_limit = self._get_text_limit()
+        self.text_limit_label.config(text=f"Text to speak (max. {text_limit} characters):")
 
         # ref_text indicator (only relevant for qwen3)
         self._update_ref_text_indicator()
@@ -626,6 +691,8 @@ class ChatterboxTester:
                 self.model_var.set(settings['model_type'])
             if settings.get('language'):
                 self.lang_var.set(settings['language'])
+            if settings.get('use_sampling') is not None:
+                self.use_sampling_var.set(bool(settings['use_sampling']))
             if settings.get('active_state'):
                 self.active_state = settings['active_state']
 
@@ -693,6 +760,7 @@ class ChatterboxTester:
                 'reference_audio': self.ref_audio_var.get(),
                 'model_type':      self.model_var.get(),
                 'language':        self.lang_var.get(),
+                'use_sampling':    self.use_sampling_var.get(),
                 'active_state':    self.active_state,
                 'window_x':        window_x,
                 'window_y':        window_y,
@@ -751,6 +819,8 @@ class ChatterboxTester:
             for name in self.param_vars:
                 if model in _SLIDER_MODELS.get(name, []):
                     preset_params[name] = round(float(self.param_vars[name].get()), 4)
+            if model in _VIBEVOICE_UI_MODELS:
+                preset_params["use_sampling"] = bool(self.use_sampling_var.get())
 
             self.presets[key] = preset_params
             sorted_presets = dict(sorted(self.presets.items()))
@@ -782,13 +852,35 @@ class ChatterboxTester:
             "multilanguage": "multilingual",
             "turbo":         "turbo",
             "qwen3":         "qwen3",
+            "vibevoice":     "vibevoice",
+            "vibevoice_1_5b": "vibevoice_1_5b",
+            "vibevoice_q4": "vibevoice_q4",
         }
         model_type = model_map.get(model_ui_name, "standard")
-        config = {"generation": {"model_type": model_type}}
+        config: Dict[str, Any] = {"generation": {"model_type": model_type}}
+        if model_ui_name in _VIBEVOICE_UI_MODELS:
+            tester_cfg: Dict[str, Any] = {}
+            if _VIBEVOICE_TESTER_ATTN:
+                tester_cfg["vibevoice_attn_implementation"] = _VIBEVOICE_TESTER_ATTN
+            config["chatterbox_tester"] = tester_cfg
         self.current_model = ChatterboxModelCache.get_model(
             self.device, model_type, config=config
         )
         self.current_model_type = model_type
+        if model_ui_name in _VIBEVOICE_UI_MODELS and self.current_model is not None:
+            lm = getattr(
+                getattr(self.current_model, "model", None), "language_model", None
+            )
+            impl = (
+                getattr(getattr(lm, "config", None), "_attn_implementation", None)
+                if lm is not None
+                else None
+            )
+            print(
+                "VibeVoice: language_model._attn_implementation="
+                f"{impl!r} (tester env CHATTERBOX_TESTER_VIBEVOICE_ATTN="
+                f"{_VIBEVOICE_TESTER_ATTN!r})"
+            )
 
     def _on_model_change(self):
         self._load_model(self.model_var.get())
@@ -832,13 +924,17 @@ class ChatterboxTester:
             self.root.after_cancel(self._text_save_timer)
         self._text_save_timer = self.root.after(500, self._save_state_to_history)
 
+    def _get_text_limit(self) -> int:
+        return 10000 if self.model_var.get() in _VIBEVOICE_UI_MODELS else 500
+
     def _update_char_count(self):
         text = self.text_widget.get("1.0", tk.END).strip()
-        if len(text) > 500:
+        text_limit = self._get_text_limit()
+        if len(text) > text_limit:
             self.text_widget.delete("1.0", tk.END)
-            self.text_widget.insert("1.0", text[:500])
-            text = text[:500]
-        self.char_count_label.config(text=f"{len(text)}/500 characters")
+            self.text_widget.insert("1.0", text[:text_limit])
+            text = text[:text_limit]
+        self.char_count_label.config(text=f"{len(text)}/{text_limit} characters")
 
     def _on_slider_change(self, param_name: str, value: str):
         self._format_label(param_name)
@@ -852,7 +948,9 @@ class ChatterboxTester:
     # ------------------------------------------------------------------ #
 
     def _get_all_params(self) -> Dict[str, float]:
-        return {name: float(var.get()) for name, var in self.param_vars.items()}
+        params = {name: float(var.get()) for name, var in self.param_vars.items()}
+        params["use_sampling"] = 1.0 if self.use_sampling_var.get() else 0.0
+        return params
 
     def _get_current_state(self) -> Dict[str, Any]:
         return {
@@ -912,6 +1010,8 @@ class ChatterboxTester:
                         self._format_label(param_name)
                     except Exception:
                         pass
+                elif param_name == "use_sampling":
+                    self.use_sampling_var.set(bool(value))
         finally:
             self.is_restoring_state = False
 
@@ -1128,6 +1228,75 @@ class ChatterboxTester:
                 )
                 audio_np = wavs[0].astype(np.float32)
                 self.sample_rate = int(sr)
+
+            # ---- VibeVoice-Large-Q8 --------------------------------------
+            elif model_ui in _VIBEVOICE_UI_MODELS:
+                if not hasattr(self.current_model, "_vv_processor"):
+                    raise RuntimeError("VibeVoice processor not available on loaded model")
+                processor = self.current_model._vv_processor
+
+                if not ref_audio_file or not os.path.exists(ref_audio_path):
+                    raise RuntimeError("VibeVoice requires a valid reference audio file")
+
+                import librosa
+
+                ref_audio_np, _ = librosa.load(ref_audio_path, sr=24000, mono=True)
+                speed_factor = float(self.param_vars["voice_speed_factor"].get())
+                if speed_factor != 1.0:
+                    target_len = int(len(ref_audio_np) / speed_factor)
+                    ref_audio_np = np.interp(
+                        np.linspace(0, len(ref_audio_np) - 1, target_len),
+                        np.arange(len(ref_audio_np)),
+                        ref_audio_np,
+                    ).astype(np.float32)
+
+                # VibeVoice expects "Speaker N: ..." labels.
+                formatted_text = f"Speaker 1: {' '.join(text.split())}"
+                inputs = processor(
+                    [formatted_text],
+                    voice_samples=[[ref_audio_np]],
+                    return_tensors="pt",
+                    return_attention_mask=True,
+                )
+                model_device = next(self.current_model.parameters()).device
+                inputs = {
+                    k: v.to(model_device) if isinstance(v, torch.Tensor) else v
+                    for k, v in inputs.items()
+                }
+
+                self.current_model.set_ddpm_inference_steps(
+                    int(self.param_vars["diffusion_steps"].get())
+                )
+
+                use_sampling = bool(self.use_sampling_var.get())
+                gen_kwargs = {
+                    "tokenizer": processor.tokenizer,
+                    "cfg_scale": float(self.param_vars["cfg_scale"].get()),
+                    "max_new_tokens": None,
+                    "do_sample": use_sampling,
+                }
+                if use_sampling:
+                    gen_kwargs["temperature"] = float(self.param_vars["temperature"].get())
+                    gen_kwargs["top_p"] = float(self.param_vars["top_p"].get())
+
+                # Log effective LM sampling args (temperature/top_p only affect output when do_sample=True).
+                # Transformers omits TemperatureLogitsWarper when temperature==1.0 and TopPLogitsWarper when top_p>=1.0.
+                print(f"🎙️ VibeVoice | {gen_kwargs}")
+
+                with torch.no_grad():
+                    output = self.current_model.generate(**inputs, **gen_kwargs)
+
+                if not hasattr(output, "speech_outputs") or not output.speech_outputs:
+                    raise RuntimeError("VibeVoice generation returned no speech outputs")
+
+                speech_outputs = output.speech_outputs
+                audio_tensor = (
+                    torch.cat(speech_outputs, dim=-1)
+                    if isinstance(speech_outputs, list)
+                    else speech_outputs
+                )
+                audio_np = audio_tensor.cpu().float().numpy().squeeze().astype(np.float32)
+                self.sample_rate = 24000
 
             # ---- Chatterbox Turbo ----------------------------------------
             elif model_ui == "turbo":
@@ -1400,7 +1569,18 @@ class ChatterboxTester:
         """Return model-specific tts_params YAML block."""
         model_ui = self.model_var.get()
 
-        if model_ui == "qwen3":
+        if model_ui in _VIBEVOICE_UI_MODELS:
+            use_sampling = "true" if self.use_sampling_var.get() else "false"
+            return (
+                f"tts_params:\n"
+                f"        cfg_scale: {self.param_vars['cfg_scale'].get():.2f}\n"
+                f"        temperature: {self.param_vars['temperature'].get():.2f}\n"
+                f"        top_p: {self.param_vars['top_p'].get():.2f}\n"
+                f"        diffusion_steps: {int(self.param_vars['diffusion_steps'].get())}\n"
+                f"        voice_speed_factor: {self.param_vars['voice_speed_factor'].get():.2f}\n"
+                f"        use_sampling: {use_sampling}"
+            )
+        elif model_ui == "qwen3":
             return (
                 f"tts_params:\n"
                 f"        temperature: {self.param_vars['temperature'].get():.2f}\n"
@@ -1528,6 +1708,10 @@ class ChatterboxTester:
                     except (ValueError, TypeError) as e:
                         print(f"[CLIPBOARD] Skipping {yaml_key}: {e}")
 
+            if "use_sampling" in tts_params:
+                self.use_sampling_var.set(bool(tts_params["use_sampling"]))
+                updated_items.append(f"use_sampling={self.use_sampling_var.get()}")
+
             if 'reference_audio' in data:
                 try:
                     ref = str(data['reference_audio'])
@@ -1608,6 +1792,9 @@ class ChatterboxTester:
             header += f"# Language: {self.lang_var.get()} → {lang_name}\n"
             txt_path  = self._get_ref_text_path()
             header += f"# ref_text: {txt_path.name if txt_path else 'none (x_vector only)'}\n"
+        elif model_ui in _VIBEVOICE_UI_MODELS:
+            header += "# Language: auto-detected by VibeVoice\n"
+            header += f"# use_sampling: {self.use_sampling_var.get()}\n"
 
         header += f"# Seed: {seed}\n\n"
         header += f"# Text:\n# {self.text_widget.get('1.0', tk.END).strip()}\n\n"
@@ -1666,6 +1853,7 @@ Supported models:
   qwen3          Qwen3-TTS-12Hz-1.7B-Base voice cloning (10 languages)
                  Place a .txt transcript next to your .wav reference audio
                  for best cloning quality (ICL mode).
+  vibevoice      VibeVoice-Large-Q8 (long-form + voice cloning)
 
 For better audio playback in WSL, install ffmpeg:
   sudo apt-get install ffmpeg

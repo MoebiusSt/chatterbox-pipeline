@@ -1,13 +1,13 @@
 # Chatterbox TTS Tester
 
-A lightweight standalone GUI tool for quickly testing and tuning TTS parameters across all four supported models.
+A lightweight standalone GUI tool for quickly testing and tuning TTS parameters across all five supported models.
 
 ## Purpose
 
 Rapidly experiment with different:
 - Reference audio files
-- TTS models (classic / multilanguage / turbo / qwen3)
-- Languages (multilanguage: 24 languages; qwen3: 10 languages)
+- TTS models (classic / multilanguage / turbo / qwen3 / vibevoice)
+- Languages (multilanguage: 24 languages; qwen3: 10 languages; vibevoice: auto)
 - TTS parameters — with model-specific sliders shown/hidden automatically
 
 Perfect for finding optimal voice settings before integrating them into cbpipe configurations.
@@ -15,12 +15,13 @@ Perfect for finding optimal voice settings before integrating them into cbpipe c
 ## Features
 
 - **Reference Audio Selection**: Choose from available WAV files in `data/input/reference_audio/`
-- **Four TTS Models**: classic, multilanguage, turbo, qwen3 — selected via dropdown
+- **Five TTS Models**: classic, multilanguage, turbo, qwen3, vibevoice — selected via dropdown
 - **Adaptive Sliders**: Parameters automatically shown or hidden based on the active model
 - **Language Selection**: Available for multilanguage (24 languages) and qwen3 (10 languages)
 - **ref_text Indicator** (qwen3): Shows whether a `.txt` sidecar transcript exists next to the reference WAV
 - **Seed Control**: Set random seed for reproducibility (with 🎲 Random button)
-- **Text Input**: Enter up to 500 characters of text to synthesize
+- **Text Input**: Enter up to 500 characters (classic/multilanguage/turbo/qwen3) or 10,000 characters (vibevoice)
+- **VibeVoice Sampling Toggle**: Enable/disable sampling mode (`use_sampling`) for vibevoice
 - **Manual Generation**: REFRESH button triggers audio generation and playback
 - **Audio Playback**: Play, pause, and scrub through generated audio
 - **A/B Comparison**: Two independent parameter states (1 / 2) with copy arrows
@@ -33,17 +34,20 @@ Perfect for finding optimal voice settings before integrating them into cbpipe c
 
 ## Model Comparison
 
-| Feature                 | classic | multilanguage | turbo   | qwen3        |
-|-------------------------|---------|---------------|---------|--------------|
-| Language                | EN only | 24 languages  | EN only | 10 languages |
-| exaggeration            | ✓       | ✓             | ✓       | —            |
-| cfg_weight              | ✓       | ✓             | ✓       | —            |
-| temperature             | ✓       | ✓             | ✓       | ✓            |
-| repetition_penalty      | ✓       | ✓             | ✓       | ✓            |
-| min_p                   | ✓       | ✓             | ✓       | —            |
-| top_p                   | ✓       | ✓             | ✓       | ✓            |
-| top_k                   | —       | —             | 0–2000  | 0–300        |
-| ref_text sidecar        | —       | —             | —       | ✓            |
+| Feature                 | classic | multilanguage | turbo   | qwen3        | vibevoice |
+|-------------------------|---------|---------------|---------|--------------|-----------|
+| Language                | EN only | 24 languages  | EN only | 10 languages | auto      |
+| exaggeration            | ✓       | ✓             | ✓       | —            | —         |
+| cfg_weight              | ✓       | ✓             | ✓       | —            | —         |
+| cfg_scale               | —       | —             | —       | —            | ✓         |
+| temperature             | ✓       | ✓             | ✓       | ✓            | ✓         |
+| repetition_penalty      | ✓       | ✓             | ✓       | ✓            | —         |
+| min_p                   | ✓       | ✓             | ✓       | —            | —         |
+| top_p                   | ✓       | ✓             | ✓       | ✓            | ✓         |
+| top_k                   | —       | —             | 0–2000  | 0–300        | —         |
+| diffusion_steps         | —       | —             | —       | —            | ✓         |
+| voice_speed_factor      | —       | —             | —       | —            | ✓         |
+| ref_text sidecar        | —       | —             | —       | ✓            | —         |
 
 ## Usage
 
@@ -64,10 +68,10 @@ python chatterbox_tester.py
 ### Workflow
 
 1. **Select Reference Audio**: Choose your target voice from the dropdown
-2. **Choose Model**: Select from the model dropdown (classic / multilanguage / turbo / qwen3)
+2. **Choose Model**: Select from the model dropdown (classic / multilanguage / turbo / qwen3 / vibevoice)
 3. **Select Language**: (multilanguage / qwen3 only) Pick target language
 4. **Set Seed**: Enter a seed value for reproducibility (or use 🎲 Random)
-5. **Enter Text**: Type or paste text to synthesize (max 500 chars)
+5. **Enter Text**: Type or paste text to synthesize (max 500 chars; vibevoice max 10,000)
 6. **Adjust Parameters**: Move the visible sliders — irrelevant sliders are hidden per model
 7. **Click REFRESH**: Generate audio (button turns bright green when parameters changed)
 8. **Listen**: Generated audio plays automatically
@@ -89,17 +93,28 @@ The tester shows a status indicator below the reference audio dropdown:
 
 If no transcript is found, the model falls back to `x_vector_only_mode=True` (speaker embedding only).
 
+### VibeVoice Voice Cloning
+
+VibeVoice uses the selected reference audio directly and does not require a `.txt` sidecar transcript.
+
+- Recommended reference length: **20-60 seconds**
+- Supported tester controls: `cfg_scale`, `temperature`, `top_p`, `diffusion_steps`, `voice_speed_factor`, `use_sampling`
+- Default mode is deterministic (`use_sampling=false`)
+
 ### Parameter Defaults by Model
 
-| Parameter          | classic / multilanguage / turbo | qwen3  |
-|--------------------|---------------------------------|--------|
-| exaggeration       | 0.70                            | —      |
-| cfg_weight         | 0.45                            | —      |
-| temperature        | 0.80                            | 0.80*  |
-| repetition_penalty | 2.20                            | 2.20*  |
-| min_p              | 0.05                            | —      |
-| top_p              | 0.98                            | 0.98*  |
-| top_k              | — / — / 1000                    | 50     |
+| Parameter          | classic / multilanguage / turbo | qwen3  | vibevoice |
+|--------------------|---------------------------------|--------|-----------|
+| exaggeration       | 0.70                            | —      | —         |
+| cfg_weight         | 0.45                            | —      | —         |
+| cfg_scale          | —                               | —      | 1.30      |
+| temperature        | 0.80                            | 0.80*  | 0.80      |
+| repetition_penalty | 2.20                            | 2.20*  | —         |
+| min_p              | 0.05                            | —      | —         |
+| top_p              | 0.98                            | 0.98*  | 0.98      |
+| top_k              | — / — / 1000                    | 50     | —         |
+| diffusion_steps    | —                               | —      | 20        |
+| voice_speed_factor | —                               | —      | 1.00      |
 
 *Qwen3 native defaults differ (temperature 0.9, repetition_penalty 1.05, top_p 1.0, top_k 50). The sliders start at the Chatterbox defaults on first run; adjust manually to match Qwen3's typical operating range.
 
@@ -110,6 +125,7 @@ Presets are stored in `.chatterbox_tester_presets.yaml`. They are keyed per refe
 - classic / multilanguage: key = `filename.wav` (backward compatible with old presets)
 - turbo: key = `filename.wav::turbo`
 - qwen3: key = `filename.wav::qwen3`
+- vibevoice: key = `filename.wav::vibevoice`
 
 This means you can have separate presets for the same voice file across different models.
 
@@ -159,6 +175,17 @@ tts_params:
         subtalker_top_p: 1.00
 ```
 
+**vibevoice**:
+```yaml
+tts_params:
+        cfg_scale: 1.30
+        temperature: 0.95
+        top_p: 0.95
+        diffusion_steps: 20
+        voice_speed_factor: 1.00
+        use_sampling: false
+```
+
 Paste directly into any cbpipe speaker definition.
 
 ### Audio Metadata
@@ -166,7 +193,7 @@ Paste directly into any cbpipe speaker definition.
 When you save audio with "💾 Save Audio", two files are created:
 
 1. **WAV file**: `output/test_[reference]_[timestamp].wav`
-2. **YAML metadata**: `output/test_[reference]_[timestamp].yaml` — includes model, language, ref_text info, seed, and full `tts_params` block
+2. **YAML metadata**: `output/test_[reference]_[timestamp].yaml` — includes model, language/ref_text (if applicable), seed, and full `tts_params` block
 
 ## Audio Playback
 
@@ -185,8 +212,9 @@ Optional for better audio quality in WSL:
 
 ## Technical Details
 
-- Uses `ChatterboxModelCache` directly for all four model types
+- Uses `ChatterboxModelCache` directly for all five model types
 - Qwen3 calls `generate_voice_clone()` directly (no prompt caching in the tester — acceptable latency for single generations)
+- VibeVoice uses locally vendored inference code from `src/third_party/vibevoice` (no `trust_remote_code`)
 - Model-specific slider visibility controlled via tkinter `grid` / `grid_remove()`
 - Settings stored in `.chatterbox_tester_settings.json` (JSON)
 - Presets stored in `.chatterbox_tester_presets.yaml` (YAML)

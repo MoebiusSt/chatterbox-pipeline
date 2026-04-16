@@ -70,6 +70,7 @@ TTSGenerator.generate_candidates() → List[AudioCandidate]
 # - "multilingual" ChatterboxMultilingualTTS  23 languages, full speaker switching
 # - "turbo"        ChatterboxTurboTTS      EN-only, full speaker switching, norm_loudness, paralinguistic tags
 # - "qwen3"        Qwen3TTSModel 1.7B Base 10 languages, full speaker switching, voice clone, requires .txt sidecar
+# - "vibevoice"    VibeVoice-Large-Q8      EN/ZH, full speaker switching via pipeline, long-form capable
 
 # Speaker switching: works for ALL model types
 # - Each speaker may have its own reference_audio + tts_params (prosody/kwargs)
@@ -119,6 +120,12 @@ subtalker_temperature: RAMP-DOWN-OVER-CENTER: config value is CENTER
 # - x_vector_only_mode=True used as fallback when no ref_text is available
 # - Voice clone prompts are cached per speaker_id (no recomputation across chunks)
 # - Seed: torch.manual_seed(seed) called before each generation (Qwen3 has no native seed param)
+#
+# VibeVoice-specific
+# - Uses local vendored VibeVoice inference code under src/third_party/vibevoice (no trust_remote_code)
+# - Voice clone uses full reference audio (recommended up to ~60s, no .txt sidecar required)
+# - Supported params: cfg_scale, temperature, top_p, diffusion_steps, voice_speed_factor, use_sampling
+# - Deterministic by default (use_sampling=false), sampling mode optional per speaker
 ```
 
 ### 3. Quality Validation Pipeline

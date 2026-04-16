@@ -9,6 +9,23 @@ hardcoding model constraints in multiple places.
 from typing import Dict, List, Optional, Set
 
 
+# VibeVoice Hub variants share languages, features, and TTS param keys (see model_cache).
+_VIBEVOICE_LANGS: Set[str] = {"en", "zh"}
+_VIBEVOICE_FEATURES: Dict = {
+    "speaker_switch": True,
+    "ref_text_required": False,
+    "paralinguistic_tags": False,
+    "builtin_normalization": False,
+    "max_ref_audio_seconds": 60.0,
+    "language_locked": False,
+}
+_VIBEVOICE_TTS_PARAMS: Set[str] = {
+    "cfg_scale", "temperature", "top_p",
+    "diffusion_steps", "voice_speed_factor", "use_sampling",
+}
+
+VIBEVOICE_MODEL_TYPES = frozenset({"vibevoice", "vibevoice_1_5b", "vibevoice_q4"})
+
 # Supported language codes per model type (ISO 639-1)
 MODEL_LANGUAGE_SUPPORT: Dict[str, Set[str]] = {
     "standard": {"en"},
@@ -19,6 +36,9 @@ MODEL_LANGUAGE_SUPPORT: Dict[str, Set[str]] = {
         "sw", "tr", "zh",
     },
     "qwen3": {"zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"},
+    "vibevoice": _VIBEVOICE_LANGS,
+    "vibevoice_1_5b": _VIBEVOICE_LANGS,
+    "vibevoice_q4": _VIBEVOICE_LANGS,
 }
 
 # Model feature flags
@@ -60,6 +80,9 @@ MODEL_FEATURES: Dict[str, Dict] = {
         "max_ref_audio_seconds": 3.0,  # Recommended max for voice cloning
         "language_locked": False,
     },
+    "vibevoice": _VIBEVOICE_FEATURES,
+    "vibevoice_1_5b": _VIBEVOICE_FEATURES,
+    "vibevoice_q4": _VIBEVOICE_FEATURES,
 }
 
 # TTS parameters supported per model type (keys that may be passed to model.generate / generate_voice_clone)
@@ -83,6 +106,9 @@ SUPPORTED_TTS_PARAMS: Dict[str, Set[str]] = {
         "max_new_tokens", "do_sample",
         "subtalker_dosample", "subtalker_top_k", "subtalker_top_p", "subtalker_temperature",
     },
+    "vibevoice": _VIBEVOICE_TTS_PARAMS,
+    "vibevoice_1_5b": _VIBEVOICE_TTS_PARAMS,
+    "vibevoice_q4": _VIBEVOICE_TTS_PARAMS,
 }
 
 # Keys that are always consumed by the pipeline internally and never forwarded to models
@@ -93,6 +119,8 @@ INTERNAL_PARAM_KEYS: Set[str] = {
     "top_k_max_deviation",
     "subtalker_temperature_max_deviation",
     "subtalker_top_k_max_deviation",
+    "cfg_scale_max_deviation",
+    "diffusion_steps_max_deviation",
     "enabled",
     "type",
     "seed",
@@ -110,6 +138,12 @@ QWEN3_LANGUAGE_CODE_TO_NAME: Dict[str, str] = {
     "pt": "Portuguese",
     "es": "Spanish",
     "it": "Italian",
+}
+
+# VibeVoice language code to full language name
+VIBEVOICE_LANGUAGE_CODE_TO_NAME: Dict[str, str] = {
+    "en": "English",
+    "zh": "Chinese",
 }
 
 # All known model type identifiers
@@ -139,7 +173,7 @@ def validate_languages_for_model(
     Check whether all used language codes are supported by the given model type.
 
     Args:
-        model_type: The TTS model type (standard, multilingual, turbo, qwen3).
+        model_type: The TTS model type (standard, multilingual, turbo, qwen3, vibevoice, …).
         used_language_codes: Set of ISO 639-1 codes that will actually be used.
 
     Returns:

@@ -7,14 +7,19 @@ The cache only works within a single program run.
 """
 
 import logging
+import sys
 import time
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
+
+from huggingface_hub import hf_hub_download
 
 import torch
 
 logger = logging.getLogger(__name__)
+
+_VIBEVOICE_TYPES = frozenset({"vibevoice", "vibevoice_1_5b", "vibevoice_q4"})
 
 
 class ChatterboxModelCache:
@@ -40,6 +45,9 @@ class ChatterboxModelCache:
         "multilingual": "ChatterboxMultilingualTTS",
         "turbo": "ChatterboxTurboTTS",
         "qwen3": "Qwen3TTSModel (1.7B Base)",
+        "vibevoice": "VibeVoice-Large-Q8",
+        "vibevoice_1_5b": "VibeVoice-1.5B",
+        "vibevoice_q4": "VibeVoice-Large-Q4",
     }
 
     @classmethod
@@ -49,16 +57,23 @@ class ChatterboxModelCache:
 
         Args:
             device: Target device ("auto", "cuda", "mps", "cpu")
-            model_type: Model type ("standard", "multilingual", "turbo", or "qwen3")
+            model_type: Model type ("standard", "multilingual", "turbo", "qwen3",
+                "vibevoice", "vibevoice_1_5b", or "vibevoice_q4")
             config: Optional full pipeline config dict (used for model-specific load options)
 
         Returns:
             Model instance (ChatterboxTTS, ChatterboxMultilingualTTS, ChatterboxTurboTTS,
-            or Qwen3TTSModel) or None on failure.
+            Qwen3TTSModel, or a VibeVoice model) or None on failure.
         """
         # Resolve auto device
         actual_device = cls._detect_device() if device == "auto" else device
         cache_key = f"{actual_device}_{model_type}"
+        if model_type in _VIBEVOICE_TYPES:
+            vv_attn_eff = cls._vibevoice_effective_attn(
+                model_type, actual_device, config
+            )
+            if vv_attn_eff:
+                cache_key = f"{actual_device}_{model_type}_{vv_attn_eff}"
 
         # Check in-memory cache first
         if cache_key in cls._model_cache:
@@ -76,6 +91,12 @@ class ChatterboxModelCache:
                 logger.info("🚀 Updated cache with speed-optimized model")
             
             return cls._model_cache[cache_key]
+
+        # Switching between VibeVoice variants: evict the old one before loading the new one.
+        # All three variants are large models (1.5B–7B). Keeping the previous variant in VRAM
+        # while loading the next causes memory pressure and extremely slow loading.
+        if model_type in _VIBEVOICE_TYPES:
+            cls._evict_vibevoice(actual_device, except_key=cache_key)
 
         # Load fresh model
         model_name = cls._MODEL_DISPLAY_NAMES.get(model_type, model_type)
@@ -96,11 +117,95 @@ class ChatterboxModelCache:
         
         # Cache the optimized model and loading time
         cls._model_cache[cache_key] = model
+        if model_type in _VIBEVOICE_TYPES and model is not None and hasattr(model, "_vv_processor"):
+            cls._model_cache[f"{cache_key}_processor"] = model._vv_processor
         cls._load_times[cache_key] = load_time
         
         logger.info(f"✅ Model loaded in {load_time:.1f}s and cached for future use in this session")
 
         return model
+
+    # Per-model attention defaults (None = transformers auto-detect, fastest original state).
+    # vibevoice (7B Q8): None → auto-detect (was fastest before explicit overrides).
+    # vibevoice_1_5b: sdpa → measured 3x speedup vs auto-detected FA2 at 1.5B scale.
+    # vibevoice_q4 (7B Q4): sdpa → 4-bit Linear4bit + FA2 is unreliable.
+    _VIBEVOICE_ATTN_DEFAULTS: Dict[str, Optional[str]] = {
+        "vibevoice": None,
+        "vibevoice_1_5b": "sdpa",
+        "vibevoice_q4": "sdpa",
+    }
+
+    @classmethod
+    def _vibevoice_effective_attn(
+        cls, model_type: str, device: str, config: Optional[Dict]
+    ) -> Optional[str]:
+        """Attention backend for VibeVoice – per-model defaults, overridable via config."""
+        tester = (config or {}).get("chatterbox_tester") or {}
+        raw = tester.get("vibevoice_attn_implementation")
+        if raw:
+            # Explicit override from tester/env
+            vv: Optional[str] = str(raw).strip().lower()
+            if vv not in ("flash_attention_2", "sdpa", "eager"):
+                logger.warning(
+                    "Invalid vibevoice_attn_implementation %r; falling back to per-model default",
+                    raw,
+                )
+                vv = cls._VIBEVOICE_ATTN_DEFAULTS.get(model_type)
+        else:
+            # Use per-model default (None = let transformers auto-detect)
+            vv = cls._VIBEVOICE_ATTN_DEFAULTS.get(model_type)
+
+        if vv == "flash_attention_2":
+            if device != "cuda":
+                logger.warning(
+                    "VibeVoice: flash_attention_2 requires CUDA; using sdpa"
+                )
+                vv = "sdpa"
+            else:
+                try:
+                    import flash_attn  # noqa: F401
+                except ImportError:
+                    logger.warning(
+                        "VibeVoice: flash_attn not importable; using sdpa"
+                    )
+                    vv = "sdpa"
+        if model_type == "vibevoice_q4" and vv == "flash_attention_2":
+            logger.warning(
+                "VibeVoice Q4: flash_attention_2 often incompatible with 4-bit; using sdpa"
+            )
+            vv = "sdpa"
+        return vv
+
+    @classmethod
+    def _evict_vibevoice(cls, device: str, except_key: str) -> None:
+        """Remove all cached VibeVoice models except the one about to be loaded.
+
+        VibeVoice variants are mutually exclusive in practice (1.5B + 7B Q8 + 7B Q4 together
+        would consume 15+ GB VRAM). Evicting before loading the new variant prevents OOM and
+        the extremely slow pseudo-loading that happens when CUDA starts swapping to system RAM.
+        """
+        keys_to_evict = [
+            k for k in list(cls._model_cache.keys())
+            if k != except_key and any(f"{device}_{vt}" in k for vt in _VIBEVOICE_TYPES)
+        ]
+        if not keys_to_evict:
+            return
+        for k in keys_to_evict:
+            model_obj = cls._model_cache.pop(k, None)
+            cls._load_times.pop(k, None)
+            # Move weights off CUDA so the allocator can reclaim the memory immediately
+            if model_obj is not None:
+                try:
+                    model_obj.to("cpu")
+                except Exception:
+                    pass
+                del model_obj
+            logger.info(f"🗑️ Evicted VibeVoice cache entry '{k}' to free VRAM before loading new variant")
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            free_gb = torch.cuda.mem_get_info()[0] / 1024 ** 3
+            logger.info(f"🧹 CUDA cache cleared – {free_gb:.1f} GB free VRAM")
 
     @classmethod
     def _optimize_cached_model(cls, model, device: str):
@@ -191,6 +296,78 @@ class ChatterboxModelCache:
                         dtype=torch.bfloat16,
                         attn_implementation=attn_impl,
                     )
+                elif model_type in _VIBEVOICE_TYPES:
+                    # VibeVoice is vendored locally under src/third_party/vibevoice
+                    vibevoice_path = (
+                        Path(__file__).resolve().parent.parent / "third_party" / "vibevoice"
+                    )
+                    if not vibevoice_path.exists():
+                        raise RuntimeError(
+                            f"Local VibeVoice code not found at: {vibevoice_path}"
+                        )
+                    vibevoice_path_str = str(vibevoice_path)
+                    if vibevoice_path_str not in sys.path:
+                        sys.path.insert(0, vibevoice_path_str)
+
+                    from modular.modeling_vibevoice_inference import (
+                        VibeVoiceForConditionalGenerationInference,
+                    )
+                    from processor.vibevoice_processor import VibeVoiceProcessor
+
+                    # HF repo id is always "namespace/name". Folder "4bit" inside the repo
+                    # uses subfolder= (see https://huggingface.co/DevParker/VibeVoice7b-low-vram/tree/main/4bit).
+                    model_specs: Dict[str, Tuple[str, Optional[str]]] = {
+                        "vibevoice": ("FabioSarracino/VibeVoice-Large-Q8", None),
+                        "vibevoice_1_5b": ("microsoft/VibeVoice-1.5B", None),
+                        "vibevoice_q4": ("DevParker/VibeVoice7b-low-vram", "4bit"),
+                    }
+                    repo_id, hf_subfolder = model_specs[model_type]
+                    load_kwargs: Dict[str, Any] = {
+                        "device_map": device,
+                        "torch_dtype": torch.bfloat16,
+                    }
+                    if hf_subfolder:
+                        load_kwargs["subfolder"] = hf_subfolder
+                    vv_attn = cls._vibevoice_effective_attn(
+                        model_type, device, config
+                    )
+                    if vv_attn:
+                        load_kwargs["attn_implementation"] = vv_attn
+                    try:
+                        model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+                            repo_id,
+                            **load_kwargs,
+                        )
+                    except Exception as e:
+                        if load_kwargs.get("attn_implementation") == "flash_attention_2":
+                            logger.warning(
+                                "VibeVoice: flash_attention_2 failed (%s); retrying sdpa",
+                                e,
+                            )
+                            load_kwargs["attn_implementation"] = "sdpa"
+                            model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+                                repo_id,
+                                **load_kwargs,
+                            )
+                        else:
+                            raise
+                    # Custom VibeVoiceProcessor only does os.path.join(repo_id, ...); it does not
+                    # resolve Hub repos or subfolder. Passing subfolder in kwargs breaks the Qwen
+                    # tokenizer load (None path). Resolve preprocessor_config.json via hf_hub_download
+                    # and load from the on-disk folder (see DevParker/.../4bit).
+                    if hf_subfolder:
+                        preproc_file = hf_hub_download(
+                            repo_id=repo_id,
+                            filename="preprocessor_config.json",
+                            subfolder=hf_subfolder,
+                        )
+                        processor = VibeVoiceProcessor.from_pretrained(
+                            str(Path(preproc_file).parent)
+                        )
+                    else:
+                        processor = VibeVoiceProcessor.from_pretrained(repo_id)
+                    # Attach processor to model for easy downstream access.
+                    model._vv_processor = processor
 
                 else:
                     # "standard" and any unknown type

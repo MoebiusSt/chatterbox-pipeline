@@ -1,3 +1,17 @@
+annie_coleman_rothenberg_1.wav::vibevoice:
+  temperature: 1.2
+  top_p: 0.97
+  cfg_scale: 1.6
+  diffusion_steps: 19.0
+  voice_speed_factor: 1.0
+  use_sampling: true
+annie_coleman_rothenberg_1.wav::vibevoice_1_5b:
+  temperature: 1.4
+  top_p: 0.97
+  cfg_scale: 1.4
+  diffusion_steps: 20.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 david-barnes_DE-fake.wav:
   exaggeration: 0.9
   cfg_weight: 0.2
@@ -49,6 +63,13 @@ gesine_3.wav:
   repetition_penalty: 2.05
   min_p: 0.15
   top_p: 1.0
+hans-juergen-lenhart.wav::vibevoice:
+  temperature: 1.2
+  top_p: 0.97
+  cfg_scale: 1.6
+  diffusion_steps: 24.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 hans-juergen-lenhart_DE.wav:
   exaggeration: 1.41
   cfg_weight: 0.4
@@ -56,6 +77,13 @@ hans-juergen-lenhart_DE.wav:
   repetition_penalty: 2.02
   min_p: 0.09
   top_p: 1.0
+hans-juergen-lenhart_DE.wav::vibevoice:
+  temperature: 1.1
+  top_p: 0.96
+  cfg_scale: 1.4
+  diffusion_steps: 20.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 martina-zimmermann_DE.wav:
   exaggeration: 0.7
   cfg_weight: 0.49

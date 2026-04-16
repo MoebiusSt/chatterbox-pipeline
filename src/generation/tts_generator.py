@@ -4,6 +4,7 @@ import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+import numpy as np
 import torch
 import re
 
@@ -22,6 +23,8 @@ from utils.file_manager.io_handlers.candidate_io import AudioCandidate
 from utils.language_registry import (
     MODEL_FEATURES,
     QWEN3_LANGUAGE_CODE_TO_NAME,
+    VIBEVOICE_LANGUAGE_CODE_TO_NAME,
+    VIBEVOICE_MODEL_TYPES,
     filter_params_for_model,
 )
 
@@ -33,7 +36,8 @@ class TTSGenerator:
     Simplified TTS Generator with direct model access.
     Uses direct model access without thread safety for sequential execution.
     Supports ChatterboxTTS (standard), ChatterboxMultilingualTTS (multilingual),
-    ChatterboxTurboTTS (turbo), and Qwen3TTSModel (qwen3).
+    ChatterboxTurboTTS (turbo), Qwen3TTSModel (qwen3), and VibeVoice Hub variants (vibevoice,
+    vibevoice_1_5b, vibevoice_q4).
     """
 
     def __init__(self, config: Dict[str, Any], device: str = "auto", seed: Optional[int] = None):
@@ -75,6 +79,7 @@ class TTSGenerator:
         # Model type convenience flags
         self.is_turbo = (self.model_type == "turbo")
         self.is_qwen3 = (self.model_type == "qwen3")
+        self.is_vibevoice = self.model_type in VIBEVOICE_MODEL_TYPES
         self.is_chatterbox = self.model_type in ("standard", "multilingual", "turbo")
 
         # All model types support speaker switching (different reference audio, tts_params, prosody).
@@ -100,6 +105,8 @@ class TTSGenerator:
 
         # Qwen3: cache of voice clone prompts keyed by speaker_id
         self._qwen3_voice_prompts: Dict[str, Any] = {}
+        # VibeVoice: cache of preprocessed reference audio keyed by speaker_id
+        self._vibevoice_reference_audio: Dict[str, np.ndarray] = {}
 
         # Set of (model_type:param_key) combos already warned about to avoid log spam
         self._logged_unsupported_params: Set[str] = set()
@@ -107,6 +114,10 @@ class TTSGenerator:
         # Determine display name for logging
         if self.is_qwen3:
             model_display = "Qwen3TTSModel (1.7B Base)"
+        elif self.is_vibevoice:
+            model_display = ChatterboxModelCache._MODEL_DISPLAY_NAMES.get(
+                self.model_type, "VibeVoice"
+            )
         elif self.is_turbo:
             model_display = "ChatterboxTurboTTS"
         elif self.is_multilingual:
@@ -162,7 +173,8 @@ class TTSGenerator:
         """
         Prepares model conditionals for voice cloning (Chatterbox models only).
 
-        For Qwen3, voice prompts are built via _prepare_qwen3_voice_clone_prompt;
+        For Qwen3, voice prompts are built via _prepare_qwen3_voice_clone_prompt.
+        For VibeVoice, this method is not used.
         calling this method for a Qwen3 model is a no-op with a warning.
 
         Args:
@@ -172,10 +184,10 @@ class TTSGenerator:
             logger.warning("🚨 No model loaded - cannot prepare conditionals")
             return
 
-        if self.is_qwen3:
+        if self.is_qwen3 or self.is_vibevoice:
             logger.warning(
-                "prepare_conditionals() called for Qwen3 model - "
-                "use switch_speaker() to build the voice clone prompt instead."
+                "prepare_conditionals() called for non-Chatterbox model - "
+                "use switch_speaker() to prepare model-specific speaker assets instead."
             )
             return
 
@@ -292,6 +304,40 @@ class TTSGenerator:
             logger.error(
                 f"🚨 Failed to create Qwen3 voice clone prompt for speaker '{speaker_id}': {e}"
             )
+
+    def _prepare_vibevoice_reference_audio(
+        self,
+        speaker_id: str,
+        audio_path: Path,
+        voice_speed_factor: float = 1.0,
+    ) -> None:
+        """
+        Load and cache a VibeVoice reference waveform for a speaker.
+
+        The waveform is resampled to 24kHz mono and optionally speed-adjusted by
+        linear interpolation (factor range expected around 0.8..1.2).
+        """
+        try:
+            import librosa
+
+            audio_np, _ = librosa.load(str(audio_path), sr=24000, mono=True)
+            audio_np = audio_np.astype(np.float32)
+
+            if voice_speed_factor != 1.0:
+                target_len = int(len(audio_np) / max(0.01, voice_speed_factor))
+                audio_np = np.interp(
+                    np.linspace(0, len(audio_np) - 1, target_len),
+                    np.arange(len(audio_np)),
+                    audio_np,
+                ).astype(np.float32)
+
+            self._vibevoice_reference_audio[speaker_id] = audio_np
+            logger.info(
+                f"✅ VibeVoice reference audio cached for speaker '{speaker_id}' "
+                f"(speed_factor={voice_speed_factor:.2f})"
+            )
+        except Exception as e:
+            logger.error(f"🚨 Failed to prepare VibeVoice reference audio: {e}")
 
     # ------------------------------------------------------------------
     # Parameter helpers
@@ -600,6 +646,171 @@ class TTSGenerator:
             except Exception as e:
                 logger.error(f"Failed to generate Qwen3 candidate {i+1}: {e}")
                 continue
+
+        return candidates
+
+    # ------------------------------------------------------------------
+    # VibeVoice-specific generation path
+    # ------------------------------------------------------------------
+
+    def _generate_vibevoice_single(
+        self,
+        text: str,
+        params: Dict[str, Any],
+        reference_audio: np.ndarray,
+        attempt_seed: int,
+    ) -> torch.Tensor:
+        """Generate one VibeVoice sample from text + reference audio."""
+        if self.model is None:
+            logger.warning("🚨 No VibeVoice model loaded - generating silence")
+            return torch.zeros(24000, device=self.device)
+        if not hasattr(self.model, "_vv_processor"):
+            logger.error("🚨 VibeVoice processor missing on model - generating silence")
+            return torch.zeros(24000, device=self.device)
+
+        processor = self.model._vv_processor
+        if attempt_seed > 0:
+            try:
+                torch.manual_seed(attempt_seed)
+            except Exception:
+                pass
+
+        formatted_text = f"Speaker 1: {' '.join(text.split())}"
+        try:
+            inputs = processor(
+                [formatted_text],
+                voice_samples=[[reference_audio]],
+                return_tensors="pt",
+                return_attention_mask=True,
+            )
+            model_device = next(self.model.parameters()).device
+            inputs = {
+                k: v.to(model_device) if isinstance(v, torch.Tensor) else v
+                for k, v in inputs.items()
+            }
+        except Exception as e:
+            logger.error(f"VibeVoice input preparation failed: {e}")
+            return torch.zeros(24000, device=self.device)
+
+        diffusion_steps = int(params.get("diffusion_steps", 20))
+        try:
+            self.model.set_ddpm_inference_steps(diffusion_steps)
+        except Exception:
+            pass
+
+        # temperature/top_p are only forwarded when do_sample=True; with use_sampling=false the LM is greedy/deterministic.
+        use_sampling = bool(params.get("use_sampling", False))
+        gen_kwargs: Dict[str, Any] = {
+            "tokenizer": processor.tokenizer,
+            "cfg_scale": float(params.get("cfg_scale", 1.3)),
+            "max_new_tokens": None,
+            "do_sample": use_sampling,
+        }
+        if use_sampling:
+            gen_kwargs["temperature"] = float(params.get("temperature", 0.95))
+            gen_kwargs["top_p"] = float(params.get("top_p", 0.95))
+
+        try:
+            with torch.no_grad():
+                output = self.model.generate(**inputs, **gen_kwargs)
+            if not hasattr(output, "speech_outputs") or not output.speech_outputs:
+                raise RuntimeError("missing speech_outputs")
+            speech_outputs = output.speech_outputs
+            audio_tensor = (
+                torch.cat(speech_outputs, dim=-1)
+                if isinstance(speech_outputs, list)
+                else speech_outputs
+            )
+            audio_tensor = audio_tensor.float().squeeze()
+            return audio_tensor.to(self.device)
+        except Exception as e:
+            logger.error(f"VibeVoice generation failed: {e}")
+            return torch.zeros(24000, device=self.device)
+
+    def _generate_vibevoice_candidates(
+        self,
+        text: str,
+        speaker_id: str,
+        speaker_config: Dict[str, Any],
+        num_candidates: int,
+        language_id: str,
+    ) -> List[AudioCandidate]:
+        """Generate VibeVoice candidates with optional ramping and conservative tail."""
+        language_name = VIBEVOICE_LANGUAGE_CODE_TO_NAME.get(language_id, "English")
+        if language_id not in VIBEVOICE_LANGUAGE_CODE_TO_NAME:
+            logger.warning(
+                f"Unknown language code '{language_id}' for VibeVoice - defaulting to English"
+            )
+
+        raw_tts_params = speaker_config.get("tts_params", {})
+        raw_conservative = speaker_config.get("conservative_candidate", {})
+        conservative_enabled = raw_conservative.get("enabled", False)
+
+        filtered_base = self._filter_params_for_model(raw_tts_params)
+        filtered_conservative = (
+            self._filter_params_for_model(raw_conservative)
+            if conservative_enabled
+            else {}
+        )
+
+        ref_audio = self._vibevoice_reference_audio.get(speaker_id)
+        if ref_audio is None:
+            logger.warning(
+                f"⚠️ VibeVoice reference audio for speaker '{speaker_id}' is not cached - generating silence"
+            )
+            ref_audio = np.zeros(24000, dtype=np.float32)
+
+        base_cfg = float(filtered_base.get("cfg_scale", 1.3))
+        cfg_dev = float(raw_tts_params.get("cfg_scale_max_deviation", 0.0))
+        base_temp = float(filtered_base.get("temperature", 0.95))
+        temp_dev = float(raw_tts_params.get("temperature_max_deviation", 0.0))
+        num_expressive = num_candidates - 1 if conservative_enabled else num_candidates
+        base_seed = self.get_speaker_seed(speaker_id)
+        candidates: List[AudioCandidate] = []
+
+        for i in range(num_candidates):
+            is_conservative = conservative_enabled and (i + 1) == num_candidates
+            params = dict(filtered_base)
+            if is_conservative:
+                params.update(filtered_conservative)
+                candidate_type = "CONSERVATIVE"
+            else:
+                if i > 0 and num_expressive > 1:
+                    ramp_pos = i / max(1, num_expressive - 1)
+                    params["cfg_scale"] = base_cfg + (cfg_dev * ramp_pos)
+                    params["temperature"] = base_temp + (temp_dev * ramp_pos)
+                candidate_type = "EXPRESSIVE"
+
+            candidate_seed = base_seed + (i * 1000) + hash(text) % 10000
+            logger.info(
+                f"VIBEVOICE CAND {i+1}/{num_candidates} (lang={language_name}) "
+                f"({'CONS' if is_conservative else 'EXP'}): "
+                f"cfg_scale={params.get('cfg_scale', 1.3):.3f}, "
+                f"temp={params.get('temperature', 0.95):.3f}, "
+                f"top_p={params.get('top_p', 0.95):.3f}, "
+                f"steps={int(params.get('diffusion_steps', 20))}, "
+                f"use_sampling={bool(params.get('use_sampling', False))}"
+            )
+            audio = self._generate_vibevoice_single(
+                text=text,
+                params=params,
+                reference_audio=ref_audio,
+                attempt_seed=candidate_seed,
+            )
+            candidates.append(
+                AudioCandidate(
+                    chunk_idx=0,
+                    candidate_idx=i,
+                    audio_path=Path(),
+                    audio_tensor=audio,
+                    generation_params={
+                        **params,
+                        "language_id": language_id,
+                        "type": candidate_type,
+                        "seed": candidate_seed,
+                    },
+                )
+            )
 
         return candidates
 
@@ -1210,6 +1421,7 @@ class TTSGenerator:
 
         - Chatterbox (standard/multilingual/turbo): calls prepare_conditionals()
         - Qwen3: builds and caches a voice clone prompt via _prepare_qwen3_voice_clone_prompt()
+        - VibeVoice: loads and caches reference waveform for voice cloning
 
         Args:
             speaker_id: Target speaker ID
@@ -1243,6 +1455,22 @@ class TTSGenerator:
                     logger.debug(f"✅ Qwen3 voice prompt ready for speaker '{actual_speaker_id}'")
                 else:
                     logger.error(f"❌ Failed to build Qwen3 voice prompt for speaker '{actual_speaker_id}'")
+            elif self.is_vibevoice:
+                voice_speed_factor = float(
+                    speaker_config.get("tts_params", {}).get("voice_speed_factor", 1.0)
+                )
+                self._prepare_vibevoice_reference_audio(
+                    actual_speaker_id, audio_path, voice_speed_factor
+                )
+                if actual_speaker_id in self._vibevoice_reference_audio:
+                    self.current_speaker_id = actual_speaker_id
+                    logger.debug(
+                        f"✅ VibeVoice reference audio ready for speaker '{actual_speaker_id}'"
+                    )
+                else:
+                    logger.error(
+                        f"❌ Failed to prepare VibeVoice reference audio for speaker '{actual_speaker_id}'"
+                    )
             else:
                 self.prepare_conditionals(str(audio_path))
                 model_ref = self.model
@@ -1321,9 +1549,17 @@ class TTSGenerator:
                 f"No language defined for speaker '{speaker_id}', using fallback: {language_id}"
             )
 
-        # -- Dispatch to Qwen3 path --
+        # -- Dispatch to model-specific paths --
         if self.is_qwen3:
             return self._generate_qwen3_candidates(
+                text=text,
+                speaker_id=speaker_id,
+                speaker_config=speaker_config,
+                num_candidates=num_candidates,
+                language_id=language_id,
+            )
+        if self.is_vibevoice:
+            return self._generate_vibevoice_candidates(
                 text=text,
                 speaker_id=speaker_id,
                 speaker_config=speaker_config,

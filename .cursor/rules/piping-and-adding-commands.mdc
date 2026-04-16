@@ -1,6 +1,0 @@
----
-description: dont-pipe-or-&&-commands
-globs:
-alwaysApply: true
----
-You may not concat commands in your terminal with &&. You may not add commands with pipe |. Both are prone  to make cursors terminal commands hang for you.
