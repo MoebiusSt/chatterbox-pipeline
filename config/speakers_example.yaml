@@ -1,3 +1,5 @@
+parent: defaults/chatterbox.yaml
+
 job:
   name: switching-speakers
   run-label: example
@@ -43,4 +45,4 @@ generation:
         min_p: 0.08
         top_p: 0.92
 
-# All other settings will be inherited from default_config.yaml
+# All other settings are inherited from defaults/chatterbox.yaml → default_config.yaml

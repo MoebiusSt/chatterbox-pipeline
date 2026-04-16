@@ -318,25 +318,54 @@ QualityScore:   {overall_score, similarity_score, length_score, transcription_sc
 
 ## Configuration System
 
-### Cascading Configuration
-```yaml
-# 1. Default Configuration (config/default_config.yaml)
-default_config:
-  generation:
-    num_candidates: 3
-    temperature: 0.7
+### N-Level Cascading Configuration via `parent:`
 
-# 2. Job Configuration (config/jobs/my_job.yaml)
-job_config:
-  generation:
-    num_candidates: 5  # Override default
-    temperature: 0.8   # Override default
+Each YAML file (except `default_config.yaml` and runtime task snapshots) may declare an
+optional `parent:` field at the top, referencing another config relative to `config/`.
+`ConfigManager._resolve_parent_chain()` walks the chain recursively until a file without
+a `parent:` is reached, then falls back to `default_config.yaml`.
 
-# 3. Task Configuration (generated at runtime)
-task_config:
-  generation:
-    temperature: 0.9  # Override job config
 ```
+default_config.yaml
+    ↑  (parent: default_config.yaml)
+config/defaults/qwen3.yaml
+    ↑  (parent: defaults/qwen3.yaml)
+config/test_qwen3.yaml          ← job config
+    ↑  (runtime snapshot, no parent resolution)
+data/output/test_qwen3/...task_config.yaml
+```
+
+```yaml
+# config/defaults/qwen3.yaml  – model-specific defaults
+parent: default_config.yaml
+
+generation:
+  model_type: qwen3
+  ...
+
+# config/my_job.yaml  – minimal job config
+parent: defaults/qwen3.yaml
+
+job:
+  name: my-qwen3-job
+input:
+  text_file: my-text.txt
+generation:
+  default_speaker: alice
+  speakers:
+    - id: alice
+      reference_audio: alice.wav
+      # tts_params inherited from defaults/qwen3.yaml if omitted
+```
+
+Without a `parent:` field the behavior is identical to the previous 2-level system
+(job.yaml → default_config.yaml).
+
+**Pre-built model defaults** (`config/defaults/`):
+- `chatterbox.yaml` — standard / multilingual
+- `turbo.yaml`      — ChatterboxTurboTTS
+- `qwen3.yaml`      — Qwen3 TTS
+- `vibevoice.yaml`  — VibeVoice (all variants)
 
 ### Critical Parameters
 ```yaml

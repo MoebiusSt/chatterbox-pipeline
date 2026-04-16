@@ -1,3 +1,5 @@
+parent: defaults/chatterbox.yaml
+
 job:
   name: test_multilingual
   run-label: multilingual-test

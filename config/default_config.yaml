@@ -62,9 +62,9 @@ generation:
         # - exaggeration / cfg_weight / min_p are not supported and will be silently skipped
         #
         # VibeVoice models (vibevoice / vibevoice_1_5b / vibevoice_q4):
-        # - cfg_scale                default 1.3  | MIN value; optional RAMP-UP with cfg_scale_max_deviation
-        # - cfg_scale_max_deviation               | ramp UP by this amount over candidates
-        # - temperature              default 0.95 | MIN value; RAMP-UP with temperature_max_deviation (ignored if use_sampling=false)
+        # - cfg_scale                default 1.45 | MAX on first expressive candidate; RAMP-DOWN with cfg_scale_max_deviation (like exaggeration)
+        # - cfg_scale_max_deviation               | subtract over candidates (later = lower cfg_scale as temperature rises)
+        # - temperature              default 0.95 | MIN on first expressive; RAMP-UP with temperature_max_deviation (ignored if use_sampling=false)
         # - top_p                    default 0.95 | only used when use_sampling=true; otherwise ignored
         # - diffusion_steps          default 20   | diffusion denoising steps
         # - voice_speed_factor       default 1.0  | adjusts reference voice speed (0.8..1.2)

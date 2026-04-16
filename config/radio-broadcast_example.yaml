@@ -1,3 +1,5 @@
+parent: defaults/chatterbox.yaml
+
 job:
   name: radio-broadcast
   run-label: war-of-the-worlds

@@ -735,7 +735,13 @@ class TTSGenerator:
         num_candidates: int,
         language_id: str,
     ) -> List[AudioCandidate]:
-        """Generate VibeVoice candidates with optional ramping and conservative tail."""
+        """Generate VibeVoice candidates with optional ramping and conservative tail.
+
+        Across expressive candidates, ``temperature`` ramps UP (same idea as Chatterbox
+        temperature). ``cfg_scale`` ramps DOWN from the configured base (same idea as
+        Chatterbox exaggeration): higher CFG on early candidates, lower as temperature
+        rises, to avoid both knobs pushing toward wilder output at once.
+        """
         language_name = VIBEVOICE_LANGUAGE_CODE_TO_NAME.get(language_id, "English")
         if language_id not in VIBEVOICE_LANGUAGE_CODE_TO_NAME:
             logger.warning(
@@ -775,9 +781,11 @@ class TTSGenerator:
                 params.update(filtered_conservative)
                 candidate_type = "CONSERVATIVE"
             else:
-                if i > 0 and num_expressive > 1:
+                if num_expressive > 1:
                     ramp_pos = i / max(1, num_expressive - 1)
-                    params["cfg_scale"] = base_cfg + (cfg_dev * ramp_pos)
+                    # cfg_scale: base is MAX for first expressive; ramp DOWN (like exaggeration).
+                    params["cfg_scale"] = max(1.0, base_cfg - (cfg_dev * ramp_pos))
+                    # temperature: ramp UP
                     params["temperature"] = base_temp + (temp_dev * ramp_pos)
                 candidate_type = "EXPRESSIVE"
 

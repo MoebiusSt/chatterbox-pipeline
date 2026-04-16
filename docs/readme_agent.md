@@ -220,14 +220,42 @@ TTSGenerator.generate_candidates_with_speaker() → automatic language_id from s
 
 ## Configuration System
 
-### Cascading Configuration (3-Level Inheritance)
+### Cascading Configuration (N-Level Inheritance via `parent:`)
 ```yaml
-default_config.yaml          # Base template
-    ↓
-job_config.yaml             # Job-specific overrides  
-    ↓
-task_config.yaml            # Runtime task instance
+default_config.yaml                    # Root base template (no parent)
+    ↑
+config/defaults/chatterbox.yaml        # Model-specific defaults (parent: default_config.yaml)
+    ↑
+job_config.yaml                        # Job-specific overrides (parent: defaults/chatterbox.yaml)
+    ↑
+task_config.yaml                       # Runtime snapshot (no parent resolution)
 ```
+
+Any YAML file (except `default_config.yaml` itself and task snapshots) may declare an
+optional `parent:` key at the top level, pointing to another config file relative to the
+`config/` directory:
+
+```yaml
+parent: defaults/qwen3.yaml    # optional; path relative to config/
+
+job:
+  name: my-qwen3-job
+  ...
+```
+
+When loading a job config, `ConfigManager` resolves the full parent chain recursively
+until a file without a `parent:` key is reached, which then falls back to
+`default_config.yaml`.  Circular references and chains longer than 10 hops are detected
+at load time and raise a clear error.
+
+Without a `parent:` field the behavior is identical to the previous 2-level system
+(job → default_config.yaml).
+
+**Pre-built model defaults** in `config/defaults/`:
+- `defaults/chatterbox.yaml` — standard / multilingual Chatterbox models
+- `defaults/turbo.yaml`      — ChatterboxTurboTTS
+- `defaults/qwen3.yaml`      — Qwen3 TTS (1.7B)
+- `defaults/vibevoice.yaml`  — VibeVoice (all three size variants)
 
 ### Critical Parameters
 ```yaml

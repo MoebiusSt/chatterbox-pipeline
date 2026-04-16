@@ -1,3 +1,5 @@
+parent: defaults/chatterbox.yaml
+
 job:
   name: voice_test
   run-label: # empty by default, use it to organise the tasks/files/folders

@@ -440,6 +440,79 @@ class ConfigManager:
         )
         file_handle.write(yaml_str)
 
+    def _resolve_parent_chain(
+        self,
+        config_data: Dict[str, Any],
+        origin_path: Path,
+        _visited: Optional[set] = None,
+        _depth: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Recursively resolve the parent chain for a config file.
+
+        Walks the chain of ``parent:`` references until either the root
+        ``default_config.yaml`` is reached (no ``parent:`` key) or a file
+        explicitly references ``default_config.yaml`` itself.
+
+        Args:
+            config_data: Already-loaded YAML dict of the *current* config.
+            origin_path: Filesystem path of *current* config (for error messages).
+            _visited: Internal set of resolved paths for cycle detection.
+            _depth: Internal recursion depth counter.
+
+        Returns:
+            Fully-merged base config (parent chain collapsed, ``parent`` key
+            stripped) to use as the ``default_config`` argument for the
+            caller's ``merge_configs`` call.
+
+        Raises:
+            RuntimeError: On circular references or chain depth > 10.
+            FileNotFoundError: When a referenced parent file does not exist.
+        """
+        MAX_DEPTH = 10
+        if _depth > MAX_DEPTH:
+            raise RuntimeError(
+                f"Parent config chain exceeds maximum depth {MAX_DEPTH}. "
+                f"Check for unintended deep nesting starting from {origin_path}."
+            )
+
+        if _visited is None:
+            _visited = set()
+
+        parent_ref = config_data.get("parent")
+        if parent_ref is None:
+            # No parent declared → fall back to the global default_config.yaml
+            return self.load_default_config()
+
+        parent_path = (self.config_dir / str(parent_ref)).resolve()
+
+        if parent_path in _visited:
+            raise RuntimeError(
+                f"Circular parent reference detected: {parent_path} "
+                f"is already in the resolution chain from {origin_path}."
+            )
+        _visited.add(parent_path)
+
+        # Check whether the parent IS default_config.yaml itself (terminal case)
+        if parent_path == self.default_config_path.resolve():
+            return self.load_default_config()
+
+        if not parent_path.exists():
+            raise FileNotFoundError(
+                f"Parent config not found: '{parent_path}' "
+                f"(referenced from '{origin_path}')."
+            )
+
+        logger.debug(f"Resolving parent chain: {origin_path.name} -> {parent_path.name} (depth={_depth})")
+
+        parent_config = self.load_job_config(parent_path)
+        parent_base = self._resolve_parent_chain(
+            parent_config, parent_path, _visited, _depth + 1
+        )
+        merged = self.merge_configs(parent_config, parent_base)
+        merged.pop("parent", None)
+        return merged
+
     def load_default_config(self) -> Dict[str, Any]:
         """Load the default pipeline configuration."""
         if "default" not in self._config_cache:
@@ -463,42 +536,55 @@ class ConfigManager:
         self, config_path: Optional[Path] = None
     ) -> Dict[str, Any]:
         """
-        Load configuration with true 3-level cascading logic:
-        default_config.yaml → job_config.yaml → task_config.yaml
+        Load configuration with N-level cascading logic via ``parent:`` references.
+
+        Resolution order (from lowest to highest priority):
+            default_config.yaml
+                ↑ (optional intermediate parent chain via ``parent:`` key)
+            job_config.yaml  (or any parent in the chain)
+                ↑
+            task_config.yaml  (runtime snapshot – no parent resolution)
 
         Each level only overrides values that are explicitly defined.
         Missing values automatically fall through to the next higher level.
 
+        The optional top-level ``parent:`` key in any YAML file designates a
+        parent config path relative to ``config/``.  The chain is resolved
+        recursively until a file without a ``parent:`` is reached (which then
+        falls back to ``default_config.yaml``).  Circular references and chains
+        longer than 10 hops are detected and raise RuntimeError / FileNotFoundError.
+
         Args:
-            config_path: Path to job-config or task-config file
+            config_path: Path to job-config or task-config file.  ``None``
+                returns the bare default config.
 
         Returns:
-            Merged configuration dictionary with sanitized job identifiers
+            Merged configuration dictionary with sanitized job identifiers and
+            the ``parent`` key stripped from the result.
         """
-        # Start with default config (complete base configuration)
-        config = self.load_default_config()
-
         if config_path is None:
-            # Apply sanitization to default config
-            return self._apply_path_sanitization(config)
+            return self._apply_path_sanitization(self.load_default_config())
 
         if self.is_task_config(config_path):
-            # 2-level cascade for task configs: default → task
-            # Task configs should be self-contained and not search for parent job configs
-            # This prevents the alphabetical sorting problem (t10.yaml vs t4.yaml)
-
-            # Load task-config and merge directly with default
+            # Task-configs are self-contained runtime snapshots.
+            # They are NOT subject to parent-chain resolution to avoid
+            # alphabetical-sorting ambiguity and to keep them reproducible.
             task_config_data = self.load_job_config(config_path)
+            config = self.load_default_config()
             config = self.merge_configs(task_config_data, config)
             logger.debug(
-                f"Merged task config: {config_path} (no parent job config search)"
+                f"Merged task config: {config_path} (no parent chain resolution)"
             )
-
         else:
-            # 2-level cascade: default → job
+            # Job-configs: resolve the full parent chain first, then merge the
+            # job config on top.
             job_config = self.load_job_config(config_path)
-            config = self.merge_configs(job_config, config)
-            logger.debug(f"Merged job config: {config_path}")
+            base = self._resolve_parent_chain(job_config, config_path)
+            config = self.merge_configs(job_config, base)
+            logger.debug(f"Merged job config with parent chain: {config_path}")
+
+        # Strip the parent metadata key – it must not appear in runtime config
+        config.pop("parent", None)
 
         # Apply path sanitization to final merged config
         # This converts underscores to hyphens in job: name and job: run-label
