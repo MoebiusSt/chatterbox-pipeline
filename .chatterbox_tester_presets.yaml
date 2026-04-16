@@ -79,8 +79,8 @@ hans-juergen-lenhart_DE.wav:
   top_p: 1.0
 hans-juergen-lenhart_DE.wav::vibevoice:
   temperature: 1.15
-  top_p: 0.99
-  cfg_scale: 1.3
+  top_p: 0.97
+  cfg_scale: 1.35
   diffusion_steps: 20.0
   voice_speed_factor: 1.0
   use_sampling: true

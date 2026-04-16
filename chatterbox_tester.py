@@ -29,9 +29,10 @@ import tkinter as tk
 from tkinter import ttk
 import os
 import random
+import re
 import sys
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 import threading
 import time
 import numpy as np
@@ -50,6 +51,38 @@ import pygame.mixer as mixer
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from generation.model_cache import ChatterboxModelCache
+
+
+def _maybe_suppress_transformers_console_noise() -> None:
+    """Reduce HuggingFace tokenizer/model repr noise (e.g. added_tokens_decoder dumps). Re-enable with
+    CHATTERBOX_TESTER_VERBOSE_TRANSFORMERS=1 for debugging."""
+    if os.environ.get("CHATTERBOX_TESTER_VERBOSE_TRANSFORMERS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return
+    import logging
+
+    for name in (
+        "transformers",
+        "transformers.tokenization_utils_base",
+        "transformers.modeling_utils",
+        "transformers.configuration_utils",
+        "huggingface_hub",
+        "huggingface_hub.file_download",
+        "tokenizers",
+    ):
+        logging.getLogger(name).setLevel(logging.ERROR)
+    try:
+        from transformers import logging as tr_logging
+
+        tr_logging.set_verbosity_error()
+    except Exception:
+        pass
+
+
+_maybe_suppress_transformers_console_noise()
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +124,53 @@ _VIBEVOICE_TESTER_ATTN: str = os.environ.get(
 ).strip().lower()
 if _VIBEVOICE_TESTER_ATTN not in ("auto", "flash_attention_2", "sdpa", "eager"):
     _VIBEVOICE_TESTER_ATTN = ""
+
+_VIBEVOICE_BRACKET_LINE = re.compile(r"^\s*\[(\d+)\]\s*:\s*(.*)$")
+
+
+def _vibevoice_text_has_bracket_speaker_lines(text: str) -> bool:
+    for line in text.splitlines():
+        if line.strip() and _VIBEVOICE_BRACKET_LINE.match(line):
+            return True
+    return False
+
+
+def _vibevoice_validate_multispeaker_bracket_text(text: str) -> int:
+    """Require every non-empty line to be [N]: ...; return K = max speaker id."""
+    ids: List[int] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        m = _VIBEVOICE_BRACKET_LINE.match(line)
+        if not m:
+            raise RuntimeError(
+                "VibeVoice multi-speaker: every non-empty line must start with [N]: ..."
+            )
+        ids.append(int(m.group(1)))
+    if not ids:
+        raise RuntimeError("VibeVoice multi-speaker: no [N]: lines found")
+    uniq = sorted(set(ids))
+    k = max(uniq)
+    expected = list(range(1, k + 1))
+    if uniq != expected:
+        raise RuntimeError(
+            "VibeVoice multi-speaker: speaker numbers must be sequential 1..K without gaps "
+            f"(found speakers {uniq})"
+        )
+    return k
+
+
+def _vibevoice_bracket_lines_to_speaker_script(text: str) -> str:
+    """Map [N]: lines to Speaker N: for VibeVoiceProcessor._parse_script."""
+    out: List[str] = []
+    for line in text.splitlines():
+        m = _VIBEVOICE_BRACKET_LINE.match(line) if line.strip() else None
+        if m:
+            n, rest = int(m.group(1)), m.group(2).strip()
+            out.append(f"Speaker {n}: {rest}")
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 class ChatterboxTester:
@@ -241,6 +321,26 @@ class ChatterboxTester:
         txt = p.with_suffix(".txt")
         return txt if txt.exists() else None
 
+    def _reference_audio_full_path(self, filename: str) -> str:
+        return str(
+            Path(__file__).parent / "data" / "input" / "reference_audio" / filename
+        )
+
+    def _load_vibevoice_reference_np(self, wav_path: str) -> np.ndarray:
+        """Load mono 24 kHz reference and apply voice_speed_factor (shared for all speakers)."""
+        import librosa
+
+        ref_audio_np, _ = librosa.load(wav_path, sr=24000, mono=True)
+        speed_factor = float(self.param_vars["voice_speed_factor"].get())
+        if speed_factor != 1.0:
+            target_len = int(len(ref_audio_np) / speed_factor)
+            ref_audio_np = np.interp(
+                np.linspace(0, len(ref_audio_np) - 1, target_len),
+                np.arange(len(ref_audio_np)),
+                ref_audio_np,
+            ).astype(np.float32)
+        return ref_audio_np
+
     def _refresh_reference_audio_list(self):
         current = self.ref_audio_var.get()
         self.reference_audio_files = self._get_reference_audio_files()
@@ -249,6 +349,18 @@ class ChatterboxTester:
             self.ref_audio_var.set(current)
         elif self.reference_audio_files:
             self.ref_audio_var.set(self.reference_audio_files[0])
+        vv_vals: List[str] = [""] + list(self.reference_audio_files)
+        for var, dd in (
+            (self.ref_audio_var_2, self.vv_extra_dropdowns[0]),
+            (self.ref_audio_var_3, self.vv_extra_dropdowns[1]),
+            (self.ref_audio_var_4, self.vv_extra_dropdowns[2]),
+        ):
+            cur = var.get()
+            dd.config(values=vv_vals)
+            if cur in vv_vals:
+                var.set(cur)
+            else:
+                var.set("")
         self._update_load_button_state()
         self._update_ref_text_indicator()
         print(f"Reference audio list refreshed: {len(self.reference_audio_files)} files found")
@@ -337,6 +449,38 @@ class ChatterboxTester:
             command=self._on_save_preset, bg="#f0f0f0", cursor="hand2"
         )
         self.save_preset_btn.pack(side=tk.LEFT, padx=2)
+
+        # ---- VibeVoice extra speaker refs (2–4): dropdown only, no Load/Save ----------
+        self.vv_extra_ref_frame = tk.Frame(self.root)
+        # Packed from _update_model_ui when a VibeVoice model is selected.
+        vv_extra_values: List[str] = [""] + list(self.reference_audio_files)
+        self.ref_audio_var_2 = tk.StringVar(value="")
+        self.ref_audio_var_3 = tk.StringVar(value="")
+        self.ref_audio_var_4 = tk.StringVar(value="")
+        self.vv_extra_dropdowns: List[ttk.Combobox] = []
+        for label, var in (
+            ("Speaker 2 ref:", self.ref_audio_var_2),
+            ("Speaker 3 ref:", self.ref_audio_var_3),
+            ("Speaker 4 ref:", self.ref_audio_var_4),
+        ):
+            row = tk.Frame(self.vv_extra_ref_frame)
+            row.pack(fill=tk.X, pady=2)
+            tk.Label(row, text=label, font=("Arial", 10), width=14, anchor=tk.W).pack(
+                side=tk.LEFT, padx=(0, 6)
+            )
+            cb = ttk.Combobox(
+                row,
+                textvariable=var,
+                values=vv_extra_values,
+                state="readonly",
+                font=("Arial", 12),
+            )
+            cb.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            cb.bind(
+                "<<ComboboxSelected>>",
+                lambda e: (self._on_text_change(), self._mark_needs_refresh()),
+            )
+            self.vv_extra_dropdowns.append(cb)
 
         # ---- ref_text indicator (always packed, text set by _update_ref_text_indicator)
         self.ref_text_label = tk.Label(
@@ -631,8 +775,10 @@ class ChatterboxTester:
 
         if model in _VIBEVOICE_UI_MODELS:
             self.sampling_frame.pack(fill=tk.X, padx=10, pady=(0, 3))
+            self.vv_extra_ref_frame.pack(fill=tk.X, padx=10, pady=(0, 4))
         else:
             self.sampling_frame.pack_forget()
+            self.vv_extra_ref_frame.pack_forget()
 
         text_limit = self._get_text_limit()
         self.text_limit_label.config(text=f"Text to speak (max. {text_limit} characters):")
@@ -687,6 +833,18 @@ class ChatterboxTester:
 
             if settings.get('reference_audio') and settings['reference_audio'] in self.reference_audio_files:
                 self.ref_audio_var.set(settings['reference_audio'])
+            for key, var in (
+                ('reference_audio_2', self.ref_audio_var_2),
+                ('reference_audio_3', self.ref_audio_var_3),
+                ('reference_audio_4', self.ref_audio_var_4),
+            ):
+                v = settings.get(key, '')
+                if not v:
+                    var.set('')
+                elif v in self.reference_audio_files:
+                    var.set(v)
+                else:
+                    var.set('')
             if settings.get('model_type'):
                 self.model_var.set(settings['model_type'])
             if settings.get('language'):
@@ -758,6 +916,9 @@ class ChatterboxTester:
 
             settings = {
                 'reference_audio': self.ref_audio_var.get(),
+                'reference_audio_2': self.ref_audio_var_2.get(),
+                'reference_audio_3': self.ref_audio_var_3.get(),
+                'reference_audio_4': self.ref_audio_var_4.get(),
                 'model_type':      self.model_var.get(),
                 'language':        self.lang_var.get(),
                 'use_sampling':    self.use_sampling_var.get(),
@@ -959,6 +1120,9 @@ class ChatterboxTester:
     def _get_current_state(self) -> Dict[str, Any]:
         return {
             'reference_audio': self.ref_audio_var.get(),
+            'reference_audio_2': self.ref_audio_var_2.get(),
+            'reference_audio_3': self.ref_audio_var_3.get(),
+            'reference_audio_4': self.ref_audio_var_4.get(),
             'model_type':      self.model_var.get(),
             'language':        self.lang_var.get(),
             'seed':            self.seed_var.get(),
@@ -994,6 +1158,18 @@ class ChatterboxTester:
         try:
             if state.get('reference_audio') and state['reference_audio'] in self.reference_audio_files:
                 self.ref_audio_var.set(state['reference_audio'])
+            for key, var in (
+                ('reference_audio_2', self.ref_audio_var_2),
+                ('reference_audio_3', self.ref_audio_var_3),
+                ('reference_audio_4', self.ref_audio_var_4),
+            ):
+                v = state.get(key, '')
+                if not v:
+                    var.set('')
+                elif v in self.reference_audio_files:
+                    var.set(v)
+                else:
+                    var.set('')
             if state.get('model_type'):
                 old_model = self.model_var.get()
                 self.model_var.set(state['model_type'])
@@ -1159,6 +1335,38 @@ class ChatterboxTester:
     # Generation                                                            #
     # ------------------------------------------------------------------ #
 
+    def _print_generation_summary(
+        self,
+        *,
+        speaker_names: List[str],
+        num_unique_speakers: int,
+        num_segments: int,
+        prefilling_tokens: Optional[int],
+        generated_tokens: Optional[int],
+        total_tokens: Optional[int],
+        generation_seconds: float,
+        audio_duration_seconds: float,
+    ) -> None:
+        """Print a one-shot text summary after a successful generate (all models)."""
+        print(f"Speaker names: {speaker_names!r}")
+        print(f"Number of unique speakers: {num_unique_speakers}")
+        print(f"Number of segments: {num_segments}")
+        if prefilling_tokens is not None and generated_tokens is not None and total_tokens is not None:
+            print(f"Prefilling tokens: {prefilling_tokens}")
+            print(f"Generated tokens: {generated_tokens}")
+            print(f"Total tokens: {total_tokens}")
+        else:
+            print("Prefilling tokens: N/A")
+            print("Generated tokens: N/A")
+            print("Total tokens: N/A")
+        print(f"Generation time: {generation_seconds:.2f} seconds")
+        print(f"Audio duration: {audio_duration_seconds:.2f} seconds")
+        if audio_duration_seconds > 0:
+            rtf = generation_seconds / audio_duration_seconds
+            print(f"RTF (Real Time Factor): {rtf:.2f}x")
+        else:
+            print("RTF (Real Time Factor): N/A")
+
     def _on_refresh(self):
         if self.is_generating:
             return
@@ -1210,6 +1418,14 @@ class ChatterboxTester:
             if current_model is None:
                 raise RuntimeError("No TTS model loaded")
 
+            gen_elapsed = 0.0
+            sum_speaker_names: List[str] = []
+            sum_unique_speakers = 1
+            sum_segments = 1
+            sum_prefill: Optional[int] = None
+            sum_gen_tok: Optional[int] = None
+            sum_total_tok: Optional[int] = None
+
             # ---- Qwen3 voice cloning ------------------------------------
             if model_ui == "qwen3":
                 lang_key  = self.lang_var.get()
@@ -1232,6 +1448,7 @@ class ChatterboxTester:
                 }
                 print(f"🎙️ Qwen3 | lang={lang_name} | x_vec_only={x_vec_only} | {gen_kwargs}")
 
+                _t0 = time.perf_counter()
                 wavs, sr = current_model.generate_voice_clone(
                     text=text,
                     language=lang_name,
@@ -1240,8 +1457,12 @@ class ChatterboxTester:
                     x_vector_only_mode=x_vec_only,
                     **gen_kwargs,
                 )
+                gen_elapsed = time.perf_counter() - _t0
                 audio_np = wavs[0].astype(np.float32)
                 self.sample_rate = int(sr)
+                sum_speaker_names = [Path(ref_audio_file).stem] if ref_audio_file else []
+                sum_unique_speakers = 1
+                sum_segments = 1
 
             # ---- VibeVoice-Large-Q8 --------------------------------------
             elif model_ui in _VIBEVOICE_UI_MODELS:
@@ -1249,34 +1470,60 @@ class ChatterboxTester:
                     raise RuntimeError("VibeVoice processor not available on loaded model")
                 processor = current_model._vv_processor
 
-                if not ref_audio_file or not os.path.exists(ref_audio_path):
-                    raise RuntimeError("VibeVoice requires a valid reference audio file")
+                ref_vars = (
+                    self.ref_audio_var,
+                    self.ref_audio_var_2,
+                    self.ref_audio_var_3,
+                    self.ref_audio_var_4,
+                )
 
-                import librosa
+                vv_k = 1
+                if _vibevoice_text_has_bracket_speaker_lines(text):
+                    vv_k = _vibevoice_validate_multispeaker_bracket_text(text)
+                    script_for_processor = _vibevoice_bracket_lines_to_speaker_script(text)
+                    voice_samples_arg: List[np.ndarray] = []
+                    for i in range(vv_k):
+                        fn = ref_vars[i].get().strip()
+                        if not fn:
+                            raise RuntimeError(
+                                f"VibeVoice multi-speaker: reference audio for speaker {i + 1} "
+                                "is required (select a file in the corresponding dropdown)"
+                            )
+                        p = self._reference_audio_full_path(fn)
+                        if not os.path.exists(p):
+                            raise RuntimeError(
+                                f"VibeVoice multi-speaker: reference file not found: {fn}"
+                            )
+                        voice_samples_arg.append(self._load_vibevoice_reference_np(p))
+                else:
+                    if not ref_audio_file or not os.path.exists(ref_audio_path):
+                        raise RuntimeError("VibeVoice requires a valid reference audio file")
+                    ref_audio_np = self._load_vibevoice_reference_np(ref_audio_path)
+                    script_for_processor = f"Speaker 1: {' '.join(text.split())}"
+                    voice_samples_arg = [ref_audio_np]
 
-                ref_audio_np, _ = librosa.load(ref_audio_path, sr=24000, mono=True)
-                speed_factor = float(self.param_vars["voice_speed_factor"].get())
-                if speed_factor != 1.0:
-                    target_len = int(len(ref_audio_np) / speed_factor)
-                    ref_audio_np = np.interp(
-                        np.linspace(0, len(ref_audio_np) - 1, target_len),
-                        np.arange(len(ref_audio_np)),
-                        ref_audio_np,
-                    ).astype(np.float32)
-
-                # VibeVoice expects "Speaker N: ..." labels.
-                formatted_text = f"Speaker 1: {' '.join(text.split())}"
-                inputs = processor(
-                    [formatted_text],
-                    voice_samples=[[ref_audio_np]],
+                vv_batch = processor(
+                    [script_for_processor],
+                    voice_samples=voice_samples_arg,
                     return_tensors="pt",
                     return_attention_mask=True,
                 )
+                parsed_scripts_batch = vv_batch.get("parsed_scripts")
                 model_device = next(current_model.parameters()).device
                 inputs = {
-                    k: v.to(model_device) if isinstance(v, torch.Tensor) else v
-                    for k, v in inputs.items()
+                    kk: v.to(model_device) if isinstance(v, torch.Tensor) else v
+                    for kk, v in vv_batch.items()
                 }
+                prefill_tokens = int(inputs["input_ids"].shape[-1])
+
+                sum_speaker_names = [
+                    Path(ref_vars[i].get().strip()).stem for i in range(vv_k)
+                ]
+                sum_unique_speakers = vv_k
+                if parsed_scripts_batch and len(parsed_scripts_batch) > 0 and parsed_scripts_batch[0]:
+                    sum_segments = len(parsed_scripts_batch[0])
+                else:
+                    sum_segments = 1
 
                 current_model.set_ddpm_inference_steps(
                     int(self.param_vars["diffusion_steps"].get())
@@ -1288,6 +1535,7 @@ class ChatterboxTester:
                     "cfg_scale": float(self.param_vars["cfg_scale"].get()),
                     "max_new_tokens": None,
                     "do_sample": use_sampling,
+                    "show_progress_bar": False,
                 }
                 if use_sampling:
                     gen_kwargs["temperature"] = float(self.param_vars["temperature"].get())
@@ -1297,11 +1545,18 @@ class ChatterboxTester:
                 # Transformers omits TemperatureLogitsWarper when temperature==1.0 and TopPLogitsWarper when top_p>=1.0.
                 print(f"🎙️ VibeVoice | {gen_kwargs}")
 
+                _t0 = time.perf_counter()
                 with torch.no_grad():
                     output = current_model.generate(**inputs, **gen_kwargs)
+                gen_elapsed = time.perf_counter() - _t0
 
                 if not hasattr(output, "speech_outputs") or not output.speech_outputs:
                     raise RuntimeError("VibeVoice generation returned no speech outputs")
+
+                total_tok = int(output.sequences.shape[-1])
+                sum_prefill = prefill_tokens
+                sum_gen_tok = total_tok - prefill_tokens
+                sum_total_tok = total_tok
 
                 speech_outputs = output.speech_outputs
                 audio_tensor = (
@@ -1325,11 +1580,16 @@ class ChatterboxTester:
                     "top_k":              int(self.param_vars["top_k"].get()),
                 }
                 print(f"⚡ Turbo | {params}")
+                _t0 = time.perf_counter()
                 audio_tensor = current_model.generate(text, **params)
+                gen_elapsed = time.perf_counter() - _t0
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
                             else audio_tensor).astype(np.float32)
                 self.sample_rate = 24000
+                sum_speaker_names = [Path(ref_audio_file).stem] if ref_audio_file else []
+                sum_unique_speakers = 1
+                sum_segments = 1
 
             # ---- Chatterbox Multilingual ---------------------------------
             elif model_ui == "multilanguage":
@@ -1344,11 +1604,16 @@ class ChatterboxTester:
                     "min_p":              self.param_vars["min_p"].get(),
                     "top_p":              self.param_vars["top_p"].get(),
                 }
+                _t0 = time.perf_counter()
                 audio_tensor = current_model.generate(text, language_id=language_id, **params)
+                gen_elapsed = time.perf_counter() - _t0
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
                             else audio_tensor).astype(np.float32)
                 self.sample_rate = 24000
+                sum_speaker_names = [Path(ref_audio_file).stem] if ref_audio_file else []
+                sum_unique_speakers = 1
+                sum_segments = 1
 
             # ---- Chatterbox Classic (standard) ---------------------------
             else:
@@ -1361,11 +1626,16 @@ class ChatterboxTester:
                     "min_p":              self.param_vars["min_p"].get(),
                     "top_p":              self.param_vars["top_p"].get(),
                 }
+                _t0 = time.perf_counter()
                 audio_tensor = current_model.generate(text, **params)
+                gen_elapsed = time.perf_counter() - _t0
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
                             else audio_tensor).astype(np.float32)
                 self.sample_rate = 24000
+                sum_speaker_names = [Path(ref_audio_file).stem] if ref_audio_file else []
+                sum_unique_speakers = 1
+                sum_segments = 1
 
             # ---- Common post-processing ----------------------------------
             if audio_np.ndim == 2:
@@ -1384,6 +1654,17 @@ class ChatterboxTester:
             sf.write(self.temp_audio_file, audio_int16, self.sample_rate)
 
             self.audio_duration = len(audio_int16) / self.sample_rate
+
+            self._print_generation_summary(
+                speaker_names=sum_speaker_names if sum_speaker_names else ["(none)"],
+                num_unique_speakers=sum_unique_speakers,
+                num_segments=sum_segments,
+                prefilling_tokens=sum_prefill,
+                generated_tokens=sum_gen_tok,
+                total_tokens=sum_total_tok,
+                generation_seconds=gen_elapsed,
+                audio_duration_seconds=self.audio_duration,
+            )
 
             if self.update_timer:
                 self.root.after_cancel(self.update_timer)
@@ -1809,6 +2090,14 @@ class ChatterboxTester:
         elif model_ui in _VIBEVOICE_UI_MODELS:
             header += "# Language: auto-detected by VibeVoice\n"
             header += f"# use_sampling: {self.use_sampling_var.get()}\n"
+            for spk_i, var in (
+                (2, self.ref_audio_var_2),
+                (3, self.ref_audio_var_3),
+                (4, self.ref_audio_var_4),
+            ):
+                extra = var.get().strip()
+                if extra:
+                    header += f"# Reference Audio (speaker {spk_i}): {extra}\n"
 
         header += f"# Seed: {seed}\n\n"
         header += f"# Text:\n# {self.text_widget.get('1.0', tk.END).strip()}\n\n"
