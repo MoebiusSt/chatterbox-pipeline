@@ -86,15 +86,13 @@ class AssemblyHandler:
                                 score = 0.0
                                 if isinstance(cand_val, dict):
                                     # Prefer new final_selection_score, fallback to legacy scores
-                                    score = float(
-                                        cand_val.get(
-                                            "final_selection_score",
-                                            cand_val.get(
-                                                "overall_quality_score",
-                                                cand_val.get("final_score", 0.0),
-                                            ),
-                                        )
+                                    raw_score = (
+                                        cand_val.get("final_selection_score")
+                                        or cand_val.get("overall_quality_score")
+                                        or cand_val.get("final_score")
+                                        or 0.0
                                     )
+                                    score = float(raw_score)
                                 if score > best_score:
                                     best_score = score
                                     best_idx = cand_idx_int

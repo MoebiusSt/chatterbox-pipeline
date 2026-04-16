@@ -1,4 +1,4 @@
-parent: defaults/chatterbox.yaml
+parent: defaults/chatterbox_multi.yaml
 
 job:
   name: test_multilingual
@@ -6,16 +6,6 @@ job:
 
 input:
   text_file: multilingual_example.txt     # small test file
-
-preprocessing:
-  enabled: true
-  normalize_line_endings: true
-
-chunking:
-  target_chunk_limit: 380
-  max_chunk_limit: 460
-  min_chunk_length: 80
-  spacy_model: en_core_web_sm
 
 generation:
   num_candidates: 3

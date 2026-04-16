@@ -1,14 +1,10 @@
-parent: defaults/chatterbox.yaml
+parent: defaults/chatterbox_std.yaml
 
 job:
   name: switching-speakers
   run-label: example
 input:
   text_file: speakers_example.txt
-chunking:
-  target_chunk_limit: 380
-  max_chunk_limit: 460
-  min_chunk_length: 80
 generation:
   num_candidates: 2
   max_retries: 1
@@ -45,4 +41,4 @@ generation:
         min_p: 0.08
         top_p: 0.92
 
-# All other settings are inherited from defaults/chatterbox.yaml → default_config.yaml
+# All other settings are inherited from defaults/chatterbox_std.yaml → default_config.yaml

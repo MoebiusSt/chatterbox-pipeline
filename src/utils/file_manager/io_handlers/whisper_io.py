@@ -306,6 +306,10 @@ class WhisperIOHandler:
                 # Add top-level fields for median calculation compatibility
                 "overall_quality_score": overall_score,
                 "similarity_score": individual_scores.get("similarity_score", 0.0),
+                # Record which ASR backend produced the transcription so
+                # whisper_metrics.json can be inspected without loading the
+                # individual per-candidate files.
+                "asr_backend": result.get("asr_backend"),
             }
 
             # Optional prosody block
@@ -369,6 +373,40 @@ class WhisperIOHandler:
                     metrics.pop("selected_candidates", None)
                 except Exception:
                     pass
+
+            # Recompute best_candidate / best_score for the affected chunk so
+            # the aggregated metrics reflect the current candidate pool. Prefer
+            # ``final_selection_score`` (from prosody/selection) when present,
+            # otherwise fall back to ``final_score``/``overall_quality_score``.
+            try:
+                chunk_data = metrics["chunks"][chunk_key]
+                cand_map = chunk_data.get("candidates", {}) or {}
+
+                def _score_for(cand: dict) -> float:
+                    for key in ("final_selection_score", "final_score", "overall_quality_score"):
+                        v = cand.get(key)
+                        if isinstance(v, (int, float)):
+                            return float(v)
+                    return 0.0
+
+                valid_items = [
+                    (int(ck), cv)
+                    for ck, cv in cand_map.items()
+                    if isinstance(cv, dict) and cv.get("is_valid", False)
+                ]
+                # Fallback: if none are explicitly valid, rank all candidates
+                ranking_items = valid_items or [
+                    (int(ck), cv) for ck, cv in cand_map.items() if isinstance(cv, dict)
+                ]
+                if ranking_items:
+                    best_idx, best_cand = max(ranking_items, key=lambda t: _score_for(t[1]))
+                    chunk_data["best_candidate"] = best_idx
+                    chunk_data["best_score"] = _score_for(best_cand)
+                else:
+                    chunk_data["best_candidate"] = None
+                    chunk_data["best_score"] = 0.0
+            except Exception as e:
+                logger.debug(f"Failed to recompute best_candidate for chunk {chunk_key}: {e}")
 
             # Sort chunks and candidates for stable, readable output
             try:

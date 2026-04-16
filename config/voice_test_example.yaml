@@ -1,4 +1,4 @@
-parent: defaults/chatterbox.yaml
+parent: defaults/chatterbox_std.yaml
 
 job:
   name: voice_test
@@ -6,17 +6,6 @@ job:
 
 input:
   text_file: voice_test_example.txt     # txt-file in data/input/texts folder
-
-preprocessing:
-  enabled: true
-  normalize_line_endings: true    # Convert \r\n and \r to \n
-  # Future preprocessing options can be added here
-
-chunking:
-  target_chunk_limit: 380
-  max_chunk_limit: 460
-  min_chunk_length: 80
-  spacy_model: en_core_web_sm
 
 generation:
   num_candidates: 4

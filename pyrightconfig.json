@@ -1,0 +1,20 @@
+{
+  "include": ["src"],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    ".venv",
+    "venv",
+    "scripts",
+    "src/third_party"
+  ],
+  "ignore": [
+    "src/third_party"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": "venv"
+}

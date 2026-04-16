@@ -5,7 +5,7 @@ Provides common audio operations like concatenation and silence insertion.
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 import torchaudio
@@ -50,8 +50,13 @@ def add_silence_between_segments(
     if not segments:
         return segments
 
+    # Normalise device to a torch-compatible value. ``device`` may be an
+    # explicit string, ``None`` (derive from first segment), or a ``torch.device``.
+    resolved_device: Any
     if device is None:
-        device = segments[0].device if len(segments) > 0 else "cpu"
+        resolved_device = segments[0].device if len(segments) > 0 else "cpu"
+    else:
+        resolved_device = device
 
     if sample_rate is None:
         raise ValueError(
@@ -59,7 +64,7 @@ def add_silence_between_segments(
         )
 
     silence_samples = int(silence_duration * sample_rate)
-    silence = torch.zeros(1, silence_samples, device=device)
+    silence = torch.zeros(1, silence_samples, device=resolved_device)
 
     result = []
     for i, segment in enumerate(segments):
@@ -177,6 +182,10 @@ def calculate_duration(audio: torch.Tensor, sample_rate: Optional[int] = None) -
     Returns:
         Duration in seconds.
     """
+    if sample_rate is None or sample_rate <= 0:
+        raise ValueError(
+            "sample_rate must be provided and positive; pass audio.sample_rate from the pipeline config."
+        )
     num_samples = audio.shape[1] if audio.ndim == 2 else audio.shape[0]
     return num_samples / sample_rate
 

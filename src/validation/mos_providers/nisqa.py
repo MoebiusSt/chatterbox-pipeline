@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
@@ -131,18 +131,40 @@ class NISQAProvider(MOSProvider):
             if ns is None or self._model is None:
                 return None
             with quiet_imports_and_warnings():
-                mos = ns.nisqa_metric(self._model, wav, int(sample_rate))
+                result = ns.nisqa_metric(self._model, wav, int(sample_rate))
+            if result is None:
+                return None
+            # VERSA ``nisqa_metric`` returns a dict (e.g. ``{'nisqa_mos_pred': 3.4,
+            # 'nisqa_noi_pred': ..., 'nisqa_dis_pred': ..., 'nisqa_col_pred': ...,
+            # 'nisqa_loud_pred': ...}``). Older versions returned a single float.
+            if isinstance(result, dict):
+                mos = result.get("nisqa_mos_pred")
+                if mos is None:
+                    # Accept any key starting with 'nisqa_mos' as fallback.
+                    for k, v in result.items():
+                        if k.startswith("nisqa_mos") and v is not None:
+                            mos = v
+                            break
+                sub_scores: Dict[str, Any] = {
+                    k: float(v) for k, v in result.items()
+                    if v is not None and hasattr(v, "__float__")
+                }
+            else:
+                mos = result
+                sub_scores = {}
             if mos is None:
                 return None
+            mos_f = float(mos)
             self._last_details = {
                 "provider": "nisqa_tts",
                 "backend": "versa",
                 "weights_path": self.weights_path or "resolved",
                 "device": "cuda" if self.use_gpu else "cpu",
                 "language": language,
-                "raw_mos": float(mos),
+                "raw_mos": mos_f,
+                "sub_scores": sub_scores,
             }
-            return float(mos)
+            return mos_f
         except Exception as e:
             logger.debug(f"NISQA scoring failed: {e}")
             self._last_details = {

@@ -2,11 +2,12 @@
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from chunking.base_chunker import TextChunk
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from validation.asr import ASRBackend, ASRResult, ASRWord
 from validation.quality_scorer import QualityScorer
 from validation.preprocessors.tail_trimmer import TailTrimmer
 from validation.prosody_scorer import ProsodyScorer
@@ -24,18 +25,20 @@ class ValidationHandler:
         self,
         file_manager: FileManager,
         config: Dict[str, Any],
-        whisper_validator: WhisperValidator,
+        asr_backend: ASRBackend,
         quality_scorer: QualityScorer,
         generation_handler,  # Import cycle avoidance
     ):
         self.file_manager = file_manager
         self.config = config
-        self.whisper_validator = whisper_validator
+        self.asr_backend = asr_backend
+        # Back-compat alias for existing references
+        self.whisper_validator = asr_backend
         self.quality_scorer = quality_scorer
         self.generation_handler = generation_handler
-        # Ensure validator sees configuration (for prompt, normalization, etc.)
+        # Ensure backend sees configuration (for prompt, normalization, etc.)
         try:
-            setattr(self.whisper_validator, "_config", self.config)
+            setattr(self.asr_backend, "_config", self.config)
         except Exception:
             pass
         # Initialize tail trimmer (optional, controlled by config)
@@ -85,10 +88,115 @@ class ValidationHandler:
         except Exception:
             self.prosody_scorer = None
 
+    # ------------------------------------------------------------------
+    # ASR alignment helpers (used by the VibeVoice-ASR backend path)
+    # ------------------------------------------------------------------
+
+    def _maybe_preload_alignment(
+        self,
+        candidate: AudioCandidate,
+        language: str,
+    ) -> Optional[ASRResult]:
+        """Run a single ASR+alignment pass on the pre-trim audio when the
+        configured backend supports alignment. Returns ``None`` for the legacy
+        Whisper backend so downstream logic keeps its existing behaviour.
+        """
+        try:
+            if not getattr(self.asr_backend, "supports_alignment", False):
+                return None
+            if candidate.audio_tensor is None or getattr(candidate.audio_tensor, "numel", lambda: 0)() == 0:
+                return None
+            sample_rate = int(self.config.get("audio", {}).get("sample_rate", 24000))
+            return self.asr_backend.transcribe_with_alignment(
+                candidate.audio_tensor,
+                language=language or "en",
+                sample_rate=sample_rate,
+            )
+        except Exception as e:
+            logger.debug(f"ASR pre-alignment failed: {e}")
+            return None
+
+    def _filter_words_after_cut(
+        self,
+        asr_preload: Optional[ASRResult],
+        trim_meta: Optional[Dict[str, Any]],
+    ) -> Tuple[Optional[List[ASRWord]], Optional[str]]:
+        """Filter preloaded words by the tail-trim cut sample and return
+        ``(words, transcription)``. When no cut was applied or no words exist,
+        returns the original alignment unchanged.
+        """
+        if asr_preload is None or not asr_preload.words:
+            return None, None
+        words = list(asr_preload.words)
+        transcription = asr_preload.transcription or ""
+        if not isinstance(trim_meta, dict):
+            return words, transcription
+        cut_sample = trim_meta.get("cut_sample")
+        if cut_sample is None:
+            return words, transcription
+        try:
+            sample_rate = int(self.config.get("audio", {}).get("sample_rate", 24000))
+            cut_s = float(cut_sample) / float(sample_rate)
+        except Exception:
+            return words, transcription
+        filtered = [
+            w for w in words
+            if (w.end is not None and float(w.end) <= cut_s + 1e-3)
+        ]
+        if not filtered:
+            return words, transcription
+        truncated = " ".join((w.word or "").strip() for w in filtered).strip()
+        return filtered, (truncated or transcription)
+
+    def _validate_candidate_with_preload(
+        self,
+        candidate: AudioCandidate,
+        original_text: str,
+        language: str,
+        asr_preload: Optional[ASRResult],
+        trim_meta: Optional[Dict[str, Any]],
+    ) -> Tuple[ValidationResult, Optional[List[ASRWord]]]:
+        """Produce a ValidationResult and (optionally) the cut-truncated word
+        list for prosody. When alignment is unavailable, falls back to the
+        legacy ``validate_candidate`` call.
+        """
+        if asr_preload is None:
+            return (
+                self.asr_backend.validate_candidate(
+                    candidate, original_text, language=language or "en"
+                ),
+                None,
+            )
+        filtered_words, truncated_text = self._filter_words_after_cut(asr_preload, trim_meta)
+        transcription = truncated_text if truncated_text else asr_preload.transcription
+        return (
+            self.asr_backend.score_transcription(
+                candidate=candidate,
+                original_text=original_text,
+                transcription=transcription,
+                language=language or "en",
+            ),
+            filtered_words,
+        )
+
     def execute_validation(self) -> bool:
         try:
             logger.info("=" * 50)
             logger.info("Starting validation stage")
+
+            # Free GPU memory left over from the generation stage before the
+            # ASR/MOS models are loaded. This is important on consumer GPUs
+            # where a 7B VibeVoice-ASR + Whisper would otherwise spill to CPU
+            # or OOM when chunks remain cached. See TESTRUN_FINDINGS (A3).
+            try:
+                import torch  # local import to avoid hard dep at module import
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.ipc_collect()
+                    logger.debug("Cleared CUDA cache before validation stage")
+            except Exception as e:
+                logger.debug(f"CUDA cache cleanup skipped: {e}")
 
             chunks = self.file_manager.get_chunks()
             all_candidates = self.file_manager.get_candidates()
@@ -204,6 +312,13 @@ class ValidationHandler:
 
                     candidate.chunk_text = chunk.text
 
+                    # Optional pre-alignment (VibeVoice-ASR path): single ASR
+                    # pass that provides word-level timestamps reused by
+                    # tail-trim, validation and prosody scoring.
+                    asr_preload = self._maybe_preload_alignment(candidate, cand_language)
+                    preloaded_words_for_trim = asr_preload.words if asr_preload is not None else None
+                    trim_meta: Optional[Dict[str, Any]] = None
+
                     # Tail-trim candidate audio before validation to remove trailing non-speech
                     try:
                         if hasattr(self, "tail_trimmer") and self.tail_trimmer and candidate.audio_tensor is not None:
@@ -211,6 +326,7 @@ class ValidationHandler:
                                 candidate.audio_tensor,
                                 language=cand_language,
                                 original_text=chunk.text,
+                                preloaded_words=preloaded_words_for_trim,
                             )
                             if trimmed_audio is not None and trimmed_audio.numel() > 0:
                                 candidate.audio_tensor = trimmed_audio
@@ -242,10 +358,14 @@ class ValidationHandler:
                     except Exception as e:
                         logger.debug(f"Tail-trim failed for candidate {candidate_num}: {e}")
 
-                    # Perform Whisper validation with language-specific model
+                    # Perform Whisper/ASR validation with language-specific model
                     chunk_language = cand_language
-                    whisper_result = self.whisper_validator.validate_candidate(
-                        candidate, chunk.text, language=chunk_language
+                    whisper_result, preloaded_words_for_prosody = self._validate_candidate_with_preload(
+                        candidate=candidate,
+                        original_text=chunk.text,
+                        language=chunk_language,
+                        asr_preload=asr_preload,
+                        trim_meta=trim_meta,
                     )
 
                     if whisper_result:
@@ -276,6 +396,7 @@ class ValidationHandler:
                                         language=cand_language,
                                         original_text=chunk.text,
                                         asr_transcription=whisper_result.transcription,
+                                        preloaded_words=preloaded_words_for_prosody,
                                     )
                                     prosody_score = float(prosody_details.get("prosody_score", 0.0))
                                     mos_value = prosody_details.get("raw_mos")
@@ -334,6 +455,8 @@ class ValidationHandler:
                             "quality_details": quality_result.details,
                             "speaker_id": chunk.speaker_id,
                             "language_id": cand_language,
+                            # ASR backend used for transcription (whisper | vibevoice_asr)
+                            "asr_backend": getattr(self.asr_backend, "backend_name", "whisper"),
                             # Prosody/MOS
                             "prosody": prosody_details,
                             # Debug transparency for MOS provider chain
@@ -526,6 +649,11 @@ class ValidationHandler:
                     except Exception:
                         cand_language = getattr(chunk, "language_id", "en")
 
+                    # Optional pre-alignment (VibeVoice-ASR path)
+                    asr_preload = self._maybe_preload_alignment(retry_candidate, cand_language)
+                    preloaded_words_for_trim = asr_preload.words if asr_preload is not None else None
+                    trim_meta: Optional[Dict[str, Any]] = None
+
                     # Tail-trim retry candidate before validation
                     try:
                         if hasattr(self, "tail_trimmer") and self.tail_trimmer and retry_candidate.audio_tensor is not None:
@@ -533,6 +661,7 @@ class ValidationHandler:
                                 retry_candidate.audio_tensor,
                                 language=cand_language,
                                 original_text=chunk.text,
+                                preloaded_words=preloaded_words_for_trim,
                             )
                             if trimmed_audio is not None and trimmed_audio.numel() > 0:
                                 retry_candidate.audio_tensor = trimmed_audio
@@ -562,8 +691,12 @@ class ValidationHandler:
 
                     # Use language-specific validation for retry candidates
                     chunk_language = cand_language
-                    whisper_result = self.whisper_validator.validate_candidate(
-                        retry_candidate, chunk.text, language=chunk_language
+                    whisper_result, preloaded_words_for_prosody = self._validate_candidate_with_preload(
+                        candidate=retry_candidate,
+                        original_text=chunk.text,
+                        language=chunk_language,
+                        asr_preload=asr_preload,
+                        trim_meta=trim_meta,
                     )
 
                     if whisper_result:
@@ -592,6 +725,7 @@ class ValidationHandler:
                                         language=cand_language,
                                         original_text=chunk.text,
                                         asr_transcription=whisper_result.transcription,
+                                        preloaded_words=preloaded_words_for_prosody,
                                     )
                                     prosody_score = float(prosody_details.get("prosody_score", 0.0))
                                     mos_value = prosody_details.get("raw_mos")
@@ -648,6 +782,7 @@ class ValidationHandler:
                             "quality_details": quality_result.details,
                             "speaker_id": chunk.speaker_id,
                             "language_id": cand_language,
+                            "asr_backend": getattr(self.asr_backend, "backend_name", "whisper"),
                             "prosody": prosody_details,
                             "final_selection_score": final_selection_score,
                             "passes_mos_gate": passes_mos,
@@ -1127,6 +1262,13 @@ class ValidationHandler:
                     # Set chunk text for validation compatibility
                     candidate.chunk_text = chunk.text
 
+                    # Optional pre-alignment (VibeVoice-ASR path) for selective
+                    asr_preload = self._maybe_preload_alignment(
+                        candidate, getattr(chunk, 'language_id', 'en')
+                    )
+                    preloaded_words_for_trim = asr_preload.words if asr_preload is not None else None
+                    trim_meta: Optional[Dict[str, Any]] = None
+
                     # Tail-trim candidate audio before validation to remove trailing non-speech (selective)
                     try:
                         if hasattr(self, "tail_trimmer") and self.tail_trimmer and candidate.audio_tensor is not None:
@@ -1134,6 +1276,7 @@ class ValidationHandler:
                                 candidate.audio_tensor,
                                 language=getattr(chunk, 'language_id', 'en'),
                                 original_text=chunk.text,
+                                preloaded_words=preloaded_words_for_trim,
                             )
                             if trimmed_audio is not None and trimmed_audio.numel() > 0:
                                 candidate.audio_tensor = trimmed_audio
@@ -1163,10 +1306,14 @@ class ValidationHandler:
                     except Exception as e:
                         logger.debug(f"Tail-trim (selective) failed for candidate {candidate_num}: {e}")
 
-                    # Perform Whisper validation with language-specific model
+                    # Perform Whisper/ASR validation with language-specific model
                     chunk_language = getattr(chunk, 'language_id', 'en')
-                    whisper_result = self.whisper_validator.validate_candidate(
-                        candidate, chunk.text, language=chunk_language
+                    whisper_result, preloaded_words_for_prosody = self._validate_candidate_with_preload(
+                        candidate=candidate,
+                        original_text=chunk.text,
+                        language=chunk_language,
+                        asr_preload=asr_preload,
+                        trim_meta=trim_meta,
                     )
 
                     if whisper_result:
@@ -1196,6 +1343,7 @@ class ValidationHandler:
                                         language=chunk_language,
                                         original_text=chunk.text,
                                         asr_transcription=whisper_result.transcription,
+                                        preloaded_words=preloaded_words_for_prosody,
                                     )
                                     prosody_score = float(prosody_details.get("prosody_score", 0.0))
                                     mos_unit = float(prosody_details.get("subscores", {}).get("mos", 0.0))
@@ -1251,6 +1399,7 @@ class ValidationHandler:
                             "quality_details": quality_result.details,
                             "speaker_id": chunk.speaker_id,
                             "language_id": getattr(chunk, 'language_id', 'en'),
+                            "asr_backend": getattr(self.asr_backend, "backend_name", "whisper"),
                             "prosody": prosody_details,
                             "final_selection_score": final_selection_score,
                             "passes_mos_gate": passes_mos,

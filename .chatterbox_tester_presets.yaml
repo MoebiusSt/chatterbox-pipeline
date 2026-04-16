@@ -12,6 +12,13 @@ annie_coleman_rothenberg_1.wav::vibevoice_1_5b:
   diffusion_steps: 20.0
   voice_speed_factor: 1.0
   use_sampling: true
+david-barnes_DE-2-fake.wav::vibevoice:
+  temperature: 1.53
+  top_p: 0.95
+  cfg_scale: 1.4
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 david-barnes_DE-fake.wav:
   exaggeration: 0.9
   cfg_weight: 0.2
@@ -19,6 +26,20 @@ david-barnes_DE-fake.wav:
   repetition_penalty: 2.5
   min_p: 0.17
   top_p: 1.0
+david-barnes_DE-fake_3s.wav::vibevoice:
+  temperature: 1.53
+  top_p: 0.95
+  cfg_scale: 1.4
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
+david-barnes_DE_2_fake.wav::vibevoice:
+  temperature: 1.53
+  top_p: 0.95
+  cfg_scale: 1.4
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 david_barnes_1_3s.wav::qwen3:
   temperature: 1.67
   top_k: 120.0

@@ -142,8 +142,12 @@ class QualityScorer:
                         "penalty_score": penalty_score,
                         "overall_score": overall_score,
                     },
-                    # Raw validation metrics from Whisper
+                    # Raw validation metrics from the ASR backend (Whisper or
+                    # VibeVoice-ASR). The fields remain ``whisper_*`` for
+                    # historical compatibility; the actual source is recorded
+                    # in ``asr_backend``.
                     "validation_metrics": {
+                        "asr_backend": getattr(validation_result, "asr_backend", None),
                         "whisper_similarity": validation_result.similarity_score,
                         "whisper_quality": validation_result.quality_score,
                         "transcription_length": len(validation_result.transcription),

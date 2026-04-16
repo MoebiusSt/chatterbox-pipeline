@@ -1535,7 +1535,6 @@ class ChatterboxTester:
                     "cfg_scale": float(self.param_vars["cfg_scale"].get()),
                     "max_new_tokens": None,
                     "do_sample": use_sampling,
-                    "show_progress_bar": False,
                 }
                 if use_sampling:
                     gen_kwargs["temperature"] = float(self.param_vars["temperature"].get())

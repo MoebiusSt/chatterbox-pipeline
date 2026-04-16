@@ -18,6 +18,7 @@ from utils.file_manager.state_analyzer import CompletionStage, TaskState
 from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
 from utils.progress_tracker import ProgressTracker
 from utils.task_run_logger import TaskRunLogger
+from validation.asr import ASRBackend, resolve_asr_backend
 from validation.quality_scorer import QualityScorer
 from validation.whisper_validator import WhisperValidator
 
@@ -97,6 +98,7 @@ class TaskExecutor:
         self._chunker = None
         self._tts_generator = None
         self._whisper_validator = None
+        self._asr_backend: Optional[ASRBackend] = None
         self._quality_scorer = None
         self._candidate_manager = None
 
@@ -139,7 +141,7 @@ class TaskExecutor:
 
     @property
     def whisper_validator(self) -> WhisperValidator:
-        """Lazy-loaded Whisper validator."""
+        """Lazy-loaded OpenAI Whisper validator (legacy accessor)."""
         if self._whisper_validator is None:
             validation_config = self.config["validation"]
             validator = WhisperValidator(
@@ -155,6 +157,28 @@ class TaskExecutor:
                 pass
             self._whisper_validator = validator
         return self._whisper_validator
+
+    @property
+    def asr_backend(self) -> ASRBackend:
+        """Lazy-loaded ASR backend (Whisper or VibeVoice-ASR)."""
+        if self._asr_backend is None:
+            asr_sel = str(
+                self.config.get("validation", {}).get("asr_backend", "auto")
+            ).strip().lower()
+            model_type = str(
+                self.config.get("generation", {}).get("model_type", "")
+            ).strip().lower()
+            is_vv = model_type.startswith("vibevoice") or asr_sel == "vibevoice_asr"
+            # For the Whisper path reuse the already-loaded validator to avoid
+            # loading the Whisper model twice. For the VibeVoice path we skip
+            # loading OpenAI Whisper entirely.
+            if is_vv and asr_sel != "whisper":
+                self._asr_backend = resolve_asr_backend(self.config, whisper_validator=None)
+            else:
+                self._asr_backend = resolve_asr_backend(
+                    self.config, whisper_validator=self.whisper_validator
+                )
+        return self._asr_backend
 
     @property
     def quality_scorer(self) -> QualityScorer:
@@ -203,7 +227,7 @@ class TaskExecutor:
             self._validation_handler = ValidationHandler(
                 self.file_manager,
                 self.config,
-                self.whisper_validator,
+                self.asr_backend,
                 self.quality_scorer,
                 self.generation_handler,  # Pass for retry logic
             )

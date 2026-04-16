@@ -368,15 +368,13 @@ class TaskMetricsGenerator:
                                     if isinstance(cand_v, dict):
                                         # Prefer new final_selection_score, fallback to legacy scores
                                         try:
-                                            score = float(
-                                                cand_v.get(
-                                                    "final_selection_score",
-                                                    cand_v.get(
-                                                        "overall_quality_score",
-                                                        cand_v.get("final_score", 0.0),
-                                                    ),
-                                                )
+                                            raw_score = (
+                                                cand_v.get("final_selection_score")
+                                                or cand_v.get("overall_quality_score")
+                                                or cand_v.get("final_score")
+                                                or 0.0
                                             )
+                                            score = float(raw_score)
                                         except Exception:
                                             score = 0.0
                                     if score > best_score:
@@ -404,15 +402,13 @@ class TaskMetricsGenerator:
                                 if isinstance(cand_v, dict):
                                     # Prefer new final_selection_score, fallback to legacy scores
                                     try:
-                                        score = float(
-                                            cand_v.get(
-                                                "final_selection_score",
-                                                cand_v.get(
-                                                    "overall_quality_score",
-                                                    cand_v.get("final_score", 0.0),
-                                                ),
-                                            )
+                                        raw_score = (
+                                            cand_v.get("final_selection_score")
+                                            or cand_v.get("overall_quality_score")
+                                            or cand_v.get("final_score")
+                                            or 0.0
                                         )
+                                        score = float(raw_score)
                                     except Exception:
                                         score = 0.0
                                 if score > best_score:
@@ -475,7 +471,15 @@ class TaskMetricsGenerator:
                     "cfg_weight_range": parameter_ranges["cfg_weight_range"],
                     "temperature_range": parameter_ranges["temperature_range"],
                     "candidate_metrics": {
-                        "audio_duration": selected_candidate_data.get("audio_duration", 0.0),
+                        "audio_duration": (
+                            # Ground truth: populated by CandidateIOHandler when the
+                            # wav file is written (see candidates_metadata.json).
+                            self._get_candidate_audio_duration(chunk_idx_0based, selected_candidate_0based)
+                            # Backwards-compat fallbacks if metadata is stale:
+                            or selected_candidate_data.get("audio_duration")
+                            or (selected_candidate_data.get("quality_details") or {}).get("audio_duration")
+                            or 0.0
+                        ),
                         "audio_filename": f"candidate_{selected_candidate_1based:02d}.wav",
                         "generation_params": self._get_selected_candidate_generation_params(
                             selected_candidate_data, chunk_idx_0based, selected_candidate_0based
@@ -669,6 +673,30 @@ class TaskMetricsGenerator:
                 "temperature_range": "0.000 – 0.000",
             }
 
+    def _get_candidate_audio_duration(
+        self, chunk_idx_0based: int, candidate_idx_0based: int
+    ) -> Optional[float]:
+        """Ground-truth duration from ``candidates_metadata.json`` (written by
+        :class:`CandidateIOHandler` at save time). Returns ``None`` when the
+        metadata lacks the field (legacy jobs) so callers can fall back.
+        """
+        try:
+            chunk_dir = self.candidates_dir / f"chunk_{chunk_idx_0based + 1:03d}"
+            meta_path = chunk_dir / "candidates_metadata.json"
+            if not meta_path.exists():
+                return None
+            with open(meta_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for cand in data.get("candidates", []):
+                if cand.get("candidate_idx") == candidate_idx_0based:
+                    dur = cand.get("audio_duration")
+                    if isinstance(dur, (int, float)) and dur > 0:
+                        return float(dur)
+                    return None
+        except Exception as e:
+            logger.debug(f"_get_candidate_audio_duration failed: {e}")
+        return None
+
     def _get_selected_candidate_generation_params(
         self, candidate_data: Dict[str, Any], chunk_idx_0based: int, candidate_idx_0based: int
     ) -> Dict[str, Any]:
@@ -699,19 +727,19 @@ class TaskMetricsGenerator:
             candidates = candidates_metadata.get("candidates", [])
             for candidate in candidates:
                 if candidate.get("candidate_idx") == candidate_idx_0based:
-                    generation_params = candidate.get("generation_params", {})
-                    
-                    # Extract relevant parameters (exclude seed and language_id)
+                    generation_params = candidate.get("generation_params", {}) or {}
+                    # Pass through the full set of generation parameters so that
+                    # model-specific fields (e.g. VibeVoice's ``cfg_scale``,
+                    # ``diffusion_steps``, ``voice_speed_factor``, ``use_sampling``
+                    # or Chatterbox's ``exaggeration``/``min_p``/``repetition_penalty``)
+                    # survive into task_metrics.json. ``seed`` and ``language_id``
+                    # are filtered out to keep the section focused on sampling
+                    # parameters.
+                    excluded = {"seed", "language_id"}
                     return {
-                        "exaggeration": generation_params.get("exaggeration", 0.0),
-                        "exaggeration_max_deviation": generation_params.get("exaggeration_max_deviation", 0.0),
-                        "cfg_weight": generation_params.get("cfg_weight", 0.0),
-                        "cfg_weight_max_deviation": generation_params.get("cfg_weight_max_deviation", 0.0),
-                        "temperature": generation_params.get("temperature", 0.0),
-                        "temperature_max_deviation": generation_params.get("temperature_max_deviation", 0.0),
-                        "repetition_penalty": generation_params.get("repetition_penalty", 1.0),
-                        "min_p": generation_params.get("min_p", 0.0),
-                        "top_p": generation_params.get("top_p", 0.0),
+                        k: v
+                        for k, v in generation_params.items()
+                        if k not in excluded
                     }
             
             logger.warning(f"Candidate {candidate_idx_0based} not found in candidates metadata for chunk {chunk_idx_0based}")

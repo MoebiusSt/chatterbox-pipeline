@@ -427,10 +427,10 @@ class FileManager:
                 "details": Dict[str, Dict[str, Any]]  # speaker_id -> {success: bool, error: str|None}
             }
         """
-        validation_results = {}
-        failed_speakers = []
-        missing_files = {}
-        error_details = {}
+        validation_results: Dict[str, bool] = {}
+        failed_speakers: List[str] = []
+        missing_files: Dict[str, str] = {}
+        error_details: Dict[str, Dict[str, Any]] = {}
         
         speakers = self.config.get("generation", {}).get("speakers", [])
         configured_speakers = [speaker.get("id", "unknown") for speaker in speakers]

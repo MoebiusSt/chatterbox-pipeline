@@ -36,6 +36,9 @@ class ValidationResult:
     # Diagnostics: thresholding
     base_similarity_threshold: Optional[float] = None
     effective_similarity_threshold: Optional[float] = None
+    # Which ASR backend produced the transcription (e.g. "whisper" or
+    # "vibevoice_asr"). ``None`` for legacy/error paths.
+    asr_backend: Optional[str] = None
 
 class WhisperValidator:
     """
@@ -320,6 +323,7 @@ class WhisperValidator:
                 numbers_normalization_mode=(numbers_mode if apply_norm else None),
                 base_similarity_threshold=self.similarity_threshold,
                 effective_similarity_threshold=eff_thr,
+                asr_backend="whisper",
             )
 
             return result
@@ -335,12 +339,14 @@ class WhisperValidator:
                 quality_score=0.0,
                 validation_time=validation_time,
                 error_message=str(e),
+                asr_backend="whisper",
             )
 
     def _compute_effective_similarity_threshold(self, text: str) -> float:
         """
         Compute a dynamic similarity threshold based on text length and punctuation density.
-        No new config parameters are introduced; uses self.similarity_threshold as base.
+        The downward adjustment is capped by a hard upper limit (default 0.08) so
+        very long texts cannot get arbitrarily lenient.
         """
         try:
             base = float(self.similarity_threshold)
@@ -351,8 +357,17 @@ class WhisperValidator:
             import re
             punct_count = len(re.findall(r"[\.,;:!\?\-\(\)\[\]\{\}\"'«»„“”‚‘’]", text))
             punct_density = punct_count / max(1, length)
-            # Adjust up to ~0.08 downward for long, punctuation-rich texts
-            adj = min(0.08, 0.05 * min(1.0, length / 300.0) + 0.03 * min(1.0, punct_density * 10))
+            cfg = getattr(self, "_config", None) or {}
+            bonus_max = 0.08
+            try:
+                val_cfg = cfg.get("validation", {}) if isinstance(cfg, dict) else {}
+                bonus_max = float(val_cfg.get("similarity_threshold_bonus_max", 0.08))
+            except Exception:
+                bonus_max = 0.08
+            bonus_max = max(0.0, min(0.2, bonus_max))
+            # Length contribution saturates at 300 chars, punctuation at ~10%.
+            raw = 0.05 * min(1.0, length / 300.0) + 0.03 * min(1.0, punct_density * 10)
+            adj = min(bonus_max, raw)
             thr = max(0.0, base - adj)
             return float(thr)
         except Exception:

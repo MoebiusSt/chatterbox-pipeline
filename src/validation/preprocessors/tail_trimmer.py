@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import re
 from difflib import SequenceMatcher
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torchaudio
@@ -33,6 +33,29 @@ import torchaudio
 from validation.number_normalization import normalize_text_for_numbers
 from utils.silence import quiet_imports_and_warnings
 logger = logging.getLogger(__name__)
+
+
+def _asr_words_to_dicts(words: Optional[List[Any]]) -> Optional[List[Dict[str, Any]]]:
+    """Normalize preloaded ASR words (either dataclass ASRWord or dict) to
+    the dict format used throughout this module (``{word, start, end}``).
+    """
+    if not words:
+        return None
+    out: List[Dict[str, Any]] = []
+    for w in words:
+        if isinstance(w, dict):
+            out.append({
+                "word": str(w.get("word") or w.get("text") or ""),
+                "start": w.get("start"),
+                "end": w.get("end"),
+            })
+        else:
+            out.append({
+                "word": str(getattr(w, "word", "") or ""),
+                "start": getattr(w, "start", None),
+                "end": getattr(w, "end", None),
+            })
+    return out
 
 
 class TailTrimmer:
@@ -160,6 +183,7 @@ class TailTrimmer:
         last_n_words: int,
         fuzzy_ratio: float,
         search_window_words: int,
+        preloaded_words: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[Optional[int], Dict[str, Any]]:
         meta: Dict[str, Any] = {
             "match_type": None,
@@ -168,12 +192,14 @@ class TailTrimmer:
             "language_gated": False,
         }
 
-        if not self.prefer_whisperx:
-            return None, meta
-
-        self._lazy_import_whisperx()
-        if self._whisperx is None:
-            return None, meta
+        # When no preloaded words are given we need WhisperX. With preloaded
+        # words we can skip all WhisperX interactions entirely.
+        if preloaded_words is None:
+            if not self.prefer_whisperx:
+                return None, meta
+            self._lazy_import_whisperx()
+            if self._whisperx is None:
+                return None, meta
 
         try:
             sm_cfg = (
@@ -205,32 +231,36 @@ class TailTrimmer:
             if not tgt_words:
                 return None, meta
 
-            device = self.whisperx_device if self.whisperx_device in {"cpu", "cuda"} else "cpu"
-            # Resample to 16k for ASR/alignment
-            audio16 = self._resample_to_16k(audio, self.sample_rate)
+            if preloaded_words is not None:
+                words = preloaded_words
+            else:
+                device = self.whisperx_device if self.whisperx_device in {"cpu", "cuda"} else "cpu"
+                # Resample to 16k for ASR/alignment
+                audio16 = self._resample_to_16k(audio, self.sample_rate)
 
-            # Transcribe
-            asr_model = self._get_whisperx_asr_model(device)
-            if asr_model is None:
-                return None, meta
-            with quiet_imports_and_warnings():
-                result = asr_model.transcribe(audio16.cpu().numpy(), language=language)
+                asr_model = self._get_whisperx_asr_model(device)
+                if asr_model is None:
+                    return None, meta
+                with quiet_imports_and_warnings():
+                    result = asr_model.transcribe(audio16.cpu().numpy(), language=language)
 
-            # Align
-            align_pair = self._get_whisperx_aligner(language, device)
-            if align_pair is None:
-                return None, meta
-            align_model, metadata = align_pair
-            with quiet_imports_and_warnings():
-                aligned = self._whisperx.align(
-                    result.get("segments", []),
-                    align_model,
-                    metadata,
-                    audio16.cpu().numpy(),
-                    device=device,
-                    return_char_alignments=False,
-                )
-            words = aligned.get("word_segments") or []
+                align_pair = self._get_whisperx_aligner(language, device)
+                if align_pair is None:
+                    return None, meta
+                align_model, metadata = align_pair
+                whisperx_mod = self._whisperx
+                if whisperx_mod is None:
+                    return None, meta
+                with quiet_imports_and_warnings():
+                    aligned = whisperx_mod.align(
+                        result.get("segments", []),
+                        align_model,
+                        metadata,
+                        audio16.cpu().numpy(),
+                        device=device,
+                        return_char_alignments=False,
+                    )
+                words = aligned.get("word_segments") or []
             if not words:
                 return None, meta
 
@@ -444,7 +474,24 @@ class TailTrimmer:
 
         return last_energy_idx
 
-    def _trim_with_whisperx(self, audio: torch.Tensor, language: str, original_text: str) -> Optional[int]:
+    def _trim_with_whisperx(
+        self,
+        audio: torch.Tensor,
+        language: str,
+        original_text: str,
+        preloaded_words: Optional[List[Dict[str, Any]]] = None,
+    ) -> Optional[int]:
+        # Fast path: if preloaded words are available, use their last end time
+        # and skip the WhisperX ASR/alignment entirely.
+        if preloaded_words:
+            try:
+                last_end_s = max((float(w.get("end") or 0.0) for w in preloaded_words), default=0.0)
+                if last_end_s > 0:
+                    return int(round(last_end_s * self.sample_rate))
+            except Exception:
+                return None
+            return None
+
         if not self.prefer_whisperx:
             return None
         self._lazy_import_whisperx()
@@ -476,12 +523,23 @@ class TailTrimmer:
             logger.debug(f"whisperx alignment failed; falling back to VAD: {e}")
             return None
 
-    def trim(self, audio: Optional[torch.Tensor], language: str, original_text: str) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Dict[str, Any]]:
+    def trim(
+        self,
+        audio: Optional[torch.Tensor],
+        language: str,
+        original_text: str,
+        preloaded_words: Optional[List[Any]] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Dict[str, Any]]:
         """
         Trim trailing non-speech from audio and apply a short fade-out.
 
+        When ``preloaded_words`` is provided (list of ``ASRWord`` or dicts with
+        ``word``/``start``/``end``), Smart-Match and the WhisperX fallback skip
+        their internal WhisperX calls and use those alignments directly.
+
         Returns trimmed audio and metadata (cut indices, method used).
         """
+        preloaded_dicts = _asr_words_to_dicts(preloaded_words)
         meta: Dict[str, Any] = {
             "enabled": self.enabled,
             "method": None,
@@ -524,6 +582,7 @@ class TailTrimmer:
                         last_n_words=last_n,
                         fuzzy_ratio=fuzzy,
                         search_window_words=win_k,
+                        preloaded_words=preloaded_dicts,
                     )
                     # Merge meta
                     for k in ("match_type", "matched_words", "match_ratio", "language_gated"):
@@ -553,7 +612,12 @@ class TailTrimmer:
                     method = "vad"
 
             if cut_idx is None:
-                wx_cut = self._trim_with_whisperx(audio, language=language, original_text=original_text)
+                wx_cut = self._trim_with_whisperx(
+                    audio,
+                    language=language,
+                    original_text=original_text,
+                    preloaded_words=preloaded_dicts,
+                )
                 if isinstance(wx_cut, int):
                     # accept only if last-word end beyond 60% of duration
                     try:

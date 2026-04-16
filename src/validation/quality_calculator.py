@@ -57,6 +57,22 @@ class QualityCalculator:
                         char_ratio = _rf_fuzz.ratio(norm_original, norm_transcr) / 100.0
                         # Cap at 0.92 to preserve discriminability for micro-chunks
                         similarity = min(0.92, char_ratio)
+                    elif len(norm_original) > 800:
+                        # Hardened long-text score: combines token-based similarity
+                        # with partial_ratio (hallucination-aware) and a
+                        # length-robust log-scaled length score.
+                        tsr = _rf_fuzz.token_set_ratio(norm_original, norm_transcr) / 100.0
+                        tor = _rf_fuzz.token_sort_ratio(norm_original, norm_transcr) / 100.0
+                        pr = _rf_fuzz.partial_ratio(norm_original, norm_transcr) / 100.0
+                        token_sim = max(tsr, tor)
+                        len_o = max(1, len(norm_original))
+                        len_t = max(1, len(norm_transcr))
+                        length_score = min(
+                            math.log(min(len_o, len_t) + 1.0)
+                            / math.log(max(len_o, len_t) + 1.0),
+                            1.0,
+                        )
+                        similarity = 0.55 * token_sim + 0.30 * pr + 0.15 * length_score
                     else:
                         tsr = _rf_fuzz.token_set_ratio(norm_original, norm_transcr)
                         tor = _rf_fuzz.token_sort_ratio(norm_original, norm_transcr)

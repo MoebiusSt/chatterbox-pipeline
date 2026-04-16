@@ -21,7 +21,7 @@ generation:
   num_candidates: 2
   max_retries: 1
   model_type: standard  # Options: "standard", "multilingual", "turbo", "qwen3", and VibeVoice Hub: "vibevoice" (7B Q8), "vibevoice_1_5b" (1.5B), "vibevoice_q4" (7B Q4 low-VRAM) — same tts_params for all three
-                        # qwen3 expert: add  qwen3_attn_impl: flash_attention_2  here to override the default sdpa attention (not recommended – measured slower for TTS batch-1 workloads)
+                        # qwen3 expert: add  qwen3_attn_impl: flash_attention_2  here to override the default sdpa attention (fa not recommended – measured slower for TTS batch-1 workloads)
   default_speaker: stephan_moebius_1
   global_seed: 12345  # Global seed for all TTS generations. 0 = random seed per generation
   
@@ -43,9 +43,9 @@ generation:
         # - turbo only: top_k (default 1000), norm_loudness (bool, enables built-in loudness normalization)
         #
         # Qwen3 model (qwen3):
-        # - temperature              default 0.9   | MIN value; RAMP-UP across candidates
+        # - temperature              default 0.9  | MIN value; RAMP-UP across candidates
         #                                            <1 more confident/deterministic, >1 more random/creative
-        # - temperature_max_deviation              | ramp UP by this amount over candidates
+        # - temperature_max_deviation             | ramp UP by this amount over candidates
         # - top_k                    default 50   | MIN value; RAMP-UP; lower = more deterministic
         # - top_k_max_deviation                   | ramp UP by this amount over candidates
         # - top_p                    default 1.0  | lower = more focused, reduce diversity (not ramped)
@@ -62,13 +62,14 @@ generation:
         # - exaggeration / cfg_weight / min_p are not supported and will be silently skipped
         #
         # VibeVoice models (vibevoice / vibevoice_1_5b / vibevoice_q4):
-        # - cfg_scale                default 1.45 | MAX on first expressive candidate; RAMP-DOWN with cfg_scale_max_deviation (like exaggeration)
-        # - cfg_scale_max_deviation               | subtract over candidates (later = lower cfg_scale as temperature rises)
-        # - temperature              default 0.95 | MIN on first expressive; RAMP-UP with temperature_max_deviation (ignored if use_sampling=false)
+        # - cfg_scale                default 1.30 | MAX on first expressive candidate; RAMP-UP with cfg_scale_max_deviation (lower values are more lively, <130 risky)
+        # - cfg_scale_max_deviation               | add over candidates (later = higher = calmer, as temperature rises too pushing for more lively-ness)
+        # - temperature              default 0.95 | MIN on first expressive; RAMP-UP with temperature_max_deviation; higher values increase prosody liveliness (ignored if use_sampling=false)
         # - top_p                    default 0.95 | only used when use_sampling=true; otherwise ignored
-        # - diffusion_steps          default 20   | diffusion denoising steps
-        # - voice_speed_factor       default 1.0  | adjusts reference voice speed (0.8..1.2)
+        # - diffusion_steps          default 20   | diffusion denoising steps (5-60, higher = more noise/detail/risk)
+        # - voice_speed_factor       default 1.0  | try adjusts reference voice speed in very small increments (0.98, 1.05)
         # - use_sampling             default false| false=deterministic, true=sampling with temperature/top_p
+
         exaggeration: 0.45                  # give MAX here
         exaggeration_max_deviation: 0.10    # ramp DOWN 
 
@@ -195,10 +196,26 @@ generation:
 validation:
   whisper_model: small # base small medium large
   similarity_threshold: 0.64  # WhisperValidator: token-based similarity of original and transcribed text tokens
+  similarity_threshold_bonus_max: 0.08  # Upper cap for the length/punctuation based threshold reduction
   min_quality_score: 0.72  #  WhisperValidator: 70% * similarity_score + 30% * length_score
   numbers_normalization_mode: placeholder  # off|placeholder|digits|words (applied only for language != 'en')
   whisper_initial_prompt_enabled: true    # If true, pass an initial prompt to Whisper
   whisper_initial_prompt_text: ""  # Style-only prompt, no language directive
+
+  # ASR backend selection for validation/tail-trim/prosody alignment.
+  # auto → vibevoice_asr when generation.model_type starts with "vibevoice", else whisper.
+  asr_backend: auto   # auto | whisper | vibevoice_asr
+  vibevoice_asr:
+    model_id: microsoft/VibeVoice-ASR
+    language_model: Qwen/Qwen2.5-7B
+    device: auto                # auto | cuda | cpu | mps
+    attn_implementation: auto   # auto | flash_attention_2 | sdpa | eager
+    max_new_tokens: 32768
+    temperature: 0.0
+    top_p: 1.0
+    num_beams: 1
+    target_sample_rate: 24000
+    hotwords: []                # optional per-job
 
   # Preprocessing before validation: Tail-end speech-aware trim
   preprocessing:
@@ -250,6 +267,13 @@ validation:
     scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
     nisqa_weights_path: "NISQA/weights/nisqa_tts.tar"  # NISQA-TTS v1 Naturalness
     prefer_utmosv2: false      # prefer utmosv2 predictor via VERSA if available; fallback to utmos
+    # MOS models are trained on short utterances. For long VibeVoice chunks we
+    # window the audio and aggregate window-level MOS to stay in-distribution.
+    segmentation:
+      max_unsegmented_seconds: 20.0  # score() is used for audio shorter than this
+      window_s: 12.0                 # sliding window length
+      hop_s: 10.0                    # hop between windows
+      aggregator: median             # median | mean | min
 
   # alignment: (removed; alignment language gating handled via preprocessing.tail_trim.smart_match.language_gate)
 

@@ -30,6 +30,11 @@ from utils.language_registry import (
 
 logger = logging.getLogger(__name__)
 
+# Track languages we already warned about for VibeVoice so the log is not
+# flooded when every chunk triggers the same warning.
+_VIBEVOICE_LANGUAGE_WARNED: Set[str] = set()
+_QWEN3_LANGUAGE_WARNED: Set[str] = set()
+
 
 class TTSGenerator:
     """
@@ -530,7 +535,8 @@ class TTSGenerator:
         Generate multiple Qwen3 voice clone candidates with temperature ramping.
         """
         language_name = QWEN3_LANGUAGE_CODE_TO_NAME.get(language_id, "English")
-        if language_id not in QWEN3_LANGUAGE_CODE_TO_NAME:
+        if language_id not in QWEN3_LANGUAGE_CODE_TO_NAME and language_id not in _QWEN3_LANGUAGE_WARNED:
+            _QWEN3_LANGUAGE_WARNED.add(language_id)
             logger.warning(
                 f"Unknown language code '{language_id}' for Qwen3 - defaulting to 'English'"
             )
@@ -737,16 +743,24 @@ class TTSGenerator:
     ) -> List[AudioCandidate]:
         """Generate VibeVoice candidates with optional ramping and conservative tail.
 
-        Across expressive candidates, ``temperature`` ramps UP (same idea as Chatterbox
-        temperature). ``cfg_scale`` ramps DOWN from the configured base (same idea as
-        Chatterbox exaggeration): higher CFG on early candidates, lower as temperature
-        rises, to avoid both knobs pushing toward wilder output at once.
+        Across expressive candidates, ``temperature`` ramps UP from configured base caml values (higher values make prosody increasingly lively). ``cfg_scale`` ramps UP from the configured base. beginning with lower values for more lively prosody, higher values have a calming effect. = The crossover effect avoids both knobs pushing toward wilder output at once.
         """
         language_name = VIBEVOICE_LANGUAGE_CODE_TO_NAME.get(language_id, "English")
         if language_id not in VIBEVOICE_LANGUAGE_CODE_TO_NAME:
-            logger.warning(
-                f"Unknown language code '{language_id}' for VibeVoice - defaulting to English"
-            )
+            vv_cfg = (self.config.get("generation", {}) or {}).get("vibevoice", {}) or {}
+            language_strict = bool(vv_cfg.get("language_strict", False))
+            if language_strict:
+                raise ValueError(
+                    f"VibeVoice language_strict=true and language '{language_id}' is not supported. "
+                    f"Supported: {sorted(VIBEVOICE_LANGUAGE_CODE_TO_NAME.keys())}"
+                )
+            if language_id not in _VIBEVOICE_LANGUAGE_WARNED:
+                _VIBEVOICE_LANGUAGE_WARNED.add(language_id)
+                logger.warning(
+                    f"Unknown language code '{language_id}' for VibeVoice - defaulting to English "
+                    f"(officially supported: {sorted(VIBEVOICE_LANGUAGE_CODE_TO_NAME.keys())}). "
+                    "Set generation.vibevoice.language_strict=true to fail instead."
+                )
 
         raw_tts_params = speaker_config.get("tts_params", {})
         raw_conservative = speaker_config.get("conservative_candidate", {})
@@ -781,10 +795,10 @@ class TTSGenerator:
                 params.update(filtered_conservative)
                 candidate_type = "CONSERVATIVE"
             else:
-                if num_expressive > 1:
+                if i > 0 and num_expressive > 1:
                     ramp_pos = i / max(1, num_expressive - 1)
-                    # cfg_scale: base is MAX for first expressive; ramp DOWN (like exaggeration).
-                    params["cfg_scale"] = max(1.0, base_cfg - (cfg_dev * ramp_pos))
+                    # cfg_scale: ramp UP
+                    params["cfg_scale"] = base_cfg + (cfg_dev * ramp_pos)
                     # temperature: ramp UP
                     params["temperature"] = base_temp + (temp_dev * ramp_pos)
                 candidate_type = "EXPRESSIVE"
@@ -1169,7 +1183,9 @@ class TTSGenerator:
 
         logger.info(f"Generating {num_candidates} diverse candidates for text (len={len(text)})")
 
-        is_conservative_enabled = conservative_config and conservative_config.get("enabled", False)
+        # Normalise once so mypy (and downstream code) can rely on a dict.
+        cc: Dict[str, Any] = conservative_config or {}
+        is_conservative_enabled = bool(cc.get("enabled", False))
         num_expressive = num_candidates - 1 if is_conservative_enabled else num_candidates
 
         # Special case: 1 candidate + conservative enabled = only conservative
@@ -1177,11 +1193,11 @@ class TTSGenerator:
             logger.debug("Single candidate mode with conservative enabled - generating only conservative candidate")
             try:
                 candidate_seed = effective_seed + hash(text) % 10000
-                var_exaggeration = conservative_config.get("exaggeration", 0.4)
-                var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
-                var_temperature = conservative_config.get("temperature", 0.5)
-                var_min_p = conservative_config.get("min_p", resolved_tts_params.get("min_p", 0.1))
-                var_top_p = conservative_config.get("top_p", resolved_tts_params.get("top_p", 0.8))
+                var_exaggeration = cc.get("exaggeration", 0.4)
+                var_cfg_weight = cc.get("cfg_weight", 0.3)
+                var_temperature = cc.get("temperature", 0.5)
+                var_min_p = cc.get("min_p", resolved_tts_params.get("min_p", 0.1))
+                var_top_p = cc.get("top_p", resolved_tts_params.get("top_p", 0.8))
 
                 additional_params = {k: v for k, v in filtered_tts_params.items()
                                      if k not in {"exaggeration", "cfg_weight", "temperature", "min_p", "top_p"}}
@@ -1221,11 +1237,11 @@ class TTSGenerator:
                 is_conservative = is_conservative_enabled and (i + 1) == num_candidates
 
                 if is_conservative:
-                    var_exaggeration = conservative_config.get("exaggeration", 0.4)
-                    var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
-                    var_temperature = conservative_config.get("temperature", 0.5)
-                    var_min_p = conservative_config.get("min_p", resolved_tts_params.get("min_p", 0.1))
-                    var_top_p = conservative_config.get("top_p", resolved_tts_params.get("top_p", 0.8))
+                    var_exaggeration = cc.get("exaggeration", 0.4)
+                    var_cfg_weight = cc.get("cfg_weight", 0.3)
+                    var_temperature = cc.get("temperature", 0.5)
+                    var_min_p = cc.get("min_p", resolved_tts_params.get("min_p", 0.1))
+                    var_top_p = cc.get("top_p", resolved_tts_params.get("top_p", 0.8))
                     candidate_type = "CONSERVATIVE"
                 else:
                     if num_expressive == 1 or i == 0:
@@ -1335,7 +1351,8 @@ class TTSGenerator:
         cfg_max_deviation = resolved_tts_params.get("cfg_weight_max_deviation", 0.15)
         temp_max_deviation = resolved_tts_params.get("temperature_max_deviation", 0.2)
 
-        is_conservative_enabled = conservative_config and conservative_config.get("enabled", False)
+        cc2: Dict[str, Any] = conservative_config or {}
+        is_conservative_enabled = bool(cc2.get("enabled", False))
         num_expressive = total_candidates - 1 if is_conservative_enabled else total_candidates
 
         for i in candidate_indices:
@@ -1344,11 +1361,11 @@ class TTSGenerator:
                 is_conservative = is_conservative_enabled and (i + 1) == total_candidates
 
                 if is_conservative:
-                    var_exaggeration = conservative_config.get("exaggeration", 0.4)
-                    var_cfg_weight = conservative_config.get("cfg_weight", 0.3)
-                    var_temperature = conservative_config.get("temperature", 0.5)
-                    var_min_p = conservative_config.get("min_p", resolved_tts_params.get("min_p", 0.1))
-                    var_top_p = conservative_config.get("top_p", resolved_tts_params.get("top_p", 0.8))
+                    var_exaggeration = cc2.get("exaggeration", 0.4)
+                    var_cfg_weight = cc2.get("cfg_weight", 0.3)
+                    var_temperature = cc2.get("temperature", 0.5)
+                    var_min_p = cc2.get("min_p", resolved_tts_params.get("min_p", 0.1))
+                    var_top_p = cc2.get("top_p", resolved_tts_params.get("top_p", 0.8))
                     candidate_type = "CONSERVATIVE"
                 else:
                     if num_expressive == 1 or i == 0:

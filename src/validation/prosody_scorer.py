@@ -14,11 +14,33 @@ Outputs:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torchaudio
 from utils.silence import quiet_imports_and_warnings
+
+
+def _asr_words_to_dicts(words: Optional[List[Any]]) -> Optional[List[Dict[str, Any]]]:
+    """Normalize preloaded ASR words (dataclass ASRWord or dict) to the common
+    dict shape used inside this module (``{word, start, end}``)."""
+    if not words:
+        return None
+    out: List[Dict[str, Any]] = []
+    for w in words:
+        if isinstance(w, dict):
+            out.append({
+                "word": str(w.get("word") or w.get("text") or ""),
+                "start": w.get("start"),
+                "end": w.get("end"),
+            })
+        else:
+            out.append({
+                "word": str(getattr(w, "word", "") or ""),
+                "start": getattr(w, "start", None),
+                "end": getattr(w, "end", None),
+            })
+    return out
 
 parselmouth = None
 try:
@@ -177,7 +199,14 @@ class ProsodyScorer:
         except Exception:
             return None
 
-    def score(self, audio: Optional[torch.Tensor], language: str, original_text: str, asr_transcription: Optional[str]) -> Dict[str, Any]:
+    def score(
+        self,
+        audio: Optional[torch.Tensor],
+        language: str,
+        original_text: str,
+        asr_transcription: Optional[str],
+        preloaded_words: Optional[List[Any]] = None,
+    ) -> Dict[str, Any]:
         result: Dict[str, Any] = {
             "enabled": self.enabled,
             "subscores": {
@@ -213,8 +242,11 @@ class ProsodyScorer:
             duration_sec = max(0.0, float(audio.shape[-1]) / float(self.sample_rate))
         except Exception:
             duration_sec = 0.0
-        if word_count < 5 or duration_sec < 2.0:
-            # Use neutral contribution instead of 0 to avoid biasing selection against short chunks
+        # Neutralise flow for short chunks: below ~30 words WPM-band matching
+        # is noisy (sentence boundaries, natural pauses dominate), penalising
+        # otherwise-good renditions without informational gain. See
+        # docs/TESTRUN_FINDINGS.md (P1).
+        if word_count < 30 or duration_sec < 2.0:
             flow_score = 0.5
 
         # Liveliness: energy dynamics + F0 via parselmouth
@@ -228,12 +260,41 @@ class ProsodyScorer:
         # Fixed gamma sharpening to emphasize vicinity of the target
         liveliness = T ** 1.2
 
-        # Intelligibility: proxy from ASR presence/length
+        # Intelligibility: token-count coverage vs expected. The previous
+        # ``1.0 if asr transcription exists else 0.0`` was effectively a
+        # constant. We now compute the ratio of ASR tokens to original tokens
+        # and shape it as a triangle around 1.0: severe under/over generation
+        # yields 0, perfect match 1.0. See docs/TESTRUN_FINDINGS.md (P2).
         asr_len = len(asr_transcription or "")
-        intelligibility = 1.0 if asr_len > 0 else 0.0
+        if asr_len == 0:
+            intelligibility = 0.0
+        else:
+            asr_tokens = len((asr_transcription or "").split())
+            ref_tokens = len((original_text or "").split())
+            if ref_tokens <= 0:
+                intelligibility = 1.0 if asr_len > 0 else 0.0
+            else:
+                ratio = asr_tokens / ref_tokens
+                # Tolerate ±35% mismatch (abbreviations, punctuation, small
+                # ASR slips). Below 0.65 or above 1.35 ratio -> 0.
+                intelligibility = max(0.0, 1.0 - abs(1.0 - ratio) / 0.35)
 
         # Semantic alignment: if whisperx available, use alignment coverage; else ASR presence
         semantic_alignment = 1.0 if asr_len > 0 else 0.0
+
+        # Fast path: preloaded word timestamps (e.g. from VibeVoice-ASR)
+        preloaded_dicts = _asr_words_to_dicts(preloaded_words)
+        if preloaded_dicts:
+            try:
+                total = max(1, len(preloaded_dicts))
+                covered = sum(
+                    1 for w in preloaded_dicts
+                    if (w.get("start") is not None and w.get("end") is not None)
+                )
+                semantic_alignment = max(0.0, min(1.0, covered / total))
+            except Exception:
+                pass
+
         try:
             # Language gate for alignment (reuse tail-trim language gate if configured)
             lang_gate = None
@@ -243,7 +304,10 @@ class ProsodyScorer:
             except Exception:
                 lang_gate = None
 
-            if self._whisperx is not None and asr_len > 0:
+            # Skip WhisperX entirely when preloaded words supplied the coverage
+            if preloaded_dicts:
+                pass
+            elif self._whisperx is not None and asr_len > 0:
                 device = self.whisperx_device if self.whisperx_device in {"cpu", "cuda"} else "cpu"
                 lang = language or "en"
                 asr_model = self._get_whisperx_asr_model(device, lang)
@@ -272,12 +336,33 @@ class ProsodyScorer:
         except Exception:
             pass
 
-        # MOS
+        # MOS - segment long audio so short-utterance MOS models stay reliable
         mos_unit = 0.0
         raw_mos = None
         if self.mos_provider and self.mos_provider.is_language_supported(language):
             try:
-                raw_mos = self.mos_provider.score(audio, self.sample_rate, language)
+                seg_cfg = (
+                    self.config.get("validation", {})
+                    .get("mos", {})
+                    .get("segmentation", {})
+                    or {}
+                )
+                max_unseg_s = float(seg_cfg.get("max_unsegmented_seconds", 20.0))
+                window_s = float(seg_cfg.get("window_s", 12.0))
+                hop_s = float(seg_cfg.get("hop_s", 10.0))
+                aggregator = str(seg_cfg.get("aggregator", "median"))
+                duration_s = float(audio.shape[-1]) / float(self.sample_rate) if audio.numel() > 0 else 0.0
+                if duration_s > max_unseg_s and hasattr(self.mos_provider, "score_segmented"):
+                    raw_mos = self.mos_provider.score_segmented(
+                        audio,
+                        self.sample_rate,
+                        language,
+                        window_s=window_s,
+                        hop_s=hop_s,
+                        aggregator=aggregator,
+                    )
+                else:
+                    raw_mos = self.mos_provider.score(audio, self.sample_rate, language)
                 mos_unit = self.mos_provider.to_unit_score(raw_mos, min_mos=self.min_mos) or 0.0
             except Exception as e:
                 logger.debug(f"MOS provider failed: {e}")

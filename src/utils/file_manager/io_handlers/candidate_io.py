@@ -161,18 +161,24 @@ class CandidateIOHandler:
                 # Update candidate path
                 candidate.audio_path = audio_path
 
-            # Save candidate metadata
+            # Save candidate metadata (incl. ground-truth ``audio_duration`` so
+            # downstream consumers like ``task_metrics_generator`` no longer have
+            # to interpolate it from ``quality_details``).
+            candidates_meta_list = []
+            for c in candidates:
+                audio_path_for_meta = chunk_dir / f"candidate_{c.candidate_idx+1:02d}.wav"
+                audio_duration = self._probe_audio_duration(c, audio_path_for_meta)
+                candidates_meta_list.append({
+                    "candidate_idx": c.candidate_idx,
+                    "audio_filename": f"candidate_{c.candidate_idx+1:02d}.wav",
+                    "audio_duration": audio_duration,
+                    "generation_params": c.generation_params,
+                })
+
             candidate_metadata = {
                 "chunk_idx": chunk_idx,
                 "total_candidates": len(candidates),
-                "candidates": [
-                    {
-                        "candidate_idx": c.candidate_idx,
-                        "audio_filename": f"candidate_{c.candidate_idx+1:02d}.wav",
-                        "generation_params": c.generation_params,
-                    }
-                    for c in candidates
-                ],
+                "candidates": candidates_meta_list,
             }
 
             metadata_path = chunk_dir / "candidates_metadata.json"
@@ -192,6 +198,30 @@ class CandidateIOHandler:
         except Exception as e:
             logger.error(f"Error saving candidates for chunk {chunk_idx+1}: {e}")
             return False
+
+    def _probe_audio_duration(self, candidate, audio_path) -> float:
+        """Return candidate audio duration in seconds; 0.0 on failure.
+
+        Prefers the on-disk wav (authoritative) over ``candidate.audio_tensor``
+        because the tensor may live on GPU and we want the same value as the
+        final file regardless of resampling/trimming side effects.
+        """
+        try:
+            if audio_path is not None and audio_path.exists():
+                info = torchaudio.info(str(audio_path))
+                if info.sample_rate:
+                    return float(info.num_frames) / float(info.sample_rate)
+        except Exception:
+            pass
+        try:
+            if candidate.audio_tensor is not None:
+                sample_rate = int(self.config.get("audio", {}).get("sample_rate", 24000))
+                tensor = candidate.audio_tensor
+                num_samples = tensor.shape[-1] if tensor.ndim > 0 else 0
+                return float(num_samples) / float(sample_rate) if sample_rate else 0.0
+        except Exception:
+            pass
+        return 0.0
 
     def get_candidates(
         self, chunk_idx: Optional[int] = None
@@ -437,17 +467,19 @@ class CandidateIOHandler:
     ):
         """Saves metadata for generated candidates in a JSON file within the chunk directory."""
         try:
+            cand_items = []
+            for c in candidates:
+                audio_path_for_meta = chunk_dir / f"candidate_{c.candidate_idx+1:02d}.wav"
+                cand_items.append({
+                    "candidate_idx": c.candidate_idx,
+                    "audio_filename": f"candidate_{c.candidate_idx+1:02d}.wav",
+                    "audio_duration": self._probe_audio_duration(c, audio_path_for_meta),
+                    "generation_params": c.generation_params,
+                })
             candidate_metadata = {
                 "chunk_idx": chunk_index,
                 "total_candidates": len(candidates),
-                "candidates": [
-                    {
-                        "candidate_idx": c.candidate_idx,
-                        "audio_filename": f"candidate_{c.candidate_idx+1:02d}.wav",
-                        "generation_params": c.generation_params,
-                    }
-                    for c in candidates
-                ],
+                "candidates": cand_items,
             }
 
             metadata_path = chunk_dir / "candidates_metadata.json"

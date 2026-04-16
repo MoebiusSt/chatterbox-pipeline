@@ -35,7 +35,7 @@ def check_ci_status(commit_sha: str) -> Optional[dict]:
     Returns:
         dict: CI status information
     """
-    import requests
+    import requests  # type: ignore[import-untyped]
 
     token = get_github_token()
     if not token:

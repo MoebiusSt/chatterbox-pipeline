@@ -1,0 +1,52 @@
+"""ASR backend factory with auto-routing by model type."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, Optional
+
+from ..whisper_validator import WhisperValidator
+from .base import ASRBackend
+from .whisper_backend import WhisperBackend
+
+logger = logging.getLogger(__name__)
+
+_VIBEVOICE_MODEL_TYPES = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
+
+
+def _is_vibevoice(model_type: str) -> bool:
+    mt = (model_type or "").strip().lower()
+    return mt in _VIBEVOICE_MODEL_TYPES or mt.startswith("vibevoice")
+
+
+def resolve_asr_backend(
+    config: Dict[str, Any],
+    whisper_validator: Optional[WhisperValidator] = None,
+) -> ASRBackend:
+    """Pick the ASR backend based on config and TTS model type.
+
+    Precedence:
+      1. ``validation.asr_backend`` explicit ``whisper`` / ``vibevoice_asr``
+      2. ``validation.asr_backend: auto`` (default) → ``vibevoice_asr`` when
+         ``generation.model_type`` starts with ``vibevoice``, else ``whisper``.
+    """
+    validation_cfg: Dict[str, Any] = config.get("validation", {}) or {}
+    sel = str(validation_cfg.get("asr_backend", "auto")).strip().lower()
+    model_type = str(config.get("generation", {}).get("model_type", "")).strip().lower()
+
+    if sel == "auto":
+        sel = "vibevoice_asr" if _is_vibevoice(model_type) else "whisper"
+
+    if sel == "vibevoice_asr":
+        try:
+            from .vibevoice_asr_backend import VibeVoiceASRBackend
+            logger.info("🎙️  ASR backend: vibevoice_asr (model_type=%s)", model_type or "n/a")
+            return VibeVoiceASRBackend(config)
+        except Exception as e:
+            logger.warning(
+                "VibeVoice-ASR backend unavailable (%s) - falling back to Whisper", e
+            )
+            return WhisperBackend(config, validator=whisper_validator)
+
+    logger.info("🎙️  ASR backend: whisper (model_type=%s)", model_type or "n/a")
+    return WhisperBackend(config, validator=whisper_validator)

@@ -1002,7 +1002,7 @@ class VibeVoiceTokenizerEncoderOutput:
 class VibeVoiceAcousticTokenizerModel(PreTrainedModel):
     """VibeVoice speech tokenizer model combining encoder and decoder for acoustic tokens"""
     
-    config_class = VibeVoiceAcousticTokenizerConfig
+    config_class = VibeVoiceAcousticTokenizerConfig  # type: ignore[assignment]
     base_model_prefix = "vibevoice_acoustic_tokenizer"
     _supports_flash_attn_2 = True  
     _supports_sdpa = True  
@@ -1079,8 +1079,13 @@ class VibeVoiceAcousticTokenizerModel(PreTrainedModel):
                 nn.init.zeros_(module.bias)
     
     @torch.no_grad()
-    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False):
-        """Convert audio to latent representations"""
+    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False, is_final_chunk=False):
+        """Convert audio to latent representations.
+
+        ``is_final_chunk`` is accepted for compatibility with upstream VibeVoice-ASR
+        streaming callers and is ignored here (single-pass encode path).
+        """
+        del is_final_chunk
         latents = self.encoder(audio, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
         return VibeVoiceTokenizerEncoderOutput(mean=latents.permute(0, 2, 1), std=self.fix_std)
     
@@ -1118,7 +1123,7 @@ class VibeVoiceAcousticTokenizerModel(PreTrainedModel):
 class VibeVoiceSemanticTokenizerModel(PreTrainedModel):
     """VibeVoice speech tokenizer model with only encoder for semantic tokens"""
     
-    config_class = VibeVoiceSemanticTokenizerConfig
+    config_class = VibeVoiceSemanticTokenizerConfig  # type: ignore[assignment]
     base_model_prefix = "vibevoice_semantic_tokenizer"
     _supports_flash_attn_2 = True  
     _supports_sdpa = True  
@@ -1169,8 +1174,13 @@ class VibeVoiceSemanticTokenizerModel(PreTrainedModel):
                 nn.init.zeros_(module.bias)
     
     @torch.no_grad()
-    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False):
-        """Convert audio to latent representations"""
+    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False, is_final_chunk=False):
+        """Convert audio to latent representations.
+
+        ``is_final_chunk`` is accepted for compatibility with upstream VibeVoice-ASR
+        streaming callers and is ignored here (single-pass encode path).
+        """
+        del is_final_chunk
         latents = self.encoder(audio, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
         return VibeVoiceTokenizerEncoderOutput(mean=latents.permute(0, 2, 1))
     
