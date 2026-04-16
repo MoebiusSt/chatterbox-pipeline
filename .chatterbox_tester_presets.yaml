@@ -78,10 +78,10 @@ hans-juergen-lenhart_DE.wav:
   min_p: 0.09
   top_p: 1.0
 hans-juergen-lenhart_DE.wav::vibevoice:
-  temperature: 1.1
-  top_p: 0.96
+  temperature: 1.0
+  top_p: 0.97
   cfg_scale: 1.4
-  diffusion_steps: 20.0
+  diffusion_steps: 30.0
   voice_speed_factor: 1.0
   use_sampling: true
 martina-zimmermann_DE.wav:

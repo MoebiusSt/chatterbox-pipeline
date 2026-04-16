@@ -28,6 +28,7 @@ This version uses pygame for audio playback (better WSL compatibility).
 import tkinter as tk
 from tkinter import ttk
 import os
+import random
 import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -407,7 +408,6 @@ class ChatterboxTester:
         seed_entry.bind('<Return>',   lambda e: (self._on_text_change(), self._mark_needs_refresh()))
 
         def randomize_seed():
-            import random
             self.seed_var.set(str(random.randint(1, 999999)))
             self._on_text_change()
             self._mark_needs_refresh()
@@ -1182,11 +1182,18 @@ class ChatterboxTester:
         except Exception:
             seed = 0
 
-        if seed > 0:
+        # 0 or empty field → new random seed every generation (same range as 🎲 Random button).
+        if seed == 0:
+            seed = random.randint(1, 999999)
             torch.manual_seed(seed)
-            print(f"🎲 Seed set to: {seed}")
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+            print(f"🎲 Seed 0 / empty → random seed for this run: {seed}")
         else:
-            print("🎲 Using random seed (0)")
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+            print(f"🎲 Seed set to: {seed}")
 
         ref_audio_file = self.ref_audio_var.get()
         ref_audio_path = str(
