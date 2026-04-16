@@ -145,7 +145,9 @@ class ChatterboxModelCache:
         if raw:
             # Explicit override from tester/env
             vv: Optional[str] = str(raw).strip().lower()
-            if vv not in ("flash_attention_2", "sdpa", "eager"):
+            if vv == "auto":
+                vv = None
+            elif vv not in ("flash_attention_2", "sdpa", "eager"):
                 logger.warning(
                     "Invalid vibevoice_attn_implementation %r; falling back to per-model default",
                     raw,

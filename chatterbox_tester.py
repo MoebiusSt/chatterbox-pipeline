@@ -17,10 +17,10 @@ Supported models:
 Environment (VibeVoice only):
   CHATTERBOX_TESTER_VIBEVOICE_ATTN  Override attention backend for the Qwen2 LM (all VV models).
     If unset, per-model defaults are used:
-      vibevoice (7B Q8) → flash_attention_2  (large model, FA2 amortised)
-      vibevoice_1_5b    → sdpa              (small model, FA2 overhead > gain)
-      vibevoice_q4      → sdpa              (4-bit + FA2 unreliable)
-    Allowed values: flash_attention_2, sdpa, eager.
+      vibevoice (7B Q8) → sdpa (best performance)            
+      vibevoice_1_5b    → sdpa (best performance)              
+      vibevoice_q4      → sdpa (best performance)             
+    Allowed values: auto, flash_attention_2, sdpa, eager.
 
 This version uses pygame for audio playback (better WSL compatibility).
 """
@@ -89,7 +89,7 @@ _VIBEVOICE_UI_MODELS = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
 _VIBEVOICE_TESTER_ATTN: str = os.environ.get(
     "CHATTERBOX_TESTER_VIBEVOICE_ATTN", ""
 ).strip().lower()
-if _VIBEVOICE_TESTER_ATTN not in ("flash_attention_2", "sdpa", "eager"):
+if _VIBEVOICE_TESTER_ATTN not in ("auto", "flash_attention_2", "sdpa", "eager"):
     _VIBEVOICE_TESTER_ATTN = ""
 
 
@@ -862,6 +862,10 @@ class ChatterboxTester:
             tester_cfg: Dict[str, Any] = {}
             if _VIBEVOICE_TESTER_ATTN:
                 tester_cfg["vibevoice_attn_implementation"] = _VIBEVOICE_TESTER_ATTN
+            elif model_ui_name == "vibevoice":
+                tester_cfg["vibevoice_attn_implementation"] = "sdpa"
+            elif model_ui_name == "vibevoice_q4":
+                tester_cfg["vibevoice_attn_implementation"] = "sdpa"
             config["chatterbox_tester"] = tester_cfg
         self.current_model = ChatterboxModelCache.get_model(
             self.device, model_type, config=config

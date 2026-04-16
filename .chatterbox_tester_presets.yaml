@@ -84,6 +84,27 @@ hans-juergen-lenhart_DE.wav::vibevoice:
   diffusion_steps: 20.0
   voice_speed_factor: 1.0
   use_sampling: true
+hans-juergen-lenhart_DE.wav::vibevoice_q4:
+  temperature: 1.0
+  top_p: 0.99
+  cfg_scale: 1.4
+  diffusion_steps: 40.0
+  voice_speed_factor: 1.0
+  use_sampling: true
+hans-juergen-lenhart_DE_3s.wav::vibevoice:
+  temperature: 1.15
+  top_p: 0.99
+  cfg_scale: 1.3
+  diffusion_steps: 30.0
+  voice_speed_factor: 1.0
+  use_sampling: true
+hans-juergen-lenhart_IT.wav::vibevoice_q4:
+  temperature: 1.41
+  top_p: 1.0
+  cfg_scale: 1.4
+  diffusion_steps: 20.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 martina-zimmermann_DE.wav:
   exaggeration: 0.7
   cfg_weight: 0.49
