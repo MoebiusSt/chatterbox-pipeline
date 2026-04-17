@@ -763,6 +763,9 @@ class SpaCyChunker(BaseChunker):
         """
         Refinement pass to improve chunk boundaries by:
         1) Splitting short headings before internal paragraph breaks ("\n\n").
+           Gated by ``force_paragraph_chunks``: when False, primary chunking
+           intentionally spans paragraph boundaries (longform mode, e.g.
+           VibeVoice) and re-splitting at short headings would undo that.
         2) Merging micro-chunks into the previous chunk when safe.
 
         Speaker transitions always have priority and are preserved.
@@ -770,7 +773,18 @@ class SpaCyChunker(BaseChunker):
         if not chunks:
             return chunks
 
-        # Step 1: split chunks at heading-like paragraph breaks
+        # Step 1: split chunks at heading-like paragraph breaks.
+        # Only active when paragraph-based chunking is enabled; otherwise
+        # longform chunks containing internal "\n\n" are intentional.
+        refined: List[TextChunk] = list(chunks)
+        if self.force_paragraph_chunks:
+            refined = self._split_short_headings(chunks)
+
+        # Step 2: merge micro-chunks when safe
+        return self._merge_micro_chunks(refined)
+
+    def _split_short_headings(self, chunks: List[TextChunk]) -> List[TextChunk]:
+        """Split chunks at internal paragraph breaks preceded by a short line."""
         refined: List[TextChunk] = []
         for original in chunks:
             # Work list for potential multiple splits within one chunk
@@ -855,7 +869,10 @@ class SpaCyChunker(BaseChunker):
 
             refined.extend(work_list)
 
-        # Step 2: merge micro-chunks when safe
+        return refined
+
+    def _merge_micro_chunks(self, refined: List[TextChunk]) -> List[TextChunk]:
+        """Merge micro-chunks into the preceding chunk when safe."""
         merged: List[TextChunk] = []
         i = 0
         while i < len(refined):

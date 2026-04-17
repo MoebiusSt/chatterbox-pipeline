@@ -148,15 +148,44 @@ TextPreprocessor.process_text_file()
 ### 3. Text Processing (`src/chunking/`)
 ```python
 SpaCyChunker.chunk_text(text) → List[TextChunk]
-# Linguistische Segmentierung, 520-650 Zeichen pro Chunk
+# Linguistic sentence segmentation with speaker-transition priority.
+# Defaults depend on the parent config:
+#   Chatterbox/Qwen3: target=380, max=460, force_paragraph_chunks=true (see default_config.yaml)
+#   VibeVoice:        target=2800, max=3600, force_paragraph_chunks=false,
+#                     refinement_enabled=false (see config/defaults/vibevoice.yaml)
+#
+# Refinement pass (_refine_chunks):
+#   Step 1 – split chunks at internal "\n\n" if the preceding line is short
+#            (<= short_par_chars, default = min_chunk_length).  **Gated on
+#            force_paragraph_chunks**: skipped when False so longform chunks
+#            stay intact (introduced for VibeVoice).
+#   Step 2 – merge micro-chunks into the previous chunk when safe (never
+#            across speaker transitions or paragraph breaks).
+# Disable the whole refinement via chunking.refinement_enabled: false.
 ```
 
 ### 4. Audio Generation (`src/generation/`)
 ```python
 TTSGenerator.generate_candidates(text, N) → List[AudioCandidate]
 CandidateManager.generate_candidates_for_chunk() → GenerationResult
-# N candidates per chunk with inverse parameter correlation:
-# exaggeration ↑ → cfg_weight ↓, temperature ↓ (prevents "wild" parameter combinations)
+# N candidates per chunk with model-specific ramp semantics; last candidate may
+# be a "CONSERVATIVE" fallback (params from speaker.conservative_candidate) when
+# conservative_candidate.enabled=true.
+
+# Supported model types (src/utils/language_registry.py):
+#   standard / multilingual / turbo       – Chatterbox family
+#   qwen3                                  – Qwen3 TTS 1.7B
+#   vibevoice / vibevoice_1_5b / vibevoice_q4 – VibeVoice family (local vendored code)
+#
+# VibeVoice specifics (src/generation/tts_generator.py):
+#   - Supported tts_params: cfg_scale, temperature, top_p, diffusion_steps,
+#                           voice_speed_factor, use_sampling
+#   - Expressive ramp: cfg_scale and temperature both RAMP-UP across expressive
+#     candidates (candidate 0 = base, candidate i>0 = base + deviation * i/(N-1)).
+#   - use_sampling=false → greedy LM (top_p/temperature ignored).
+#   - voice_speed_factor resamples the *reference* audio, not the output.
+#   - Per-candidate seed: base_seed(speaker) + i*1000 + hash(text)%10000.
+#   - generation.vibevoice.language_strict guards non-en/zh languages.
 
 # Multilingual Support
 TTSGenerator(config, model_type="multilingual") → multilingual model loading
@@ -166,9 +195,17 @@ generate_single(text, language_id="de") → language-specific generation
 
 ### 5. Quality Validation (`src/validation/`)
 ```python
+ASRBackend.transcribe() → transcription (Whisper or VibeVoice-ASR)
 WhisperValidator.validate_candidate() → ValidationResult
+ProsodyScorer.score() → ProsodyResult (flow, liveliness, mos, semantic_alignment, …)
 QualityScorer.score_candidate() → QualityScore
-# Speech-to-Text validation + multi-criteria scoring
+# Speech-to-Text validation + prosody/MOS + multi-criteria scoring
+
+# ASR backend routing (src/validation/asr/factory.py)
+# - validation.asr_backend: auto | whisper | vibevoice_asr
+# - "auto" resolves to whisper for ALL model types (VibeVoice-ASR disabled by default
+#   due to ~16 GB VRAM footprint and a long-form mask bug on ≥4-min clips).
+# - "vibevoice_asr" is opt-in and falls back to Whisper on load failure.
 
 # Robust Similarity
 # - quality_calculator.calculate_similarity() applies robust normalization
@@ -183,6 +220,18 @@ QualityScorer.score_candidate() → QualityScore
 # Dynamic Thresholding
 # - WhisperValidator computes an effective similarity threshold based on
 #   text length and punctuation density (no new config flags).
+
+# Prosody + MOS (src/validation/prosody_scorer.py)
+# - Weights: validation.prosody.weights.{semantic_alignment, flow, liveliness,
+#            intelligibility, mos}  (default mos=0.4, flow=0.3, liveliness=0.3)
+# - Targets: wpm_min/wpm_max for flow, liveliness_target
+# - Select:  alpha_quality + beta_prosody + gamma_mos for final combined score
+# - MOS is language-gated (validation.mos.enabled_languages, default [de, en]).
+# - Long-audio MOS windowing (validation.mos.segmentation):
+#     when duration > max_unsegmented_seconds AND provider implements
+#     score_segmented, audio is scored in sliding windows (window_s/hop_s)
+#     and aggregated (median|mean|min). Added so short-utterance MOS models
+#     (NISQA/UTMOS) stay in-distribution on ~1-minute VibeVoice chunks.
 
 # Tail-End Trimming (Smart + Fallbacks)
 # - validation.preprocessing.tail_trim (see default_config.yaml)
@@ -365,23 +414,42 @@ Without a `parent:` field the behavior is identical to the previous 2-level syst
 - `chatterbox.yaml` — standard / multilingual
 - `turbo.yaml`      — ChatterboxTurboTTS
 - `qwen3.yaml`      — Qwen3 TTS
-- `vibevoice.yaml`  — VibeVoice (all variants)
+- `vibevoice.yaml`  — VibeVoice (all three variants; longform chunking, refinement off,
+                       language_strict=false, `vibevoice` subsection for backend tuning)
 
 ### Critical Parameters
 ```yaml
 generation:
-  num_candidates: 3              
-  
+  num_candidates: 3
+  model_type: standard          # standard|multilingual|turbo|qwen3|vibevoice|vibevoice_1_5b|vibevoice_q4
+  global_seed: 12345            # 0 = random per candidate
+
 validation:
-  similarity_threshold: 0.80         # Quality gate: higher = stricter
-  min_quality_score: 0.75        # Minimum quality score for validation
+  similarity_threshold: 0.64    # dynamically adjusted by length/punctuation
+  min_quality_score: 0.72
   whisper_model: small|base|medium|large
   numbers_normalization_mode: off|placeholder|digits|words   # non-EN only
   whisper_initial_prompt_enabled: false
-  whisper_initial_prompt_text: "Schreibe Zahlen ausgeschrieben."
-  
+  whisper_initial_prompt_text: ""
+  asr_backend: auto             # auto|whisper|vibevoice_asr
+  mos:
+    enabled_languages: [de, en]
+    segmentation:               # windowed MOS for long VibeVoice outputs
+      max_unsegmented_seconds: 20.0
+      window_s: 12.0
+      hop_s: 10.0
+      aggregator: median
+
 chunking:
-  target_chunk_limit: 520       # Balance: quality vs risk of context window overload
+  # Chatterbox/Qwen3
+  target_chunk_limit: 380
+  max_chunk_limit: 460
+  force_paragraph_chunks: true
+  # VibeVoice (via defaults/vibevoice.yaml)
+  # target_chunk_limit: 2800
+  # max_chunk_limit: 3600
+  # force_paragraph_chunks: false
+  # refinement_enabled: false
 ```
 
 ## Job/Task Management

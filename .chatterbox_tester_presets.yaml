@@ -184,6 +184,13 @@ petra_ries2_DE.wav:
   repetition_penalty: 2.2
   min_p: 0.09
   top_p: 0.99
+petra_ries2_DE.wav::vibevoice:
+  temperature: 1.2
+  top_p: 0.99
+  cfg_scale: 1.25
+  diffusion_steps: 21.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 petra_ries2_DE_3s.wav::qwen3:
   temperature: 0.9
   top_k: 70.0
