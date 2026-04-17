@@ -11,13 +11,6 @@ from .whisper_backend import WhisperBackend
 
 logger = logging.getLogger(__name__)
 
-_VIBEVOICE_MODEL_TYPES = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
-
-
-def _is_vibevoice(model_type: str) -> bool:
-    mt = (model_type or "").strip().lower()
-    return mt in _VIBEVOICE_MODEL_TYPES or mt.startswith("vibevoice")
-
 
 def resolve_asr_backend(
     config: Dict[str, Any],
@@ -27,15 +20,22 @@ def resolve_asr_backend(
 
     Precedence:
       1. ``validation.asr_backend`` explicit ``whisper`` / ``vibevoice_asr``
-      2. ``validation.asr_backend: auto`` (default) → ``vibevoice_asr`` when
-         ``generation.model_type`` starts with ``vibevoice``, else ``whisper``.
+      2. ``validation.asr_backend: auto`` (default) → ``whisper`` for **all**
+         model types (including VibeVoice).
+
+    VibeVoice-ASR remains available as opt-in via
+    ``validation.asr_backend: vibevoice_asr`` but is no longer auto-selected:
+    on consumer GPUs (≤16 GB) its ~16 GB weight footprint forces VRAM
+    spillover after the TTS model, and the vendored long-form inference path
+    currently hits an off-by-one mask bug on ≥4-min clips. Whisper is faster,
+    stable, and delivers adequate alignment for our scorer stack.
     """
     validation_cfg: Dict[str, Any] = config.get("validation", {}) or {}
     sel = str(validation_cfg.get("asr_backend", "auto")).strip().lower()
     model_type = str(config.get("generation", {}).get("model_type", "")).strip().lower()
 
     if sel == "auto":
-        sel = "vibevoice_asr" if _is_vibevoice(model_type) else "whisper"
+        sel = "whisper"
 
     if sel == "vibevoice_asr":
         try:

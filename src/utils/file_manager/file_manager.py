@@ -253,6 +253,22 @@ class FileManager:
             chunk_idx, candidates, overwrite_existing
         )
 
+    def save_candidate(
+        self,
+        chunk_idx: int,
+        candidate: AudioCandidate,
+        overwrite_existing: bool = True,
+    ) -> bool:
+        """Persist a single candidate immediately (crash-safe per-candidate save).
+
+        Used by the generation stage to flush each candidate to disk right
+        after it has been rendered, so a crash during later candidates does
+        not discard earlier work of the same chunk.
+        """
+        return self._candidate_handler.save_single_candidate(
+            chunk_idx, candidate, overwrite_existing
+        )
+
     def get_candidates(
         self, chunk_idx: Optional[int] = None
     ) -> Dict[int, List[AudioCandidate]]:

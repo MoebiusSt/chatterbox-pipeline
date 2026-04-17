@@ -203,7 +203,12 @@ validation:
   whisper_initial_prompt_text: ""  # Style-only prompt, no language directive
 
   # ASR backend selection for validation/tail-trim/prosody alignment.
-  # auto → vibevoice_asr when generation.model_type starts with "vibevoice", else whisper.
+  # auto → whisper for ALL model types (including VibeVoice-TTS).
+  # VibeVoice-ASR is available as explicit opt-in (``vibevoice_asr``) but no
+  # longer auto-selected: its ~16 GB weight footprint pushes consumer GPUs
+  # (≤16 GB) into CPU-RAM spillover after TTS, and the vendored long-form
+  # inference path currently hits an off-by-one mask bug on ≥4-min clips.
+  # See docs/TESTRUN_FINDINGS.md for benchmark data.
   asr_backend: auto   # auto | whisper | vibevoice_asr
   vibevoice_asr:
     model_id: microsoft/VibeVoice-ASR

@@ -205,57 +205,101 @@ class CandidateManager:
         # Convert 1-based candidate indices to 0-based for TTSGenerator
         zero_based_indices = [idx - 1 for idx in candidate_indices]
 
-        # Check if chunk has speaker information
-        if hasattr(text_chunk, "speaker_id") and text_chunk.speaker_id:
-            logger.info(f"🎭 Using speaker for speaker '{text_chunk.speaker_id}'")
+        # Install incremental-save hook: persist each candidate to disk
+        # IMMEDIATELY after rendering so long VibeVoice/Qwen runs survive
+        # crashes. The TTS generator assigns internal indices 0..N-1 while
+        # we need the caller-requested indices from ``zero_based_indices``.
+        # We maintain a counter in a closure to remap on the fly.
+        file_manager = getattr(self, "file_manager", None)
+        hook_installed = False
+        if (
+            self.save_candidates
+            and file_manager is not None
+            and hasattr(file_manager, "save_candidate")
+            and self.tts_generator is not None
+            and hasattr(self.tts_generator, "set_candidate_ready_hook")
+        ):
+            emitted_count = {"n": 0}
 
-            # Use speaker-specific generation
-            config_manager = getattr(self, "file_manager", None)
-
-            # Generate ONLY the specific candidates using speaker-aware method
-            specific_candidates = self.tts_generator.generate_candidates_with_speaker(
-                text=text_chunk.text,
-                speaker_id=text_chunk.speaker_id,
-                num_candidates=len(candidate_indices),
-                config_manager=config_manager,
-            )
-
-            # Map the generated candidates to the correct indices
-            for i, candidate in enumerate(specific_candidates):
+            def _save_hook(cand: AudioCandidate) -> None:
+                i = emitted_count["n"]
+                emitted_count["n"] = i + 1
                 if i < len(zero_based_indices):
-                    candidate.candidate_idx = zero_based_indices[i]
-        else:
-            # No speaker ID found, use default speaker
-            logger.info("🔧 No speaker ID found, using default speaker")
-            config_manager = getattr(self, "file_manager", None)
-            
-            # Get default speaker ID from configuration
-            default_speaker_id = None
-            if config_manager and hasattr(config_manager, "get_default_speaker_id"):
-                default_speaker_id = config_manager.get_default_speaker_id()
-            
-            if not default_speaker_id:
-                # Fallback to config-based lookup
-                generation_config = self.config.get("generation", {})
-                default_speaker_id = generation_config.get("default_speaker")
-                if not default_speaker_id:
-                    raise RuntimeError(
-                        "Cannot determine default speaker: config_manager not available "
-                        "and no default_speaker configured in generation config"
+                    cand.candidate_idx = zero_based_indices[i]
+                cand.chunk_idx = chunk_index
+                cand.chunk_text = text_chunk.text
+                try:
+                    file_manager.save_candidate(
+                        chunk_index, cand, overwrite_existing=True
                     )
-                logger.warning(f"config_manager not available, using config fallback: {default_speaker_id}")
-            
-            specific_candidates = self.tts_generator.generate_candidates_with_speaker(
-                text=text_chunk.text,
-                speaker_id=default_speaker_id,
-                num_candidates=len(candidate_indices),
-                config_manager=config_manager,
-            )
+                    logger.debug(
+                        f"💾 Incrementally saved candidate {cand.candidate_idx+1} "
+                        f"for chunk {chunk_index+1}"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Incremental save failed for candidate "
+                        f"{cand.candidate_idx+1} of chunk {chunk_index+1}: {e}"
+                    )
 
-            # Map the generated candidates to the correct indices
-            for i, candidate in enumerate(specific_candidates):
-                if i < len(zero_based_indices):
-                    candidate.candidate_idx = zero_based_indices[i]
+            self.tts_generator.set_candidate_ready_hook(_save_hook)
+            hook_installed = True
+
+        try:
+            # Check if chunk has speaker information
+            if hasattr(text_chunk, "speaker_id") and text_chunk.speaker_id:
+                logger.info(f"🎭 Using speaker for speaker '{text_chunk.speaker_id}'")
+
+                # Use speaker-specific generation
+                config_manager = getattr(self, "file_manager", None)
+
+                # Generate ONLY the specific candidates using speaker-aware method
+                specific_candidates = self.tts_generator.generate_candidates_with_speaker(
+                    text=text_chunk.text,
+                    speaker_id=text_chunk.speaker_id,
+                    num_candidates=len(candidate_indices),
+                    config_manager=config_manager,
+                )
+
+                # Map the generated candidates to the correct indices
+                for i, candidate in enumerate(specific_candidates):
+                    if i < len(zero_based_indices):
+                        candidate.candidate_idx = zero_based_indices[i]
+            else:
+                # No speaker ID found, use default speaker
+                logger.info("🔧 No speaker ID found, using default speaker")
+                config_manager = getattr(self, "file_manager", None)
+
+                # Get default speaker ID from configuration
+                default_speaker_id = None
+                if config_manager and hasattr(config_manager, "get_default_speaker_id"):
+                    default_speaker_id = config_manager.get_default_speaker_id()
+
+                if not default_speaker_id:
+                    # Fallback to config-based lookup
+                    generation_config = self.config.get("generation", {})
+                    default_speaker_id = generation_config.get("default_speaker")
+                    if not default_speaker_id:
+                        raise RuntimeError(
+                            "Cannot determine default speaker: config_manager not available "
+                            "and no default_speaker configured in generation config"
+                        )
+                    logger.warning(f"config_manager not available, using config fallback: {default_speaker_id}")
+
+                specific_candidates = self.tts_generator.generate_candidates_with_speaker(
+                    text=text_chunk.text,
+                    speaker_id=default_speaker_id,
+                    num_candidates=len(candidate_indices),
+                    config_manager=config_manager,
+                )
+
+                # Map the generated candidates to the correct indices
+                for i, candidate in enumerate(specific_candidates):
+                    if i < len(zero_based_indices):
+                        candidate.candidate_idx = zero_based_indices[i]
+        finally:
+            if hook_installed and self.tts_generator is not None:
+                self.tts_generator.set_candidate_ready_hook(None)
 
         # Save the specific candidates using FileManager structure (chunk_XXX/candidate_YY.wav)
         saved_candidates = []
@@ -281,8 +325,10 @@ class CandidateManager:
                 )
                 continue
 
-        # Use FileManager to save candidates in correct structure (chunk_XXX/candidate_YY.wav)
-        if saved_candidates and self.save_candidates:
+        # Use FileManager to save candidates in correct structure
+        # (chunk_XXX/candidate_YY.wav). Skipped when the incremental hook
+        # already persisted every candidate, to avoid redundant rewrites.
+        if saved_candidates and self.save_candidates and not hook_installed:
             self.candidate_io._save_candidates_in_correct_structure(
                 saved_candidates, chunk_index
             )

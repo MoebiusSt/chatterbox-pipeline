@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from chunking.base_chunker import TextChunk
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from utils.language_registry import format_generation_params_summary
 from validation.asr import ASRBackend, ASRResult, ASRWord
 from validation.quality_scorer import QualityScorer
 from validation.preprocessors.tail_trimmer import TailTrimmer
@@ -185,18 +186,36 @@ class ValidationHandler:
             logger.info("Starting validation stage")
 
             # Free GPU memory left over from the generation stage before the
-            # ASR/MOS models are loaded. This is important on consumer GPUs
-            # where a 7B VibeVoice-ASR + Whisper would otherwise spill to CPU
-            # or OOM when chunks remain cached. See TESTRUN_FINDINGS (A3).
+            # ASR/MOS models are loaded. On 16 GB consumer GPUs the ~8 GB
+            # VibeVoice TTS model + ~7 GB VibeVoice-ASR simply do not coexist
+            # — empty_cache() alone is insufficient because the TTS model is
+            # still referenced in ChatterboxModelCache and therefore cannot be
+            # reclaimed. We explicitly evict all cached TTS models, move their
+            # weights to CPU, and flush the CUDA allocator. If the validation
+            # stage later triggers a retry generation, the TTS model is simply
+            # reloaded (cache miss) — acceptable because retries are rare.
             try:
                 import torch  # local import to avoid hard dep at module import
+                from generation.model_cache import ChatterboxModelCache
 
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.ipc_collect()
-                    logger.debug("Cleared CUDA cache before validation stage")
+                # Step 1: release the direct TTSGenerator.model reference. The
+                # cache eviction alone cannot free VRAM while this pointer is
+                # live, so we null it explicitly. The model is transparently
+                # reloaded on demand if a validation retry triggers another
+                # generation pass (see TTSGenerator._ensure_model).
+                gen_handler = getattr(self, "generation_handler", None)
+                if gen_handler is not None:
+                    tts_gen = getattr(gen_handler, "tts_generator", None)
+                    if tts_gen is not None and hasattr(tts_gen, "release_model"):
+                        tts_gen.release_model()
+                        logger.info("🔓 Released TTSGenerator.model reference")
+
+                # Step 2: evict everything from the TTS model cache and flush
+                # the CUDA allocator.
+                device = "cuda" if torch.cuda.is_available() else ""
+                ChatterboxModelCache.free_vram(device or None)
             except Exception as e:
-                logger.debug(f"CUDA cache cleanup skipped: {e}")
+                logger.debug(f"TTS cache eviction before validation skipped: {e}")
 
             chunks = self.file_manager.get_chunks()
             all_candidates = self.file_manager.get_candidates()
@@ -1014,7 +1033,11 @@ class ValidationHandler:
                         best_candidate_idx + 1 if best_candidate_idx is not None else 0
                     )
 
-                    # Get TTS parameters from best candidate
+                    # Get TTS parameters from best candidate and format them
+                    # with a model-aware summary (Chatterbox/Qwen3/VibeVoice
+                    # expose different parameter surfaces; see
+                    # ``format_generation_params_summary``).
+                    best_params: Dict[str, Any] = {}
                     if best_candidate_idx is not None:
                         best_candidate_obj = next(
                             (
@@ -1026,20 +1049,18 @@ class ValidationHandler:
                         )
                         if best_candidate_obj and best_candidate_obj.generation_params:
                             best_params = best_candidate_obj.generation_params
-                            exaggeration = best_params.get("exaggeration", 0.0)
-                            cfg_weight = best_params.get("cfg_weight", 0.0)
-                            temperature = best_params.get("temperature", 0.0)
-                            min_p = best_params.get("min_p", 0.05)
-                            top_p = best_params.get("top_p", 0.95)
-                        else:
-                            exaggeration = cfg_weight = temperature = min_p = top_p = 0.0
-                    else:
-                        exaggeration = cfg_weight = temperature = min_p = top_p = 0.0
+
+                    model_type = (
+                        self.config.get("generation", {}).get("model_type", "standard")
+                    )
+                    params_summary = format_generation_params_summary(
+                        best_params, model_type
+                    )
 
                     logger.info(
                         f"Chunk_{chunk.idx + 1:02d} - "
                         f"Best candidate: {best_candidate_display} of {len(filtered_candidates_list)} (score: {best_score_value:.3f}) "
-                        f"– exaggeration: {exaggeration:.2f}, cfg_weight: {cfg_weight:.2f}, temperature: {temperature:.2f}, min_p: {min_p:.2f}, top_p: {top_p:.2f}"
+                        f"– {params_summary}"
                     )
 
                 # Type-safe dictionary access

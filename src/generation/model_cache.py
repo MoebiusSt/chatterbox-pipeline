@@ -145,7 +145,7 @@ class ChatterboxModelCache:
         if raw:
             # Explicit override from tester/env
             vv: Optional[str] = str(raw).strip().lower()
-            if vv == "auto":
+            if vv == "sdpa":
                 vv = None
             elif vv not in ("flash_attention_2", "sdpa", "eager"):
                 logger.warning(
@@ -208,6 +208,65 @@ class ChatterboxModelCache:
             torch.cuda.synchronize()
             free_gb = torch.cuda.mem_get_info()[0] / 1024 ** 3
             logger.info(f"🧹 CUDA cache cleared – {free_gb:.1f} GB free VRAM")
+
+    @classmethod
+    def free_vram(cls, device: Optional[str] = None) -> None:
+        """Evict all cached TTS models (any type) from VRAM.
+
+        Called at stage boundaries (generation → validation) so the ASR/MOS
+        stack can load without competing for VRAM on consumer GPUs. A plain
+        ``torch.cuda.empty_cache()`` only releases allocator-cached-but-free
+        memory; models still referenced by ``_model_cache`` stay resident and
+        starve the next stage. This method removes the references, moves
+        weights to CPU so Python's GC can reclaim them, and forces a CUDA
+        cache flush.
+
+        If ``device`` is given, only entries for that device are evicted; else
+        all entries are evicted regardless of device.
+        """
+        device_norm = device or ""
+        keys_to_evict = [
+            k for k in list(cls._model_cache.keys())
+            if not device_norm or k.startswith(f"{device_norm}_")
+        ]
+        if not keys_to_evict:
+            return
+        for k in keys_to_evict:
+            model_obj = cls._model_cache.pop(k, None)
+            cls._load_times.pop(k, None)
+            # Processor entries are cheap handles; skip the ``.to("cpu")`` call.
+            is_processor_entry = k.endswith("_processor")
+            if model_obj is not None and not is_processor_entry:
+                try:
+                    model_obj.to("cpu")
+                except Exception:
+                    pass
+            del model_obj
+            logger.info(f"🗑️ Evicted TTS cache entry '{k}' to free VRAM for validation stage")
+        # Force a Python GC pass so objects referenced only by cycles (or
+        # just-popped locals) are finalized before we ask CUDA for its memory
+        # back. Without this the allocator often reports the same "free" GB
+        # as before because the tensors still have live refcounts.
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            try:
+                torch.cuda.ipc_collect()
+            except Exception:
+                pass
+            gc.collect()
+            torch.cuda.empty_cache()
+            free_b, total_b = torch.cuda.mem_get_info()
+            free_gb = free_b / 1024 ** 3
+            total_gb = total_b / 1024 ** 3
+            allocated_gb = torch.cuda.memory_allocated() / 1024 ** 3
+            reserved_gb = torch.cuda.memory_reserved() / 1024 ** 3
+            logger.info(
+                f"🧹 CUDA cache cleared – {free_gb:.1f}/{total_gb:.1f} GB free "
+                f"(allocated={allocated_gb:.1f} GB, reserved={reserved_gb:.1f} GB)"
+            )
 
     @classmethod
     def _optimize_cached_model(cls, model, device: str):

@@ -254,10 +254,30 @@ class GenerationHandler:
             return False
 
     def _generate_candidates_for_chunk(self, chunk: TextChunk) -> List[AudioCandidate]:
-        """Generate candidates for a single text chunk with speaker-aware generation."""
+        """Generate candidates for a single text chunk with speaker-aware generation.
+
+        Installs a ``candidate_ready`` hook on the TTS generator so each
+        freshly rendered candidate is persisted to disk immediately. If the
+        process crashes mid-batch, earlier candidates are retained and the
+        resume path in :meth:`execute_generation` (which counts existing wav
+        files per chunk) fills only the missing indices.
+        """
         logger.debug(
             f"Generating {self.candidate_manager.max_candidates} candidates for chunk '{chunk.text[:50]}...'"
         )
+
+        def _save_hook(cand: AudioCandidate) -> None:
+            # The TTS paths create candidates with ``chunk_idx=0``; the closure
+            # fixes the index so the CandidateIOHandler writes to the right
+            # ``chunk_XXX`` directory and ``candidates_metadata.json`` entry.
+            cand.chunk_idx = chunk.idx
+            cand.chunk_text = chunk.text
+            if hasattr(chunk, "speaker_id") and chunk.speaker_id:
+                if cand.generation_params is not None:
+                    cand.generation_params.setdefault("speaker_id", chunk.speaker_id)
+            self.file_manager.save_candidate(chunk.idx, cand, overwrite_existing=True)
+
+        self.tts_generator.set_candidate_ready_hook(_save_hook)
         try:
             generation_config = self.config["generation"]
             num_candidates = generation_config["num_candidates"]
@@ -290,11 +310,12 @@ class GenerationHandler:
                     config_manager=self.file_manager,
                 )
 
-            # Set chunk-specific metadata
+            # Final safety net: ensure chunk metadata is set even when the
+            # hook was skipped for any reason (e.g. the hook raised and was
+            # swallowed by _emit_candidate_ready).
             for candidate in candidates:
                 candidate.chunk_idx = chunk.idx
                 candidate.chunk_text = chunk.text
-                # Add speaker ID to metadata
                 if hasattr(chunk, "speaker_id"):
                     if (
                         hasattr(candidate, "generation_params")
@@ -307,6 +328,10 @@ class GenerationHandler:
         except Exception as e:
             logger.error(f"Error generating candidates for chunk {chunk.idx+1}: {e}")
             return []
+        finally:
+            # Ensure the hook never leaks into later (retry/specific) paths
+            # where candidate indices get remapped after generation.
+            self.tts_generator.set_candidate_ready_hook(None)
 
     def _generate_missing_candidates(
         self, chunk: TextChunk, missing_indices: List[int]

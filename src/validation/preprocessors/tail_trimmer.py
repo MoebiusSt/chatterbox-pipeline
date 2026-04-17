@@ -146,16 +146,29 @@ class TailTrimmer:
         t = re.sub(r"\s+", " ", t).strip()
         return t.split() if t else []
 
-    def _get_whisperx_asr_model(self, device: str) -> Optional[Any]:
+    def _get_whisperx_asr_model(
+        self, device: str, language: str = "en"
+    ) -> Optional[Any]:
         try:
-            key = f"small:{device}"
+            lang = (language or "en").lower()
+            # Include language in the cache key so we don't reuse a model
+            # pinned to the wrong language for a different-language chunk.
+            key = f"small:{device}:{lang}"
             if key in self._whisperx_asr_models:
                 return self._whisperx_asr_models[key]
             if self._whisperx is None:
                 return None
             compute_type = "float16" if device == "cuda" else "int8"
+            # Passing ``language`` here silences WhisperX's
+            # "No language specified, language will be first be detected …"
+            # notice and skips per-file language detection (faster).
             with quiet_imports_and_warnings():
-                model = self._whisperx.load_model("small", device=device, compute_type=compute_type)
+                model = self._whisperx.load_model(
+                    "small",
+                    device=device,
+                    compute_type=compute_type,
+                    language=lang,
+                )
             self._whisperx_asr_models[key] = model
             return model
         except Exception:
@@ -238,7 +251,7 @@ class TailTrimmer:
                 # Resample to 16k for ASR/alignment
                 audio16 = self._resample_to_16k(audio, self.sample_rate)
 
-                asr_model = self._get_whisperx_asr_model(device)
+                asr_model = self._get_whisperx_asr_model(device, language)
                 if asr_model is None:
                     return None, meta
                 with quiet_imports_and_warnings():
@@ -502,7 +515,7 @@ class TailTrimmer:
             # Use configured device; default to CPU to avoid cuDNN runtime issues
             device = self.whisperx_device if self.whisperx_device in {"cpu", "cuda"} else "cpu"
             # Prefer cached model
-            asr_model = self._get_whisperx_asr_model(device)
+            asr_model = self._get_whisperx_asr_model(device, language)
             audio16 = self._resample_to_16k(audio, self.sample_rate)
             if asr_model is None:
                 return None

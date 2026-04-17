@@ -6,7 +6,7 @@ the pipeline can perform pre-flight checks and graceful parameter filtering with
 hardcoding model constraints in multiple places.
 """
 
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 
 # VibeVoice Hub variants share languages, features, and TTS param keys (see model_cache).
@@ -239,3 +239,65 @@ def filter_params_for_model(
                     logged_keys.add(log_key)
 
     return filtered
+
+
+def _fmt(value: Any, spec: str = ".2f") -> str:
+    """Safe numeric formatter – falls back to str() for non-numerics/None."""
+    if value is None:
+        return "-"
+    try:
+        return format(float(value), spec)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def format_generation_params_summary(
+    params: Optional[Dict[str, Any]],
+    model_type: Optional[str] = None,
+) -> str:
+    """Render a compact, model-aware ``key=value`` summary of generation
+    parameters for best-candidate log lines.
+
+    Each TTS backend exposes a different parameter surface (Chatterbox:
+    ``exaggeration``/``cfg_weight``/``temperature``; VibeVoice: ``cfg_scale``/
+    ``diffusion_steps``; Qwen3: ``subtalker_*``), so a single hard-coded
+    format loses information for two of three models. When ``model_type`` is
+    omitted the function falls back to key-based heuristics so any call site
+    without direct model context still produces a sensible summary.
+    """
+    p = params or {}
+
+    if not model_type:
+        if "cfg_scale" in p or "diffusion_steps" in p:
+            model_type = "vibevoice"
+        elif (
+            "subtalker_temperature" in p or "subtalker_top_k" in p
+            or "subtalker_top_p" in p or "subtalker_dosample" in p
+        ):
+            model_type = "qwen3"
+        elif "exaggeration" in p or "cfg_weight" in p:
+            model_type = "standard"
+
+    if model_type in VIBEVOICE_MODEL_TYPES:
+        return (
+            f"cfg_scale: {_fmt(p.get('cfg_scale'), '.3f')}, "
+            f"temperature: {_fmt(p.get('temperature'), '.2f')}, "
+            f"top_p: {_fmt(p.get('top_p'), '.2f')}, "
+            f"steps: {_fmt(p.get('diffusion_steps'), '.0f')}"
+        )
+    if model_type == "qwen3":
+        return (
+            f"temperature: {_fmt(p.get('temperature'), '.2f')}, "
+            f"top_p: {_fmt(p.get('top_p'), '.2f')}, "
+            f"top_k: {_fmt(p.get('top_k'), '.0f')}, "
+            f"sub_temp: {_fmt(p.get('subtalker_temperature'), '.2f')}, "
+            f"sub_top_k: {_fmt(p.get('subtalker_top_k'), '.0f')}"
+        )
+    # Default: Chatterbox (standard/multilingual/turbo) or unknown
+    return (
+        f"exaggeration: {_fmt(p.get('exaggeration'), '.2f')}, "
+        f"cfg_weight: {_fmt(p.get('cfg_weight'), '.2f')}, "
+        f"temperature: {_fmt(p.get('temperature'), '.2f')}, "
+        f"min_p: {_fmt(p.get('min_p'), '.2f')}, "
+        f"top_p: {_fmt(p.get('top_p'), '.2f')}"
+    )

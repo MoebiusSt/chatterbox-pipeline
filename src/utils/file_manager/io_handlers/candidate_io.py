@@ -199,6 +199,114 @@ class CandidateIOHandler:
             logger.error(f"Error saving candidates for chunk {chunk_idx+1}: {e}")
             return False
 
+    def save_single_candidate(
+        self,
+        chunk_idx: int,
+        candidate: AudioCandidate,
+        overwrite_existing: bool = True,
+    ) -> bool:
+        """Persist one candidate immediately and merge its entry into the
+        per-chunk ``candidates_metadata.json``.
+
+        Rationale: writing the whole candidate batch only at the end of a chunk
+        (see :meth:`save_candidates`) means that a crash during the last
+        candidate throws away all earlier work for that chunk. For long-form
+        VibeVoice generations (several minutes per candidate) that is a
+        disproportionate loss. Saving each candidate right after it has been
+        rendered keeps the resume logic in ``generation_handler`` effective:
+        the per-chunk file count is the single source of truth for "what is
+        done" and new runs only fill the gaps.
+
+        The metadata file is updated in read-modify-write fashion so entries
+        from sibling candidates saved earlier are preserved.
+        """
+        try:
+            chunk_dir = self.candidates_dir / f"chunk_{chunk_idx+1:03d}"
+            chunk_dir.mkdir(exist_ok=True)
+
+            audio_filename = f"candidate_{candidate.candidate_idx+1:02d}.wav"
+            audio_path = chunk_dir / audio_filename
+
+            if not overwrite_existing and audio_path.exists():
+                logger.debug(f"Skipping existing candidate file: {audio_filename}")
+                candidate.audio_path = audio_path
+                return True
+
+            if candidate.audio_tensor is None:
+                logger.warning(
+                    f"⚠️ Cannot incrementally save candidate {candidate.candidate_idx+1} "
+                    f"for chunk {chunk_idx+1}: no audio_tensor"
+                )
+                return False
+
+            sample_rate = self.config.get("audio", {}).get("sample_rate", 24000)
+            audio_cpu = candidate.audio_tensor.cpu()
+            if audio_cpu.ndim == 1:
+                audio_cpu = audio_cpu.unsqueeze(0)
+            torchaudio.save(str(audio_path), audio_cpu, sample_rate)
+            candidate.audio_path = audio_path
+
+            self._merge_candidate_into_metadata(chunk_idx, candidate, chunk_dir)
+
+            logger.debug(
+                f"💾 Saved candidate {candidate.candidate_idx+1} of chunk {chunk_idx+1} incrementally"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"Incremental save failed for chunk {chunk_idx+1} candidate "
+                f"{candidate.candidate_idx+1}: {e}"
+            )
+            return False
+
+    def _merge_candidate_into_metadata(
+        self, chunk_idx: int, candidate: AudioCandidate, chunk_dir: Path
+    ) -> None:
+        """Read the existing ``candidates_metadata.json``, upsert one entry,
+        and write it back atomically. Called from :meth:`save_single_candidate`.
+        """
+        metadata_path = chunk_dir / "candidates_metadata.json"
+        existing: Dict[str, Any] = {}
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except Exception as e:
+                logger.warning(
+                    f"candidates_metadata.json for chunk {chunk_idx+1} unreadable, rewriting: {e}"
+                )
+                existing = {}
+
+        items: List[Dict[str, Any]] = list(existing.get("candidates") or [])
+        audio_path_for_meta = chunk_dir / f"candidate_{candidate.candidate_idx+1:02d}.wav"
+        new_entry = {
+            "candidate_idx": candidate.candidate_idx,
+            "audio_filename": f"candidate_{candidate.candidate_idx+1:02d}.wav",
+            "audio_duration": self._probe_audio_duration(candidate, audio_path_for_meta),
+            "generation_params": candidate.generation_params,
+        }
+
+        replaced = False
+        for i, entry in enumerate(items):
+            if entry.get("candidate_idx") == candidate.candidate_idx:
+                items[i] = new_entry
+                replaced = True
+                break
+        if not replaced:
+            items.append(new_entry)
+        items.sort(key=lambda e: e.get("candidate_idx", 0))
+
+        payload = {
+            "chunk_idx": chunk_idx,
+            "total_candidates": len(items),
+            "candidates": items,
+        }
+        tmp_path = metadata_path.with_suffix(".json.tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        tmp_path.replace(metadata_path)
+
     def _probe_audio_duration(self, candidate, audio_path) -> float:
         """Return candidate audio duration in seconds; 0.0 on failure.
 

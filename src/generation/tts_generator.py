@@ -2,7 +2,7 @@ import logging
 import warnings
 import inspect
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 import numpy as np
 import torch
@@ -116,6 +116,11 @@ class TTSGenerator:
         # Set of (model_type:param_key) combos already warned about to avoid log spam
         self._logged_unsupported_params: Set[str] = set()
 
+        # Optional hook invoked after each successfully generated candidate
+        # (see :meth:`set_candidate_ready_hook`). Used by the generation stage
+        # to flush candidates to disk incrementally.
+        self._candidate_ready_hook: Optional[Callable[[AudioCandidate], None]] = None
+
         # Determine display name for logging
         if self.is_qwen3:
             model_display = "Qwen3TTSModel (1.7B Base)"
@@ -160,6 +165,77 @@ class TTSGenerator:
             return 0
         else:
             return speaker_seed
+
+    # ------------------------------------------------------------------
+    # Candidate-ready hook (incremental save)
+    # ------------------------------------------------------------------
+
+    def release_model(self) -> None:
+        """Drop the direct reference to the underlying TTS model so VRAM can
+        be reclaimed at stage boundaries (generation → validation).
+
+        ``ChatterboxModelCache.free_vram()`` removes the cache entry and calls
+        ``.to("cpu")`` on the model, but this very ``TTSGenerator`` instance
+        still holds a live reference via ``self.model``. As long as that
+        reference exists, Python cannot garbage-collect the object and the
+        CUDA allocator is unwilling to release the (now-"freed") memory to
+        the OS. Nulling the attribute here closes the last handle so the next
+        ``empty_cache()`` actually returns VRAM. ``_ensure_model()`` reloads
+        on demand when generation is reentered (e.g. validation retry).
+        """
+        # Clear model-specific caches that may transitively hold GPU tensors
+        # (e.g. Qwen3 voice prompts can retain speaker encoder outputs).
+        try:
+            self._qwen3_voice_prompts.clear()
+        except Exception:
+            pass
+        try:
+            self._vibevoice_reference_audio.clear()
+        except Exception:
+            pass
+        self.model = None  # type: ignore[assignment]
+
+    def _ensure_model(self) -> None:
+        """Reload the TTS model if it was released via :meth:`release_model`.
+
+        Called at the top of every generation entry point so retries after a
+        VRAM eviction transparently re-fetch the model from the cache.
+        """
+        if getattr(self, "model", None) is None:
+            logger.info(
+                f"🔄 Reloading TTS model (model_type={self.model_type}) after VRAM eviction"
+            )
+            self.model = ChatterboxModelCache.get_model(
+                self.device, self.model_type, config=self.config
+            )
+
+    def set_candidate_ready_hook(
+        self, hook: Optional[Callable[[AudioCandidate], None]]
+    ) -> None:
+        """Register a callback invoked right after each AudioCandidate is
+        rendered. Passing ``None`` clears a previously registered hook.
+
+        The hook receives the freshly created candidate *before* it is added
+        to any return list, so the caller can persist it immediately and
+        mitigate data loss from crashes mid-batch. Exceptions raised inside
+        the hook are logged and swallowed – generation never fails because of
+        a failed side-effect.
+        """
+        self._candidate_ready_hook = hook
+
+    def _emit_candidate_ready(self, candidate: AudioCandidate) -> None:
+        """Fire the candidate-ready hook defensively."""
+        hook = self._candidate_ready_hook
+        if hook is None:
+            return
+        try:
+            hook(candidate)
+        except Exception as e:
+            logger.warning(
+                f"candidate_ready hook raised {type(e).__name__}: {e} — "
+                f"candidate {candidate.candidate_idx+1} of chunk "
+                f"{candidate.chunk_idx+1} not persisted incrementally"
+            )
 
     def _detect_device(self) -> str:
         """Detect the best available device."""
@@ -646,6 +722,7 @@ class TTSGenerator:
                     },
                 )
                 candidates.append(candidate)
+                self._emit_candidate_ready(candidate)
                 logger.debug(
                     f"Qwen3 candidate {i+1}: duration={audio.shape[-1]/24000:.2f}s"
                 )
@@ -758,7 +835,7 @@ class TTSGenerator:
                 _VIBEVOICE_LANGUAGE_WARNED.add(language_id)
                 logger.warning(
                     f"Unknown language code '{language_id}' for VibeVoice - defaulting to English "
-                    f"(officially supported: {sorted(VIBEVOICE_LANGUAGE_CODE_TO_NAME.keys())}). "
+                    f"(officially supported: {sorted(VIBEVOICE_LANGUAGE_CODE_TO_NAME.keys())}, but many more language are in the training set, so it's likely to work anyway). "
                     "Set generation.vibevoice.language_strict=true to fail instead."
                 )
 
@@ -819,20 +896,20 @@ class TTSGenerator:
                 reference_audio=ref_audio,
                 attempt_seed=candidate_seed,
             )
-            candidates.append(
-                AudioCandidate(
-                    chunk_idx=0,
-                    candidate_idx=i,
-                    audio_path=Path(),
-                    audio_tensor=audio,
-                    generation_params={
-                        **params,
-                        "language_id": language_id,
-                        "type": candidate_type,
-                        "seed": candidate_seed,
-                    },
-                )
+            candidate = AudioCandidate(
+                chunk_idx=0,
+                candidate_idx=i,
+                audio_path=Path(),
+                audio_tensor=audio,
+                generation_params={
+                    **params,
+                    "language_id": language_id,
+                    "type": candidate_type,
+                    "seed": candidate_seed,
+                },
             )
+            candidates.append(candidate)
+            self._emit_candidate_ready(candidate)
 
         return candidates
 
@@ -1145,6 +1222,7 @@ class TTSGenerator:
         For Qwen3: only temperature is ramped.
         Unsupported parameters for the current model are gracefully skipped.
         """
+        self._ensure_model()
         candidates = []
         
         effective_seed = self.seed
@@ -1222,10 +1300,12 @@ class TTSGenerator:
                 )
                 audio = result["audio"]
 
-                candidates.append(AudioCandidate(
+                candidate = AudioCandidate(
                     chunk_idx=0, candidate_idx=0, audio_path=Path(), audio_tensor=audio,
                     generation_params={**generation_params, **result.get("used_params", {})},
-                ))
+                )
+                candidates.append(candidate)
+                self._emit_candidate_ready(candidate)
                 logger.debug(f"Generated candidate 1/1: duration={audio.shape[-1]/24000:.2f}s")
             except Exception as e:
                 logger.error(f"Failed to generate conservative candidate: {e}")
@@ -1287,10 +1367,12 @@ class TTSGenerator:
                 )
                 audio = result["audio"]
 
-                candidates.append(AudioCandidate(
+                candidate = AudioCandidate(
                     chunk_idx=0, candidate_idx=i, audio_path=Path(), audio_tensor=audio,
                     generation_params={**generation_params, **result.get("used_params", {})},
-                ))
+                )
+                candidates.append(candidate)
+                self._emit_candidate_ready(candidate)
                 logger.debug(f"Generated: duration={audio.shape[-1]/24000:.2f}s, seed={candidate_seed}")
 
             except Exception as e:
@@ -1411,10 +1493,12 @@ class TTSGenerator:
                 )
                 audio = result["audio"]
 
-                candidates.append(AudioCandidate(
+                candidate = AudioCandidate(
                     chunk_idx=0, candidate_idx=i, audio_path=Path(), audio_tensor=audio,
                     generation_params={**generation_params, **result.get("used_params", {})},
-                ))
+                )
+                candidates.append(candidate)
+                self._emit_candidate_ready(candidate)
                 logger.debug(f"Generated candidate {i+1}: duration={audio.shape[-1]/24000:.2f}s")
 
             except Exception as e:
@@ -1545,6 +1629,7 @@ class TTSGenerator:
 
         For Qwen3, dispatches to _generate_qwen3_candidates().
         """
+        self._ensure_model()
         speaker_config = self._get_speaker_config(speaker_id)
         reference_audio_path = config_manager.get_reference_audio_for_speaker(speaker_id)
 
@@ -1675,6 +1760,7 @@ class TTSGenerator:
                 },
             )
             candidates.append(candidate)
+            self._emit_candidate_ready(candidate)
 
         return candidates
 
