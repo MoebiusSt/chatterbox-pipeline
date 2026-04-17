@@ -2,13 +2,14 @@
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 
 import torch
 
 from chunking.base_chunker import TextChunk
 from generation.tts_generator import TTSGenerator
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from utils.language_registry import VIBEVOICE_MODEL_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,32 @@ class RetryLogic:
         retry_candidates = []
         try:
             generation_config = self.config["generation"]
+            model_type = str(generation_config.get("model_type", "standard")).strip().lower()
 
+            # VibeVoice / Qwen3: use model-specific params from conservative_candidate + tts_params
+            if model_type in VIBEVOICE_MODEL_TYPES or model_type == "qwen3":
+                speaker_config = self._get_speaker_config_for_chunk(
+                    chunk, generation_config
+                )
+                if not speaker_config:
+                    logger.error(
+                        "No speaker config for chunk speaker %s — cannot generate retries",
+                        getattr(chunk, "speaker_id", "?"),
+                    )
+                    return []
+
+                language_id = self._resolve_language_id_for_chunk(
+                    chunk, generation_config
+                )
+                return self.tts_generator.generate_validation_retry_candidates(
+                    chunk=chunk,
+                    speaker_config=speaker_config,
+                    language_id=language_id,
+                    max_retries=max_retries,
+                    start_candidate_idx=start_candidate_idx,
+                )
+
+            # Chatterbox (standard / multilingual / turbo)
             # Get speaker-specific conservative config
             conservative_config = self._get_conservative_config_for_chunk(
                 chunk, generation_config
@@ -83,29 +109,9 @@ class RetryLogic:
 
                     torch.manual_seed(retry_seed)
 
-                    # Resolve language_id for multilingual models
-                    language_id = getattr(chunk, "language_id", None)
-                    if not language_id:
-                        # Try from speaker config in generation
-                        speaker_id = getattr(chunk, "speaker_id", None)
-                        speakers = generation_config.get("speakers", [])
-                        # Find exact speaker
-                        if speaker_id:
-                            for sp in speakers:
-                                if sp.get("id") == speaker_id:
-                                    language_id = sp.get("language")
-                                    break
-                        # Fallback to default speaker
-                        if not language_id:
-                            default_speaker = generation_config.get("default_speaker")
-                            if default_speaker:
-                                for sp in speakers:
-                                    if sp.get("id") == default_speaker:
-                                        language_id = sp.get("language")
-                                        break
-                        # Final hard fallback
-                        if not language_id:
-                            language_id = "en"
+                    language_id = self._resolve_language_id_for_chunk(
+                        chunk, generation_config
+                    )
 
                     retry_audio = self.tts_generator.generate_single(
                         text=chunk.text,
@@ -154,6 +160,58 @@ class RetryLogic:
         except Exception as e:
             logger.error(f"Error in retry candidate generation: {e}")
             return []
+
+    def _get_speaker_config_for_chunk(
+        self, chunk: TextChunk, generation_config: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Return the full speaker entry from generation.speakers for this chunk."""
+        speaker_id = getattr(chunk, "speaker_id", None)
+        speakers = generation_config.get("speakers", [])
+
+        if speaker_id:
+            for speaker in speakers:
+                if speaker.get("id") == speaker_id:
+                    return speaker
+
+        default_speaker = generation_config.get("default_speaker")
+        if default_speaker and speakers:
+            for speaker in speakers:
+                if speaker.get("id") == default_speaker:
+                    return speaker
+
+        if speakers:
+            return speakers[0]
+
+        return None
+
+    @staticmethod
+    def _resolve_language_id_for_chunk(
+        chunk: TextChunk, generation_config: Dict[str, Any]
+    ) -> str:
+        """Resolve ISO language code for the chunk's speaker."""
+        language_id: Optional[str] = getattr(chunk, "language_id", None)
+        if language_id:
+            return language_id
+
+        speaker_id = getattr(chunk, "speaker_id", None)
+        speakers = generation_config.get("speakers", [])
+
+        if speaker_id:
+            for sp in speakers:
+                if sp.get("id") == speaker_id:
+                    lid = sp.get("language")
+                    if lid:
+                        return str(lid)
+
+        default_speaker = generation_config.get("default_speaker")
+        if default_speaker:
+            for sp in speakers:
+                if sp.get("id") == default_speaker:
+                    lid = sp.get("language")
+                    if lid:
+                        return str(lid)
+
+        return "en"
 
     def _get_conservative_config_for_chunk(
         self, chunk: TextChunk, generation_config: dict

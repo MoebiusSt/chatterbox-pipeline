@@ -498,6 +498,7 @@ python src/cbpipe.py --verbose                         # Debug output
 python src/cbpipe.py --device cuda                     # Force GPU
 python src/cbpipe.py --force-final-generation          # Regenerate final audio
 ```
+More command line argument details in `basic-usage_CLI-arguments.md`
 
 ### Task State Management
 ```

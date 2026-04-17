@@ -185,11 +185,11 @@ petra_ries2_DE.wav:
   min_p: 0.09
   top_p: 0.99
 petra_ries2_DE.wav::vibevoice:
-  temperature: 1.2
-  top_p: 0.99
+  temperature: 1.3
+  top_p: 0.98
   cfg_scale: 1.25
-  diffusion_steps: 21.0
-  voice_speed_factor: 1.0
+  diffusion_steps: 24.0
+  voice_speed_factor: 0.96
   use_sampling: true
 petra_ries2_DE_3s.wav::qwen3:
   temperature: 0.9
@@ -199,6 +199,13 @@ petra_ries2_DE_3s.wav::qwen3:
   subtalker_top_k: 169.0
   subtalker_top_p: 1.0
   repetition_penalty: 1.0
+petra_ries2_IT-Fake.wav::vibevoice:
+  temperature: 0.9
+  top_p: 0.98
+  cfg_scale: 1.35
+  diffusion_steps: 30.0
+  voice_speed_factor: 0.97
+  use_sampling: true
 petra_ries_DE.wav:
   exaggeration: 1.45
   cfg_weight: 0.27

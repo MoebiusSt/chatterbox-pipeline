@@ -20,6 +20,26 @@ This document is an unsorted collection of useful information that goes beyond t
 
 
 ## Project structure
+
+### Documentation (`docs/`)
+
+| Document | Purpose |
+|----------|---------|
+| `readme_agent.md` | Primary reference for AI agents: pipeline flow, cascading config, model types (incl. VibeVoice), chunking, validation, prosody/MOS, CLI, troubleshooting. |
+| `TECHNICAL_OVERVIEW.md` | This file: architecture notes, component map, configuration, job/task lifecycle. |
+| `mermaid_diagram.md` | Visual workflow diagrams (Mermaid) for the pipeline. |
+| `SPEAKER_SYSTEM.md` | Multi-speaker setup: `<speaker:id>` markup, YAML speakers, chunking behaviour. |
+| `BEST-CANDIDATE-SELECTION.md` | How candidates are validated, scored (quality + prosody), gated, and selected. |
+| `PROSODY_VALIDATION.md` | Prosody/MOS layer: tail-trim, WhisperX alignment, weights, `validation.prosody` / `validation.mos`. |
+| `PERSISTENT_CACHE.md` | Why TTS model cache shows “miss” on each new process; HuggingFace disk cache. |
+| `CONTRIBUTING.md` | Development setup, style, and contribution workflow. |
+| `TESTRUN_FINDINGS.md` | Benchmarks and findings from test runs (e.g. ASR backends, VibeVoice). |
+| `basic-usage_CLI-arguments.md` | `cbpipe.py` CLI flags and execution modes. |
+| `normalization.md` | Audio normalisation (`audio.normalization`) in assembly. |
+| `turbo_paralinguistic_tags.md` | Turbo model tags such as `[laugh]` through chunking and TTS. |
+| `candidate_quality_scorer_diagram.md` | Diagram / notes on quality scoring structure. |
+| `cursor_audio_player_issues_and_troubles.md` | Cursor IDE audio preview quirks and workarounds. |
+
 ```
 chatterbox-pipeline/
 ├── config/
@@ -33,6 +53,7 @@ chatterbox-pipeline/
 │   │   └── texts/                 # Input texts
 │   │       └── input-document.txt
 │   └── output/                    # Job output directories
+├── docs/                          # supplementary documentation (see table above)
 ├── logs/                           # main.log
 ├── scripts/                        # Unit Tests
 ├── src/
@@ -84,16 +105,14 @@ chatterbox-pipeline/
 │       ├── file_manager.py
 │       ├── logging_config.py
 │       └── progress_tracker.py
-├── candidate_quality_scorer_diagram.md
-├── CONTRIBUTING.md
+├── chatterbox_tester.py        # A tool to quickly render test generations models and the audio input-reference-file to find optimal kwargs 
+├── chatterbox_tester_presets.yaml   # presets config inside chatterbox_tester.py
+├── CHATTERBOX_TESTER.md        # documentation for chatterbox_tester.py
 ├── dev-requirements.txt          # Development dependencies
-├── DEVELOPMENT_PLAN.md
-├── mermaid_diagram.md
 ├── mypy.ini
 ├── pyproject.toml               # Project configuration
 ├── README.md
-├── requirements.txt              # Production dependencies
-└── TECHNICAL_OVERVIEW.md
+└── requirements.txt              # Production dependencies
 ```
 
 ## Core Components

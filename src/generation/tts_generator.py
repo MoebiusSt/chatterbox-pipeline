@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import numpy as np
+
+from chunking.base_chunker import TextChunk
 import torch
 import re
 
@@ -912,6 +914,193 @@ class TTSGenerator:
             self._emit_candidate_ready(candidate)
 
         return candidates
+
+    def generate_validation_retry_candidates(
+        self,
+        chunk: TextChunk,
+        speaker_config: Dict[str, Any],
+        language_id: str,
+        max_retries: int,
+        start_candidate_idx: int,
+    ) -> List[AudioCandidate]:
+        """
+        Post-validation retry candidates for VibeVoice and Qwen3.
+
+        Merges ``tts_params`` with ``conservative_candidate`` (filtered, same as the
+        main conservative slot). When ``conservative_candidate.enabled`` is false,
+        uses base ``tts_params`` only (with a warning). Each retry applies the same
+        small ``variation_factor`` sweep as Chatterbox retries in ``RetryLogic``.
+        """
+        if max_retries <= 0:
+            return []
+
+        def _retry_variation_factor(i: int, n_retry: int) -> float:
+            if i == 0:
+                return 0.0
+            vf = ((i - 1) / max(1, n_retry - 2)) * 2.0 - 1.0
+            return vf * 0.05
+
+        speaker_id = speaker_config.get("id") or getattr(chunk, "speaker_id", "default")
+        text = chunk.text
+        raw_tts = speaker_config.get("tts_params", {}) or {}
+        raw_cons = dict(speaker_config.get("conservative_candidate", {}) or {})
+        cons_enabled = bool(raw_cons.pop("enabled", False))
+
+        filtered_base = self._filter_params_for_model(raw_tts)
+        merged: Dict[str, Any] = dict(filtered_base)
+        if cons_enabled:
+            merged.update(self._filter_params_for_model(raw_cons))
+        else:
+            logger.warning(
+                "⚠️ conservative_candidate not enabled for speaker '%s' — validation "
+                "retries use base tts_params only",
+                speaker_id,
+            )
+
+        retry_candidates: List[AudioCandidate] = []
+
+        if self.is_vibevoice:
+            ref_audio = self._vibevoice_reference_audio.get(speaker_id)
+            if ref_audio is None:
+                logger.warning(
+                    "⚠️ VibeVoice reference audio for speaker '%s' not cached — silence",
+                    speaker_id,
+                )
+                ref_audio = np.zeros(24000, dtype=np.float32)
+
+            base_seed = self.get_speaker_seed(speaker_id)
+            for i in range(max_retries):
+                vf = _retry_variation_factor(i, max_retries)
+                params = dict(merged)
+                if "cfg_scale" in params:
+                    params["cfg_scale"] = float(
+                        max(1.0, min(2.5, float(params["cfg_scale"]) + vf * 0.12))
+                    )
+                if "temperature" in params:
+                    params["temperature"] = float(
+                        max(0.05, min(2.0, float(params["temperature"]) + vf * 0.06))
+                    )
+                if "top_p" in params:
+                    params["top_p"] = float(
+                        max(0.0, min(1.0, float(params["top_p"]) + vf * 0.04))
+                    )
+                if "diffusion_steps" in params:
+                    params["diffusion_steps"] = int(
+                        max(5, min(60, int(round(float(params["diffusion_steps"]) + vf * 2.0))))
+                    )
+
+                candidate_idx = start_candidate_idx + i
+                candidate_seed = base_seed + (candidate_idx * 1000) + hash(text) % 10000
+
+                logger.info(
+                    f"VIBEVOICE RETRY {i+1}/{max_retries}: cfg_scale={params.get('cfg_scale', '-')}, "
+                    f"temp={params.get('temperature', '-')}, top_p={params.get('top_p', '-')}, "
+                    f"steps={int(params.get('diffusion_steps', 20))}, vf={vf:.4f}"
+                )
+                audio = self._generate_vibevoice_single(
+                    text=text,
+                    params=params,
+                    reference_audio=ref_audio,
+                    attempt_seed=candidate_seed,
+                )
+                retry_candidates.append(
+                    AudioCandidate(
+                        chunk_idx=chunk.idx,
+                        candidate_idx=candidate_idx,
+                        audio_path=Path(),
+                        audio_tensor=audio,
+                        generation_params={
+                            **params,
+                            "language_id": language_id,
+                            "type": "RETRY_CONSERVATIVE",
+                            "variation_factor": vf,
+                            "retry_attempt": i + 1,
+                            "seed": candidate_seed,
+                        },
+                        chunk_text=text,
+                    )
+                )
+                self._emit_candidate_ready(retry_candidates[-1])
+
+            return retry_candidates
+
+        if self.is_qwen3:
+            language_name = QWEN3_LANGUAGE_CODE_TO_NAME.get(language_id, "English")
+            voice_prompt = self._qwen3_voice_prompts.get(speaker_id)
+            if voice_prompt is None:
+                logger.warning(
+                    "⚠️ Qwen3 voice prompt for speaker '%s' not cached — silence",
+                    speaker_id,
+                )
+
+            base_seed = self.get_speaker_seed(speaker_id)
+            for i in range(max_retries):
+                vf = _retry_variation_factor(i, max_retries)
+                params = dict(merged)
+                if "temperature" in params:
+                    params["temperature"] = float(
+                        max(0.05, min(2.0, float(params["temperature"]) + vf * 0.08))
+                    )
+                if params.get("top_k") is not None:
+                    params["top_k"] = int(
+                        max(1, min(512, round(float(params["top_k"]) + vf * 8.0)))
+                    )
+                if params.get("subtalker_temperature") is not None:
+                    params["subtalker_temperature"] = float(
+                        max(
+                            0.0,
+                            min(2.0, float(params["subtalker_temperature"]) + vf * 0.06),
+                        )
+                    )
+                if params.get("subtalker_top_k") is not None:
+                    params["subtalker_top_k"] = int(
+                        max(
+                            1,
+                            min(512, round(float(params["subtalker_top_k"]) + vf * 6.0)),
+                        )
+                    )
+
+                candidate_idx = start_candidate_idx + i
+                candidate_seed = base_seed + (candidate_idx * 1000) + hash(text) % 10000
+
+                logger.info(
+                    f"QWEN3 RETRY {i+1}/{max_retries}: temp={params.get('temperature', '-')}, "
+                    f"top_k={params.get('top_k', '-')}, sub_temp={params.get('subtalker_temperature', '-')}, vf={vf:.4f}"
+                )
+                audio = self._generate_qwen3_single(
+                    text=text,
+                    language_name=language_name,
+                    params=params,
+                    voice_prompt=voice_prompt,
+                    speaker_id=speaker_id,
+                    attempt_seed=candidate_seed,
+                )
+                retry_candidates.append(
+                    AudioCandidate(
+                        chunk_idx=chunk.idx,
+                        candidate_idx=candidate_idx,
+                        audio_path=Path(),
+                        audio_tensor=audio,
+                        generation_params={
+                            **params,
+                            "language_id": language_id,
+                            "type": "RETRY_CONSERVATIVE",
+                            "variation_factor": vf,
+                            "retry_attempt": i + 1,
+                            "seed": candidate_seed,
+                        },
+                        chunk_text=text,
+                    )
+                )
+                self._emit_candidate_ready(retry_candidates[-1])
+
+            return retry_candidates
+
+        logger.error(
+            "generate_validation_retry_candidates called for unsupported model_type=%s",
+            self.model_type,
+        )
+        return []
 
     # ------------------------------------------------------------------
     # Chatterbox generation path
