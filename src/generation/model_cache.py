@@ -179,6 +179,15 @@ class ChatterboxModelCache:
         return vv
 
     @classmethod
+    def evict_vibevoice(cls, device: str) -> None:
+        """Public wrapper: evict all cached VibeVoice models for ``device``.
+
+        Intended for callers that switch from a VibeVoice variant to a non-VV
+        model (e.g. Qwen3) and need to free VRAM before the new model loads.
+        """
+        cls._evict_vibevoice(device, except_key="")
+
+    @classmethod
     def _evict_vibevoice(cls, device: str, except_key: str) -> None:
         """Remove all cached VibeVoice models except the one about to be loaded.
 

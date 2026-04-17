@@ -12,6 +12,14 @@ annie_coleman_rothenberg_1.wav::vibevoice_1_5b:
   diffusion_steps: 20.0
   voice_speed_factor: 1.0
   use_sampling: true
+annie_coleman_rothenberg_1_DE-fake_15s.wav::qwen3:
+  temperature: 1.37
+  top_k: 81.0
+  top_p: 0.93
+  subtalker_temperature: 1.43
+  subtalker_top_k: 130.0
+  subtalker_top_p: 0.98
+  repetition_penalty: 1.05
 david-barnes_DE-2-fake.wav::vibevoice:
   temperature: 1.53
   top_p: 0.95
@@ -40,7 +48,15 @@ david-barnes_DE_2_fake.wav::vibevoice:
   diffusion_steps: 25.0
   voice_speed_factor: 1.0
   use_sampling: true
-david_barnes_1_3s.wav::qwen3:
+david_barnes_1_15s.wav::qwen3:
+  temperature: 1.67
+  top_k: 120.0
+  top_p: 0.98
+  subtalker_temperature: 1.48
+  subtalker_top_k: 191.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.06
+david_barnes_2_15s.wav::qwen3:
   temperature: 1.67
   top_k: 120.0
   top_p: 0.98
@@ -168,6 +184,14 @@ petra_ries2_DE.wav:
   repetition_penalty: 2.2
   min_p: 0.09
   top_p: 0.99
+petra_ries2_DE_3s.wav::qwen3:
+  temperature: 0.9
+  top_k: 70.0
+  top_p: 1.0
+  subtalker_temperature: 1.15
+  subtalker_top_k: 169.0
+  subtalker_top_p: 1.0
+  repetition_penalty: 1.0
 petra_ries_DE.wav:
   exaggeration: 1.45
   cfg_weight: 0.27

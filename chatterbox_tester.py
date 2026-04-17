@@ -128,6 +128,51 @@ if _VIBEVOICE_TESTER_ATTN not in ("auto", "flash_attention_2", "sdpa", "eager"):
 _VIBEVOICE_BRACKET_LINE = re.compile(r"^\s*\[(\d+)\]\s*:\s*(.*)$")
 
 
+class _Qwen3ProgressStreamer:
+    """Minimal HF-generate streamer that prints a live token counter.
+
+    Implements the BaseStreamer protocol (``put``/``end``) duck-typed, so it
+    can be injected into ``talker.generate`` without importing transformers.
+    The counter is approximate – HF may call ``put`` with batched tokens and
+    the first call on ``inputs_embeds``-style generation can include the
+    implicit prompt step – but it is enough to show that generation is
+    progressing and roughly how fast.
+    """
+
+    def __init__(self, total: int = 2048, label: str = "Qwen3"):
+        self.total = max(int(total), 1)
+        self.label = label
+        self.count = 0
+        self._t0 = time.perf_counter()
+        self._first = True
+
+    def put(self, value):
+        try:
+            n = int(value.shape[-1]) if hasattr(value, "shape") else 1
+        except Exception:
+            n = 1
+        if self._first:
+            # HF's first put() contains the prompt tokens; don't let it skew tps.
+            self._first = False
+            self._t0 = time.perf_counter()
+            return
+        self.count += n
+        elapsed = time.perf_counter() - self._t0
+        tps = self.count / max(elapsed, 1e-6)
+        bar_w = 24
+        filled = min(bar_w, int(self.count / self.total * bar_w))
+        bar = "█" * filled + "░" * (bar_w - filled)
+        sys.stdout.write(
+            f"\r🎙️ {self.label} [{bar}] {self.count}/{self.total} tok "
+            f"| {tps:4.1f} t/s | {elapsed:5.1f}s"
+        )
+        sys.stdout.flush()
+
+    def end(self):
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+
 def _vibevoice_text_has_bracket_speaker_lines(text: str) -> bool:
     for line in text.splitlines():
         if line.strip() and _VIBEVOICE_BRACKET_LINE.match(line):
@@ -1018,6 +1063,21 @@ class ChatterboxTester:
             "vibevoice_q4": "vibevoice_q4",
         }
         model_type = model_map.get(model_ui_name, "standard")
+
+        # When switching away from a VibeVoice variant (7B Q8 ≈ 8 GB VRAM) to a
+        # non-VV model, free the VV weights first. Otherwise the next load
+        # (e.g. Qwen3) competes for VRAM, swaps to system RAM and appears to
+        # hang the GUI for minutes.
+        prev_type = getattr(self, "current_model_type", None)
+        _VV_TYPES = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
+        if (
+            prev_type in _VV_TYPES
+            and model_type not in _VV_TYPES
+            and model_ui_name not in _VIBEVOICE_UI_MODELS
+        ):
+            self.current_model = None
+            ChatterboxModelCache.evict_vibevoice(self.device)
+
         config: Dict[str, Any] = {"generation": {"model_type": model_type}}
         if model_ui_name in _VIBEVOICE_UI_MODELS:
             tester_cfg: Dict[str, Any] = {}
@@ -1448,15 +1508,39 @@ class ChatterboxTester:
                 }
                 print(f"🎙️ Qwen3 | lang={lang_name} | x_vec_only={x_vec_only} | {gen_kwargs}")
 
-                _t0 = time.perf_counter()
-                wavs, sr = current_model.generate_voice_clone(
-                    text=text,
-                    language=lang_name,
-                    ref_audio=ref_audio_path,
-                    ref_text=ref_text,
-                    x_vector_only_mode=x_vec_only,
-                    **gen_kwargs,
+                # Wire up a token-level progress bar on the talker LM.
+                # The public ``generate_voice_clone`` API does not forward a
+                # ``streamer=`` kwarg, but internally it calls
+                # ``self.model.talker.generate`` (HF generate). Temporarily wrap
+                # that bound method to inject our streamer, then restore.
+                talker = getattr(
+                    getattr(current_model, "model", None), "talker", None
                 )
+                streamer = _Qwen3ProgressStreamer(total=2048, label="Qwen3")
+                orig_talker_generate = None
+                if talker is not None and hasattr(talker, "generate"):
+                    orig_talker_generate = talker.generate
+
+                    def _patched_generate(*a, _orig=orig_talker_generate, _s=streamer, **kw):
+                        kw.setdefault("streamer", _s)
+                        return _orig(*a, **kw)
+
+                    talker.generate = _patched_generate  # type: ignore[assignment]
+
+                _t0 = time.perf_counter()
+                try:
+                    wavs, sr = current_model.generate_voice_clone(
+                        text=text,
+                        language=lang_name,
+                        ref_audio=ref_audio_path,
+                        ref_text=ref_text,
+                        x_vector_only_mode=x_vec_only,
+                        **gen_kwargs,
+                    )
+                finally:
+                    if talker is not None and orig_talker_generate is not None:
+                        talker.generate = orig_talker_generate  # type: ignore[assignment]
+                    streamer.end()
                 gen_elapsed = time.perf_counter() - _t0
                 audio_np = wavs[0].astype(np.float32)
                 self.sample_rate = int(sr)
@@ -1542,7 +1626,11 @@ class ChatterboxTester:
 
                 # Log effective LM sampling args (temperature/top_p only affect output when do_sample=True).
                 # Transformers omits TemperatureLogitsWarper when temperature==1.0 and TopPLogitsWarper when top_p>=1.0.
-                print(f"🎙️ VibeVoice | {gen_kwargs}")
+                # Omit tokenizer: its repr dumps added_tokens_decoder and floods the console.
+                _vv_log = {k: v for k, v in gen_kwargs.items() if k != "tokenizer"}
+                print(f"🎙️ VibeVoice | {_vv_log}")
+
+                # User "print(f"🎙️ VibeVoice | {gen_kwargs}")" for detailed logging of the tokenizer parameters
 
                 _t0 = time.perf_counter()
                 with torch.no_grad():
@@ -1867,9 +1955,11 @@ class ChatterboxTester:
             use_sampling = "true" if self.use_sampling_var.get() else "false"
             return (
                 f"tts_params:\n"
-                f"        cfg_scale: {self.param_vars['cfg_scale'].get():.2f}\n"
                 f"        temperature: {self.param_vars['temperature'].get():.2f}\n"
+                f"        temperature_max_deviation: 0\n"
                 f"        top_p: {self.param_vars['top_p'].get():.2f}\n"
+                f"        cfg_scale: {self.param_vars['cfg_scale'].get():.2f}\n"
+                f"        cfg_scale_max_deviation: 0\n"
                 f"        diffusion_steps: {int(self.param_vars['diffusion_steps'].get())}\n"
                 f"        voice_speed_factor: {self.param_vars['voice_speed_factor'].get():.2f}\n"
                 f"        use_sampling: {use_sampling}"

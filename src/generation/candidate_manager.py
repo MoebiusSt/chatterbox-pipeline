@@ -232,9 +232,9 @@ class CandidateManager:
                     file_manager.save_candidate(
                         chunk_index, cand, overwrite_existing=True
                     )
-                    logger.debug(
-                        f"💾 Incrementally saved candidate {cand.candidate_idx+1} "
-                        f"for chunk {chunk_index+1}"
+                    logger.info(
+                        f"💾 Saved candidate {cand.candidate_idx+1} of chunk "
+                        f"{chunk_index+1} incrementally"
                     )
                 except Exception as e:
                     logger.warning(
