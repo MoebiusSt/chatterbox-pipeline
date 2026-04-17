@@ -62,11 +62,12 @@ generation:
         # - exaggeration / cfg_weight / min_p are not supported and will be silently skipped
         #
         # VibeVoice models (vibevoice / vibevoice_1_5b / vibevoice_q4):
-        # - cfg_scale                default 1.30 | MAX on first expressive candidate; RAMP-UP with cfg_scale_max_deviation (lower values are more lively, <130 risky)
-        # - cfg_scale_max_deviation               | add over candidates (later = higher = calmer, as temperature rises too pushing for more lively-ness)
+        # - cfg_scale                default 1.30 | MIN on first expressive candidate; RAMP-UP with cfg_scale_max_deviation (later = higher = calmer; lower values are more lively, <1.2 risky)
+        # - cfg_scale_max_deviation               | add over expressive candidates (same ramp_pos as temperature/diffusion_steps)
         # - temperature              default 0.95 | MIN on first expressive; RAMP-UP with temperature_max_deviation; higher values increase prosody liveliness (ignored if use_sampling=false)
         # - top_p                    default 0.95 | only used when use_sampling=true; otherwise ignored
-        # - diffusion_steps          default 20   | diffusion denoising steps (5-60, higher = more noise/detail/risk)
+        # - diffusion_steps          default 20   | MIN on first expressive; RAMP-UP with diffusion_steps_max_deviation (clamp 5–60; 0 = no step ramp). Higher = more noise/detail/risk
+        # - diffusion_steps_max_deviation         | add over expressive candidates (default 0); pairs with cfg_scale/temperature ramp for prosody balance
         # - voice_speed_factor       default 1.0  | try adjusts reference voice speed in very small increments (0.98, 1.05)
         # - use_sampling             default false| false=deterministic, true=sampling with temperature/top_p
 

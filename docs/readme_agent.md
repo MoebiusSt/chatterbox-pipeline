@@ -109,7 +109,7 @@ TTSGenerator.generate_candidates() → List[AudioCandidate]
 # - Candidate 1: Exact config parameters (baseline, with center-offset for RAMP-DOWN-OVER-CENTER params)
 # - Candidates 2-N: Linear interpolation from config to deviation limits
 # - Last candidate: Conservative parameters (optional, for stability)
-# - conservative_candidate + num_candidates == 2 → Ramping disabled (only 1 expressive slot)
+# - conservative_candidate + num_candidates == 2 → Ramping disabled (only 1 expressive slot; no cfg/temp/diffusion_steps ramp across expressives)
 
 # Parameter behavior (Chatterbox models: standard / multilingual / turbo)
 exaggeration: RAMP-DOWN from MAX (config) to MIN (config - max_deviation)
@@ -133,8 +133,10 @@ temperature:    MIN value; RAMP-UP across expressive candidates (same formula as
                 Only applied to the LM when use_sampling=true; with use_sampling=false the
                 LM runs greedy and temperature/top_p are ignored.
 top_p:          nucleus sampling threshold; applied only when use_sampling=true (not ramped)
-diffusion_steps: int; NOT ramped across candidates. Conservative candidate may override
-                 (set ddpm inference steps, 5–60). Higher = more detail but longer generation.
+diffusion_steps: int; MIN on first expressive; RAMP-UP across expressive candidates when
+                 diffusion_steps_max_deviation > 0 (same ramp_pos as cfg_scale/temperature;
+                 clamp 5–60). Default deviation 0 leaves steps at base for all expressives.
+                 Last candidate may override via conservative_candidate.diffusion_steps.
 voice_speed_factor: resamples the *reference* audio by this factor (1.00 = unchanged,
                     ~0.98..1.05 for subtle speed tweaks); does NOT time-stretch the output.
 use_sampling:   false = deterministic greedy decoding, true = sampling with temperature/top_p.
@@ -443,8 +445,8 @@ tts_params:
   #                  subtalker_top_p, subtalker_dosample
   # vibevoice keys:  cfg_scale (ramp UP), cfg_scale_max_deviation,
   #                  temperature (ramp UP, needs use_sampling),
-  #                  temperature_max_deviation, top_p, diffusion_steps,
-  #                  voice_speed_factor, use_sampling
+  #                  temperature_max_deviation, top_p, diffusion_steps (ramp UP),
+  #                  diffusion_steps_max_deviation, voice_speed_factor, use_sampling
 
 # Quality Gates
 validation:

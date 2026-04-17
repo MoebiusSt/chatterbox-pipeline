@@ -863,6 +863,8 @@ class TTSGenerator:
         cfg_dev = float(raw_tts_params.get("cfg_scale_max_deviation", 0.0))
         base_temp = float(filtered_base.get("temperature", 0.95))
         temp_dev = float(raw_tts_params.get("temperature_max_deviation", 0.0))
+        base_steps = int(filtered_base.get("diffusion_steps", 20))
+        steps_dev = float(raw_tts_params.get("diffusion_steps_max_deviation", 0.0))
         num_expressive = num_candidates - 1 if conservative_enabled else num_candidates
         base_seed = self.get_speaker_seed(speaker_id)
         candidates: List[AudioCandidate] = []
@@ -880,6 +882,12 @@ class TTSGenerator:
                     params["cfg_scale"] = base_cfg + (cfg_dev * ramp_pos)
                     # temperature: ramp UP
                     params["temperature"] = base_temp + (temp_dev * ramp_pos)
+                    # diffusion_steps: ramp UP (same ramp_pos; offsets cfg_scale calming vs temperature liveliness)
+                    if steps_dev != 0.0:
+                        params["diffusion_steps"] = max(
+                            5,
+                            min(60, int(round(base_steps + steps_dev * ramp_pos))),
+                        )
                 candidate_type = "EXPRESSIVE"
 
             candidate_seed = base_seed + (i * 1000) + hash(text) % 10000
@@ -889,7 +897,8 @@ class TTSGenerator:
                 f"cfg_scale={params.get('cfg_scale', 1.3):.3f}, "
                 f"temp={params.get('temperature', 0.95):.3f}, "
                 f"top_p={params.get('top_p', 0.95):.3f}, "
-                f"steps={int(params.get('diffusion_steps', 20))}, "
+                f"steps={int(params.get('diffusion_steps', 20))}"
+                f"{f', steps_dev={steps_dev:.2f}' if steps_dev != 0.0 else ''}, "
                 f"use_sampling={bool(params.get('use_sampling', False))}"
             )
             audio = self._generate_vibevoice_single(
@@ -968,6 +977,7 @@ class TTSGenerator:
                 )
                 ref_audio = np.zeros(24000, dtype=np.float32)
 
+            steps_dev_retry = float(raw_tts.get("diffusion_steps_max_deviation", 0.0))
             base_seed = self.get_speaker_seed(speaker_id)
             for i in range(max_retries):
                 vf = _retry_variation_factor(i, max_retries)
@@ -984,9 +994,17 @@ class TTSGenerator:
                     params["top_p"] = float(
                         max(0.0, min(1.0, float(params["top_p"]) + vf * 0.04))
                     )
-                if "diffusion_steps" in params:
+                # Keep merged diffusion_steps when deviation is 0; else small nudge scaled by deviation
+                if "diffusion_steps" in params and steps_dev_retry != 0.0:
+                    merged_steps = float(params["diffusion_steps"])
                     params["diffusion_steps"] = int(
-                        max(5, min(60, int(round(float(params["diffusion_steps"]) + vf * 2.0))))
+                        max(
+                            5,
+                            min(
+                                60,
+                                int(round(merged_steps + vf * steps_dev_retry * 0.2)),
+                            ),
+                        )
                     )
 
                 candidate_idx = start_candidate_idx + i

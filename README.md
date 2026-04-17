@@ -10,7 +10,7 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - YAML-based a job and task pipeline to prepare job rendering queues (like magazines or books with chapters). Configurations are cascading! Only specify what you need.
 - **TTSGenerator**: Unified generation wrapper for all four supported TTS backends: ChatterboxTTS (standard), ChatterboxMultilingualTTS, ChatterboxTurboTTS, and Qwen3 TTS (voice cloning) — with model-aware parameter routing, candidate generation, and language validation
 - **SpaCyChunker**: intelligent SpaCy-based text chunking  at sentence boundaries for long text generations,  with configurable length specifications.
-- **Parameter Variations**: automatic variation generation. Ramping values for exaggeration and other tts parameters to create more varied candidates
+- **Parameter Variations**: automatic variation generation. Ramping values for exaggeration and other tts parameters to create more varied candidates (VibeVoice: includes `cfg_scale`, `temperature`, and `diffusion_steps` via `*_max_deviation` keys)
 - **CandidateManager**: Management of multiple candidates with retry logic
 - **Manual picking** of best candidate in simple manager
 - **AudioProcessor**: Concatenation of audio segments with discerning pause processing
