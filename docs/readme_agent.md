@@ -54,29 +54,28 @@ TextPreprocessor.normalize() → normalized text
 # Chunking  
 SpaCyChunker.chunk_text() → List[TextChunk]
 # Chatterbox/Qwen3 defaults: target_chunk_limit=380, max_chunk_limit=460,
-#                            force_paragraph_chunks=true (split at every blank line)
-# VibeVoice defaults:         target_chunk_limit=2800, max_chunk_limit=3600,
-#                            force_paragraph_chunks=false, refinement_enabled=false
-#                            (longform mode – VibeVoice needs larger context windows;
-#                             short paragraphs are merged up to target_chunk_limit)
+#                            force_paragraph_chunks=true
+#                            → every \n\n is a HARD chunk boundary (paragraph-break silence guaranteed)
+# VibeVoice defaults:         target_chunk_limit=2800, max_chunk_limit=4800,
+#                            force_paragraph_chunks=false
+#                            → HARD boundaries: only \n\n\n+ (2+ empty lines); last chunk before
+#                              such a break gets paragraph_break_type="long" → Assembly inserts
+#                              audio.silence_duration.long (default 1.30 s).
+#                              SOFT boundaries: single \n\n is a preferred but not mandatory
+#                              split-point (greedy packing still applies within a hard section).
+#                              Micro-chunks are merged into neighbors, never across hard breaks.
 # Features: sentence-boundary aware, speaker-transition priority (HIGHEST),
-#           paragraph-break awareness, refinement pass for short headings
+#           paragraph-break awareness, micro-chunk merge
 
 # Speaker Support
 <speaker:id> markup → automatic speaker switching.
 # Speaker splits always win, independent of force_paragraph_chunks.
 # <speaker:0>, <speaker:default>, <speaker:reset> all return to the default speaker.
 
-# Refinement pass (_refine_chunks, src/chunking/spacy_chunker.py)
-# Step 1: split chunks at internal "\n\n" if the line before is short
-#         (<= min_chunk_length chars).  GATED by force_paragraph_chunks: when
-#         False (VibeVoice longform) this step is skipped so that titles,
-#         one-word headings and short lines stay merged into the surrounding
-#         longform chunk.
-# Step 2: merge micro-chunks (<= min_chunk_length chars) into the previous
-#         chunk when safe (never across speaker transitions or paragraph
-#         breaks).
-# Disable the whole pass via chunking.refinement_enabled: false.
+# Finalization (_finalize_chunks, src/chunking/spacy_chunker.py)
+# _merge_micro_chunks: merge short chunks (≤ micro_chunk_max_chars = min_chunk_length) into neighbors.
+# Hard-break stops: speaker_transition OR paragraph_break_type=="long".
+# With force_paragraph_chunks=true (Chatterbox), plain paragraph breaks also stop the merge.
 ```
 
 ### 2. TTS Generation System
@@ -338,7 +337,7 @@ Without a `parent:` field the behavior is identical to the previous 2-level syst
 - `defaults/turbo.yaml`      — ChatterboxTurboTTS
 - `defaults/qwen3.yaml`      — Qwen3 TTS (1.7B)
 - `defaults/vibevoice.yaml`  — VibeVoice (all three size variants; longform chunking,
-                                refinement_enabled=false, language_strict=false)
+                                language_strict=false)
 
 ### Minimum Viable Job YAML (per model type)
 
@@ -410,10 +409,9 @@ chunking:
 
   # VibeVoice – longform (values from defaults/vibevoice.yaml)
   # target_chunk_limit: 2800
-  # max_chunk_limit: 3600
+  # max_chunk_limit: 4800
   # min_chunk_length: 120
-  # force_paragraph_chunks: false  # keep big paragraphs together
-  # refinement_enabled: false      # also disables the short-heading split
+  # force_paragraph_chunks: false  # only \n\n\n+ is a hard boundary (long-pause silence)
 
 # Generation Quality
 generation:
@@ -633,10 +631,10 @@ Solution: Add a .txt sidecar file with the transcript next to the reference .wav
 Warning logged when reference audio > 3s. Trim to best 3-second segment for optimal quality.
 
 # VibeVoice: too many tiny chunks ("Einleitung.", "Ein Text von …" as own chunks)
-Cause: force_paragraph_chunks=true, or refinement_enabled=true + short_par_chars ≥ line length.
-Solution: Inherit defaults/vibevoice.yaml (force_paragraph_chunks=false, refinement_enabled=false)
-         – the short-heading refinement split is now gated on force_paragraph_chunks and
-         skipped in longform mode. Speaker-transition splits (<speaker:*>) remain active.
+Cause: force_paragraph_chunks=true.
+Solution: Inherit defaults/vibevoice.yaml (force_paragraph_chunks=false).
+         With force_paragraph_chunks=false only \n\n\n+ (2+ empty lines) is a hard boundary;
+         single blank lines are soft split-points. Speaker-transition splits remain active.
 
 # VibeVoice: unsupported language warning / error
 "VibeVoice officially supports only 'en' and 'zh'; got 'de'"

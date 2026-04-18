@@ -119,9 +119,7 @@ class TaskExecutor:
                 max_limit=chunking_config.get("max_chunk_limit", 600),
                 min_length=chunking_config.get("min_chunk_length", 50),
                 force_paragraph_chunks=chunking_config.get("force_paragraph_chunks", False),
-                refinement_enabled=chunking_config.get("refinement_enabled", True),
                 micro_chunk_max_chars=chunking_config.get("micro_chunk_max_chars", None),
-                short_par_chars=chunking_config.get("short_par_chars", None),
                 respect_headings_in_speaker_mode=chunking_config.get(
                     "respect_headings_in_speaker_mode", True
                 ),

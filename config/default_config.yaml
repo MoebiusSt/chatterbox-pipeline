@@ -14,8 +14,10 @@ chunking:
   target_chunk_limit: 380
   max_chunk_limit: 460
   min_chunk_length: 80
-  spacy_model: en_core_web_sm
-  force_paragraph_chunks: true  # double newlines force chunking; ensures added paragraph break silence
+  spacy_model: en_core_web_sm # use de_core_web_sm for german jobs
+  force_paragraph_chunks: true  # true (Chatterbox default): every \n\n is a HARD chunk boundary → paragraph-break silence guaranteed.
+                                # false (VibeVoice): only \n\n\n+ (2+ empty lines) is a HARD boundary (→ long-pause silence);
+                                #   single \n\n is a preferred but soft split-point (greedy packing still applies).
 
 generation:
   num_candidates: 2

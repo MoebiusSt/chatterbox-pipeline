@@ -170,17 +170,18 @@ SpaCyChunker.chunk_text(text) → List[TextChunk]
 # Linguistic sentence segmentation with speaker-transition priority.
 # Defaults depend on the parent config:
 #   Chatterbox/Qwen3: target=380, max=460, force_paragraph_chunks=true (see default_config.yaml)
-#   VibeVoice:        target=2800, max=3600, force_paragraph_chunks=false,
-#                     refinement_enabled=false (see config/defaults/vibevoice.yaml)
+#                     → every \n\n is a HARD chunk boundary (paragraph-break silence guaranteed)
+#   VibeVoice:        target=2800, max=4800, force_paragraph_chunks=false,
+#                     (see config/defaults/vibevoice.yaml)
+#                     → HARD boundaries: only \n\n\n+ (2+ empty lines); last chunk before such
+#                       a break gets paragraph_break_type="long" → Assembly inserts long silence.
+#                       SOFT boundaries: single \n\n is a preferred split-point but greedy
+#                       packing still applies within a hard section.
 #
-# Refinement pass (_refine_chunks):
-#   Step 1 – split chunks at internal "\n\n" if the preceding line is short
-#            (<= short_par_chars, default = min_chunk_length).  **Gated on
-#            force_paragraph_chunks**: skipped when False so longform chunks
-#            stay intact (introduced for VibeVoice).
-#   Step 2 – merge micro-chunks into the previous chunk when safe (never
-#            across speaker transitions or paragraph breaks).
-# Disable the whole refinement via chunking.refinement_enabled: false.
+# Finalization (_finalize_chunks):
+#   _merge_micro_chunks: always runs.  Hard-break stops:
+#   speaker_transition OR paragraph_break_type=="long".
+#   With force_paragraph_chunks=true, plain paragraph breaks also stop the merge.
 ```
 
 ### 4. Audio Generation (`src/generation/`)
@@ -463,12 +464,11 @@ chunking:
   # Chatterbox/Qwen3
   target_chunk_limit: 380
   max_chunk_limit: 460
-  force_paragraph_chunks: true
+  force_paragraph_chunks: true  # every \n\n is hard boundary
   # VibeVoice (via defaults/vibevoice.yaml)
   # target_chunk_limit: 2800
-  # max_chunk_limit: 3600
-  # force_paragraph_chunks: false
-  # refinement_enabled: false
+  # max_chunk_limit: 4800
+  # force_paragraph_chunks: false  # only \n\n\n+ is hard boundary (→ long-pause silence)
 ```
 
 ## Job/Task Management
