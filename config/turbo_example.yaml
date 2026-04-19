@@ -1,0 +1,32 @@
+parent: defaults/turbo.yaml
+
+job:
+  name: test_turbo
+  run-label:
+
+input:
+  text_file: test_TURBO.txt
+
+generation:
+  num_candidates: 3
+  model_type: turbo
+  default_speaker: stephan_EN
+
+  speakers:
+    - id: stephan_EN
+      reference_audio: stephan_moebius_1.wav
+      language: en
+      tts_params:
+        exaggeration: 0.45
+        exaggeration_max_deviation: 0.10
+        cfg_weight: 0.4
+        cfg_weight_max_deviation: 0.10
+        temperature: 0.8
+        temperature_max_deviation: 0.2
+        repetition_penalty: 1.1
+        min_p: 0.05
+        top_p: 1.00
+        top_k: 1000
+        norm_loudness: false
+      conservative_candidate:
+        enabled: false

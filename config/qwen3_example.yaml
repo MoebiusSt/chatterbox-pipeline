@@ -1,0 +1,36 @@
+parent: defaults/qwen3.yaml
+
+job:
+  name: test_qwen3
+  run-label: test_qwen3
+
+input:
+  text_file: input-document.txt
+
+generation:
+  num_candidates: 2
+  default_speaker: stephan_EN
+
+  speakers:
+    - id: stephan_EN
+      reference_audio: stephan_moebius_4_15s.wav
+      reference_text: stephan_moebius_4_15s.txt
+      language: en
+      tts_params:
+        temperature: 0.8
+        temperature_max_deviation: 0.3
+        top_k: 55
+        top_k_max_deviation: 100
+        repetition_penalty: 1.05
+        top_p: 1.0
+        subtalker_top_k: 200
+        subtalker_top_k_max_deviation: 50
+        subtalker_temperature: 1.45
+        subtalker_temperature_max_deviation: 0.4
+      conservative_candidate:
+        enabled: false
+
+audio:
+  silence_duration:
+    normal: 0.60
+    paragraph: 1.00

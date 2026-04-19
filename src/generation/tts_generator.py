@@ -22,6 +22,7 @@ from generation.model_cache import ChatterboxModelCache
 
 # Import the standardized AudioCandidate from file_manager
 from utils.file_manager.io_handlers.candidate_io import AudioCandidate
+from utils.qwen3_progress_streamer import Qwen3ProgressStreamer
 from utils.language_registry import (
     MODEL_FEATURES,
     QWEN3_LANGUAGE_CODE_TO_NAME,
@@ -585,13 +586,32 @@ class TTSGenerator:
             if key in params:
                 gen_kwargs[key] = params[key]
 
+        # Token-level progress on the talker LM (same hook as chatterbox_tester).
+        talker = getattr(getattr(self.model, "model", None), "talker", None)
+        total_tok = int(gen_kwargs.get("max_new_tokens") or 2048)
+        streamer = Qwen3ProgressStreamer(total=total_tok, label="Qwen3")
+        orig_talker_generate = None
+        if talker is not None and hasattr(talker, "generate"):
+            orig_talker_generate = talker.generate
+
+            def _patched_generate(*a, _orig=orig_talker_generate, _s=streamer, **kw):
+                kw.setdefault("streamer", _s)
+                return _orig(*a, **kw)
+
+            talker.generate = _patched_generate  # type: ignore[assignment]
+
         try:
-            wavs, _sr = self.model.generate_voice_clone(
-                text=text,
-                language=language_name,
-                voice_clone_prompt=voice_prompt,
-                **gen_kwargs,
-            )
+            try:
+                wavs, _sr = self.model.generate_voice_clone(
+                    text=text,
+                    language=language_name,
+                    voice_clone_prompt=voice_prompt,
+                    **gen_kwargs,
+                )
+            finally:
+                if talker is not None and orig_talker_generate is not None:
+                    talker.generate = orig_talker_generate  # type: ignore[assignment]
+                streamer.end()
         except Exception as e:
             logger.error(f"Qwen3 generate_voice_clone failed: {e}")
             return torch.zeros(24000, device=self.device)

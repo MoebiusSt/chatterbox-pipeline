@@ -147,6 +147,7 @@ config/*
 !config/chatterbox_multi_example.yaml
 !config/vibevoice_example.yaml
 !config/qwen3_example.yaml
+!config/turbo_example.yaml
 
 # Large data files
 *.tar.gz
