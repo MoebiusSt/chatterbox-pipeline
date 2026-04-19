@@ -1,0 +1,102 @@
+# Model-specific default config for VibeVoice (vibevoice / vibevoice_1_5b / vibevoice_q4).
+# Inherits everything from default_config.yaml and overrides model-specific values.
+# Job configs that use VibeVoice can reference this file:
+#
+#   parent: defaults/vibevoice.yaml
+#
+# Override generation.model_type to vibevoice_1_5b or vibevoice_q4 in your job if needed.
+# All three VibeVoice variants share the same tts_params keys.
+
+parent: default_config.yaml
+
+chunking:
+  # VibeVoice handles long-form audio natively; raise chunk limits accordingly.
+  # Paragraph-break semantics (force_paragraph_chunks=false):
+  #   HARD boundaries: only double-empty-line breaks (\n\n\n+, i.e. >= 3 consecutive newlines).
+  #   The chunker never packs text across these; the last chunk before such a break receives
+  #   paragraph_break_type="long" so Assembly inserts audio.silence_duration.long (default 1.30 s).
+  #   SOFT boundaries: single empty lines (\n\n) are preferred split-points once a chunk reaches
+  #   target_chunk_limit, but the chunker may span them if the section is shorter.
+  #   Micro-chunks are merged into neighbors, but never across a hard boundary or speaker transition.
+  #   Speaker-transition splits (<speaker:*>) remain the highest priority regardless.
+  force_paragraph_chunks: false
+  target_chunk_limit: 2800
+  max_chunk_limit: 4800
+  min_chunk_length: 120
+
+validation:
+  similarity_threshold: 0.90  # WhisperValidator: token-based similarity of original and 
+  min_quality_score: 0.90  #  WhisperValidator: 70% * similarity_score + 30% * length_score
+  preprocessing:
+    tail_trim:
+      enabled: false
+
+generation:
+  model_type: vibevoice  # override to vibevoice_1_5b or vibevoice_q4 in your job if needed
+  num_candidates: 2
+  max_retries: 1
+  default_speaker: stephan_moebius_1
+
+  vibevoice:
+    # When true, unsupported language codes raise ValueError instead of silently
+    # falling back to English. VibeVoice officially supports only English ("en")
+    # and Chinese ("zh"). Default false keeps historical behaviour (submitting language to the model) with a single
+    # warning logged once per language.
+    language_strict: false
+
+  speakers:
+    - id: stephan_moebius_1
+      reference_audio: stephan_moebius_1.wav
+      language: en # vibevoice has many languages available. Give it a proper input reference audio in that language.
+      tts_params:
+        # VibeVoice parameters – see readme_agent.md or default_config.yaml for ramp semantics.
+        temperature: 0.95             # MIN value; ramps UP (only with use_sampling=true)
+        temperature_max_deviation: 0.4
+        top_p: 0.98                   # used only with use_sampling=true
+        cfg_scale: 1.30               # MIN value; ramps UP across candidates
+        cfg_scale_max_deviation: 0.15
+        diffusion_steps: 20          # MIN value; ramps UP across candidates
+        diffusion_steps_max_deviation: 10  # (0 = no ramp;)
+        voice_speed_factor: 1.00
+        use_sampling: true           # false = deterministic; true = sampling mode with top_p, and temperature
+      conservative_candidate:
+        enabled: true
+        temperature: 0.90
+        top_p: 0.92
+        cfg_scale: 1.5
+        # Last candidate: overrides expressive ramp; set diffusion_steps here for a fixed conservative DDPM depth
+        diffusion_steps: 24
+        voice_speed_factor: 1.00
+    - id: petra_ries2_DE
+      reference_audio: petra_ries2_DE.wav
+      language: de
+      tts_params:
+        temperature: 1.10 # MIN value; ramps UP
+        temperature_max_deviation: 0.35
+        top_p: 0.93
+        cfg_scale: 1.45 # MIN value; ramps UP across candidates
+        cfg_scale_max_deviation: 0.1
+        diffusion_steps: 20 # MIN value; ramps UP across candidates
+        diffusion_steps_max_deviation: 10  # (0 = no ramp;)
+        voice_speed_factor: 0.94
+        use_sampling: true
+      conservative_candidate:
+        enabled: true
+        temperature: 1.10
+        top_p: 0.90
+        cfg_scale: 1.5      
+        diffusion_steps: 28
+        voice_speed_factor: 0.95
+    - id: petra_ries2_IT
+      reference_audio: petra_ries2_IT-Fake.wav
+      language: it
+      tts_params:
+        temperature: 0.95
+        temperature_max_deviation: 0.3
+        top_p: 0.95
+        cfg_scale: 1.70
+        cfg_scale_max_deviation: 0.23
+        diffusion_steps: 70
+        diffusion_steps_max_deviation: 30 
+        voice_speed_factor: 0.95
+        use_sampling: true

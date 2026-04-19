@@ -1,0 +1,573 @@
+# Model-specific default config for Qwen3 TTS (qwen3, 1.7B base, 10 languages).
+# Inherits everything from default_config.yaml and overrides model-specific values.
+# Job configs that use Qwen3 can reference this file:
+#
+#   parent: defaults/qwen3.yaml
+#
+# They then only need to specify job-specific overrides (text file, speakers, etc.).
+
+parent: default_config.yaml
+
+chunking:
+  # Qwen3 is longform-capable (less than VibeVoice but well beyond Chatterbox).
+  # Paragraph-break semantics (force_paragraph_chunks=false):
+  #   HARD boundaries: only double-empty-line breaks (\n\n\n+, i.e. >= 3 consecutive newlines).
+  #   The chunker never packs text across these; the last chunk before such a break receives
+  #   paragraph_break_type="long" so Assembly inserts audio.silence_duration.long (default 1.30 s).
+  #   SOFT boundaries: single empty lines (\n\n) are preferred split-points once a chunk reaches
+  #   target_chunk_limit, but the chunker may span them if the section is shorter.
+  #   Micro-chunks are merged into neighbors, but never across a hard boundary or speaker transition.
+  #   Speaker-transition splits (<speaker:*>) remain the highest priority regardless.
+  # Note: max_chunk_limit must stay compatible with tts_params.max_new_tokens
+  # (Qwen3 audio-token budget ≈ 50 tok/s; 4096 tokens ≈ 80 s ≈ ~1500 chars at 140 wpm).
+  force_paragraph_chunks: false
+  target_chunk_limit: 1400
+  max_chunk_limit: 2000
+  min_chunk_length: 100
+
+generation:
+  model_type: qwen3
+  default_speaker: stephan_moebius_1
+
+  speakers:
+    - id: stephan_moebius_1
+      reference_audio: stephan_moebius_4_15s.wav
+      language: en
+      # reference_text must be provided per-job (speaker-specific .txt sidecar)
+      tts_params:
+        # Qwen3 parameters – see readme_agent.md for ramp semantics.
+        # Chatterbox-only params (exaggeration, cfg_weight, min_p) are silently skipped.
+        temperature: 0.85             # MIN value; ramps UP across candidates
+        temperature_max_deviation: 0.30
+        top_k: 50                     # MIN value; ramps UP across candidates
+        top_k_max_deviation: 100
+        top_p: 1.0
+        repetition_penalty: 1.05
+        max_new_tokens: 4096           # raised for longform chunks (target=1200, max=2000 chars)
+        do_sample: true
+        subtalker_top_k: 200          # MIN value; ramps UP across candidates
+        subtalker_top_k_max_deviation: 50
+        subtalker_temperature: 1.45   # CENTER value; ramps DOWN-OVER-CENTER
+        subtalker_temperature_max_deviation: 0.40
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: annie_coleman_rothenberg_2_15s
+      reference_audio: annie_coleman_rothenberg_2_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: cori_samuel_1_15s
+      reference_audio: cori_samuel_1_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: cori_samuel_2_15s
+      reference_audio: cori_samuel_2_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: cori_samuel_3_15s
+      reference_audio: cori_samuel_3_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: david_barnes_1_15s
+      reference_audio: david_barnes_1_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: david_barnes_2_15s
+      reference_audio: david_barnes_2_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.04
+        temperature_max_deviation: 0.0
+        top_k: 131
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 187
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.188333
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: gesine_1_15s
+      reference_audio: gesine_1_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.04
+        temperature_max_deviation: 0.0
+        top_k: 131
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 187
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.188333
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: gesine_2_15ss
+      reference_audio: gesine_2_15ss.wav
+      language: en
+      tts_params:
+        temperature: 0.88
+        temperature_max_deviation: 0.0
+        top_k: 85
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 153
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: gesine_3_15s
+      reference_audio: gesine_3_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: glen_hallstrom_1_15s
+      reference_audio: glen_hallstrom_1_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.88
+        temperature_max_deviation: 0.0
+        top_k: 85
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 153
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: glen_hallstrom_2_15s
+      reference_audio: glen_hallstrom_2_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: glen_hallstrom_3_15s
+      reference_audio: glen_hallstrom_3_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: maryjohn_15s
+      reference_audio: maryjohn_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.88
+        temperature_max_deviation: 0.0
+        top_k: 85
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 153
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: mike_kamp_1_15s
+      reference_audio: mike_kamp_1_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.88
+        temperature_max_deviation: 0.0
+        top_k: 85
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 153
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: peter_yearsley_1_15s
+      reference_audio: peter_yearsley_1_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.88
+        temperature_max_deviation: 0.0
+        top_k: 85
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 153
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: stephan_moebius_2_15s
+      reference_audio: stephan_moebius_2_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: stephan_moebius_3_15s
+      reference_audio: stephan_moebius_3_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.88
+        temperature_max_deviation: 0.0
+        top_k: 85
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 153
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: stephan_moebius_4_15s
+      reference_audio: stephan_moebius_4_15s.wav
+      language: en
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: erik_prochnow_DE_15s
+      reference_audio: erik_prochnow_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: martina-zimmermann_DE_15s
+      reference_audio: martina-zimmermann_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: mike_kamp_2_DE_15s
+      reference_audio: mike_kamp_2_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: petra_ries2_DE_15s
+      reference_audio: petra_ries2_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: petra_ries_DE_15s
+      reference_audio: petra_ries_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: stefan_backes_DE_15s
+      reference_audio: stefan_backes_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.005
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: stephan_moebius_7_DE_15s
+      reference_audio: stephan_moebius_7_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: ulrich_joosten_1_DE_15s
+      reference_audio: ulrich_joosten_1_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+    - id: ulrich_joosten_2_DE_15s
+      reference_audio: ulrich_joosten_2_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.04
+        temperature_max_deviation: 0.0
+        top_k: 131
+        top_k_max_deviation: 0.0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        do_sample: true
+        subtalker_top_k: 187
+        subtalker_top_k_max_deviation: 0.0
+        subtalker_temperature: 1.188333
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+        subtalker_dosample: true
+      conservative_candidate:
+        enabled: false
+audio:
+  sample_rate: 24000  # Qwen3 native sample rate
+
+validation:
+  numbers_normalization_mode: placeholder  # handles non-EN languages in Qwen3 jobs
