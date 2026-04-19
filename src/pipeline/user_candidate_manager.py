@@ -5,13 +5,66 @@ Allows users to edit and select different audio candidates for final assembly.
 """
 
 import logging
-from dataclasses import dataclass
-from typing import Dict, List, Set
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Set, Tuple
 
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
 
 logger = logging.getLogger(__name__)
+
+# Per-model parameter columns shown in the candidate selector table.
+# Each entry: (header, generation_params key, formatter, column width).
+# The first column-width is also used to pad header cells.
+_ParamColumn = Tuple[str, str, Callable[[Any], str], int]
+
+
+def _fmt_float(width: int, decimals: int = 2) -> Callable[[Any], str]:
+    def _f(v: Any) -> str:
+        try:
+            return f"{float(v):<{width}.{decimals}f}"
+        except (TypeError, ValueError):
+            return f"{'-':<{width}}"
+    return _f
+
+
+def _fmt_int(width: int) -> Callable[[Any], str]:
+    def _f(v: Any) -> str:
+        try:
+            return f"{int(v):<{width}d}"
+        except (TypeError, ValueError):
+            return f"{'-':<{width}}"
+    return _f
+
+
+def _get_model_param_columns(model_type: str) -> List[_ParamColumn]:
+    """Return per-model column definitions for the candidate selector table.
+
+    The default (Chatterbox / standard / multilingual / turbo) preserves the
+    historical 3-column layout (exag/cfg_w/tmp). Qwen3 and VibeVoice use 4
+    columns each tailored to their most informative ramping parameters.
+    """
+    mt = (model_type or "").lower().strip()
+    if mt == "qwen3":
+        return [
+            ("temp",   "temperature",           _fmt_float(6, 2), 6),
+            ("topk",   "top_k",                 _fmt_int(6),      6),
+            ("sub_t",  "subtalker_temperature", _fmt_float(6, 2), 6),
+            ("sub_tk", "subtalker_top_k",       _fmt_int(6),      6),
+        ]
+    if mt in {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}:
+        return [
+            ("temp",   "temperature",     _fmt_float(6, 2), 6),
+            ("top_p",  "top_p",           _fmt_float(6, 2), 6),
+            ("cfg",    "cfg_scale",       _fmt_float(6, 2), 6),
+            ("dsteps", "diffusion_steps", _fmt_int(6),      6),
+        ]
+    # Chatterbox family (default)
+    return [
+        ("exag",  "exaggeration", _fmt_float(6, 2), 6),
+        ("cfg_w", "cfg_weight",   _fmt_float(6, 2), 6),
+        ("tmp",   "temperature",  _fmt_float(6, 2), 6),
+    ]
 
 @dataclass
 class CandidateInfo:
@@ -34,6 +87,9 @@ class CandidateInfo:
     wpm: float = 0.0
     prosody_score: float = 0.0
     final_selection_score: float = 0.0
+    # Pre-formatted model-specific parameter cells (already padded to width).
+    # Order matches the column order returned by _get_model_param_columns().
+    param_cells: List[str] = field(default_factory=list)
 
 @dataclass
 class ChunkOverview:
@@ -60,6 +116,15 @@ class UserCandidateManager:
         self.task_config = task_config
         self.original_selections: Dict[str, int] = {}
         self.current_selections: Dict[str, int] = {}
+        # Resolve model_type once so the candidate table can show the most
+        # informative tts_params per model family (qwen3, vibevoice, chatterbox).
+        try:
+            self.model_type = str(
+                (self.file_manager.config or {}).get("generation", {}).get("model_type", "")
+            )
+        except Exception:
+            self.model_type = ""
+        self.param_columns: List[_ParamColumn] = _get_model_param_columns(self.model_type)
         self._load_initial_data()
 
     def _load_initial_data(self) -> None:
@@ -78,6 +143,59 @@ class UserCandidateManager:
     def load_candidate_data(self) -> Dict:
         """Load complete candidate data from enhanced metrics."""
         return self.file_manager.get_metrics()
+
+    def _print_candidate_table(self, candidate_infos: List[CandidateInfo]) -> None:
+        """Print the candidate table using model-specific tts_param columns."""
+        # Header
+        param_header = " ".join(f"{h:<{w}}" for (h, _k, _f, w) in self.param_columns)
+        print(
+            f"{'Cand.':<6} "
+            f"{param_header} "
+            f"{'type':<20} "
+            f"{'val_s':<7} "
+            f"{'qty_s':<7} "
+            f"{'wpm':<6} "
+            f"{'flow':<6} "
+            f"{'live':<6} "
+            f"{'mos':<6} "
+            f"{'pros':<6} "
+            f"{'final':<7} "
+            f"{'passed[s,p]':<12}"
+        )
+        try:
+            validation_cfg = self.file_manager.config.get("validation", {})
+            prosody_thr = float(
+                validation_cfg.get("prosody", {}).get("thresholds", {}).get("min_prosody_score", 0.60)
+            )
+        except Exception:
+            prosody_thr = 0.60
+
+        for info in candidate_infos:
+            selected_marker = "<- sel" if info.is_selected else ""
+            sim_mark = "✅" if info.validation_passed else "❌"
+            pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
+            passed_pair = f"{sim_mark}{pros_mark}"
+
+            # Use pre-formatted, padded cells (or rebuild if missing for any reason).
+            if info.param_cells and len(info.param_cells) == len(self.param_columns):
+                params_str = " ".join(info.param_cells)
+            else:
+                params_str = " ".join(f"{'-':<{w}}" for (_h, _k, _f, w) in self.param_columns)
+
+            print(
+                f"{info.candidate_id+1:<6} "
+                f"{params_str} "
+                f"{info.candidate_type:<20} "
+                f"{getattr(info, 'validation_score', 0.0):<7.2f} "
+                f"{info.quality_score:<7.2f} "
+                f"{getattr(info, 'wpm', 0.0):<6.0f} "
+                f"{info.flow_score:<6.2f} "
+                f"{info.liveliness_score:<6.2f} "
+                f"{info.mos_score:<6.2f} "
+                f"{info.prosody_score:<6.2f} "
+                f"{info.final_selection_score:<7.2f} "
+                f"{passed_pair:<12} {selected_marker}"
+            )
 
     def save_candidate_selection(self, chunk_idx: int, candidate_idx: int) -> bool:
         """
@@ -181,52 +299,7 @@ class UserCandidateManager:
             print(f"Current selected Candidate: {current_selected}")
             print()
 
-            # Display candidate table with proper alignment
-            # Header aligned to column widths
-            print(
-                f"{'Cand.':<6} "
-                f"{'exag':<6} "
-                f"{'cfg_w':<6} "
-                f"{'tmp':<6} "
-                f"{'type':<20} "
-                f"{'val_s':<7} "
-                f"{'qty_s':<7} "
-                f"{'wpm':<6} "
-                f"{'flow':<6} "
-                f"{'live':<6} "
-                f"{'mos':<6} "
-                f"{'pros':<6} "
-                f"{'final':<7} "
-                f"{'passed[s,p]':<12}"
-            )
-            for info in candidate_infos:
-                selected_marker = "<- sel" if info.is_selected else ""
-                # Diagnostic prosody pass per min_prosody_score (not a hard gate)
-                try:
-                    validation_cfg = self.file_manager.config.get("validation", {})
-                    prosody_thr = float(validation_cfg.get("prosody", {}).get("thresholds", {}).get("min_prosody_score", 0.60))
-                except Exception:
-                    prosody_thr = 0.60
-                sim_mark = "✅" if info.validation_passed else "❌"
-                pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
-
-                passed_pair = f"{sim_mark}{pros_mark}"
-                print(
-                    f"{info.candidate_id+1:<6} "
-                    f"{info.exaggeration:<6.2f} "
-                    f"{info.cfg_weight:<6.2f} "
-                    f"{info.temperature:<6.2f} "
-                    f"{info.candidate_type:<20} "
-                    f"{getattr(info, 'validation_score', 0.0):<7.2f} "
-                    f"{info.quality_score:<7.2f} "
-                    f"{getattr(info, 'wpm', 0.0):<6.0f} "
-                    f"{info.flow_score:<6.2f} "
-                    f"{info.liveliness_score:<6.2f} "
-                    f"{info.mos_score:<6.2f} "
-                    f"{info.prosody_score:<6.2f} "
-                    f"{info.final_selection_score:<7.2f} "
-                    f"{passed_pair:<12} {selected_marker}"
-                )
+            self._print_candidate_table(candidate_infos)
 
             print()
             print("Select action:")
@@ -281,51 +354,7 @@ class UserCandidateManager:
                             print(f"Current selected Candidate: {current_selected}")
                             print()
 
-                            # Display candidate table with proper alignment
-                            # Header aligned to column widths
-                            print(
-                                f"{'Cand.':<6} "
-                                f"{'exag':<6} "
-                                f"{'cfg_w':<6} "
-                                f"{'tmp':<6} "
-                                f"{'type':<20} "
-                                f"{'val_s':<7} "
-                                f"{'qty_s':<7} "
-                                f"{'wpm':<6} "
-                                f"{'flow':<6} "
-                                f"{'live':<6} "
-                                f"{'mos':<6} "
-                                f"{'pros':<6} "
-                                f"{'final':<7} "
-                                f"{'passed[s,p]':<12}"
-                            )
-                            for info in candidate_infos:
-                                selected_marker = "<- sel" if info.is_selected else ""
-                                try:
-                                    validation_cfg = self.file_manager.config.get("validation", {})
-                                    prosody_thr = float(validation_cfg.get("prosody", {}).get("thresholds", {}).get("min_prosody_score", 0.60))
-                                except Exception:
-                                    prosody_thr = 0.60
-                                sim_mark = "✅" if info.validation_passed else "❌"
-                                pros_mark = "✅" if float(getattr(info, "prosody_score", 0.0)) >= prosody_thr else "❌"
-
-                                passed_pair = f"{sim_mark}{pros_mark}"
-                                print(
-                                    f"{info.candidate_id+1:<6} "
-                                    f"{info.exaggeration:<6.2f} "
-                                    f"{info.cfg_weight:<6.2f} "
-                                    f"{info.temperature:<6.2f} "
-                                    f"{info.candidate_type:<20} "
-                                    f"{getattr(info, 'validation_score', 0.0):<7.2f} "
-                                    f"{info.quality_score:<7.2f} "
-                                    f"{getattr(info, 'wpm', 0.0):<6.0f} "
-                                    f"{info.flow_score:<6.2f} "
-                                    f"{info.liveliness_score:<6.2f} "
-                                    f"{info.mos_score:<6.2f} "
-                                    f"{info.prosody_score:<6.2f} "
-                                    f"{info.final_selection_score:<7.2f} "
-                                    f"{passed_pair:<12} {selected_marker}"
-                                )
+                            self._print_candidate_table(candidate_infos)
 
                             print()
                             print("Select action:")
@@ -464,6 +493,16 @@ class UserCandidateManager:
                     # Fallback to legacy/overall when final not present
                     final_sel = individual_scores.get("overall_score", 0.0)
 
+                # Pre-format model-specific tts_param cells for the table
+                gen_params: Dict[str, Any] = (
+                    file_candidate.generation_params
+                    if (file_candidate and file_candidate.generation_params)
+                    else {}
+                )
+                param_cells = [
+                    fmt(gen_params.get(key)) for (_h, key, fmt, _w) in self.param_columns
+                ]
+
                 info = CandidateInfo(
                     candidate_id=candidate_idx,
                     exaggeration=exaggeration,
@@ -481,6 +520,7 @@ class UserCandidateManager:
                     wpm=float(wpm_val),
                     prosody_score=float(prosody_score),
                     final_selection_score=float(final_sel),
+                    param_cells=param_cells,
                 )
 
                 # Attach validation_score dynamically for printing from val_score

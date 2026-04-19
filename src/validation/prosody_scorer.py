@@ -87,8 +87,21 @@ class ProsodyScorer:
         tgt = p_cfg.get("targets", {}) or {}
         self.tgt_wpm_min = float(tgt.get("wpm_min", 130))
         self.tgt_wpm_max = float(tgt.get("wpm_max", 180))
-        # Center (ideal) for liveliness mapping; no extra band params
+        # Center (ideal) for liveliness mapping
         self.liv_target = float(tgt.get("liveliness_target", 0.5))
+        # Half-width of the triangular liveliness window. Smaller values make
+        # the liveliness sub-score more discriminative around the target;
+        # default 0.5 keeps backward-compatible (legacy hard-coded behaviour).
+        self.liv_halfwidth = max(1e-3, float(tgt.get("liveliness_halfwidth", 0.5)))
+        # F0 std (Hz) range mapped linearly to f0_score in [0, 1].
+        # Modern TTS engines tend to cluster at ~12-25 Hz f0_std; the
+        # legacy mapping (f0_std/35) compressed this band into ~0.34..0.71
+        # which left almost no signal. Using an explicit low/high band
+        # widens the discriminative range without breaking any consumers.
+        self.f0_std_low = float(tgt.get("f0_std_low_hz", 0.0))
+        self.f0_std_high = float(tgt.get("f0_std_high_hz", 35.0))
+        if self.f0_std_high <= self.f0_std_low:
+            self.f0_std_high = self.f0_std_low + 1.0
 
         # Thresholds
         thr = p_cfg.get("thresholds", {}) or {}
@@ -122,21 +135,31 @@ class ProsodyScorer:
         return (value - low) / (high - low)
 
     def _energy_dynamics(self, audio: torch.Tensor) -> float:
-        # Simple dynamic range proxy via percentile difference (rough)
+        # Dynamic range proxy combining two percentile spans:
+        #   * (p95 - p50) / p95   : legacy upper-half compression measure
+        #   * (p90 - p10) / p90   : wider amplitude span (captures pauses /
+        #                           accent peaks that the upper-half measure
+        #                           misses on clean TTS output).
+        # Averaging both keeps the result in [0, 1] but yields stronger
+        # variation between candidates of similar overall loudness.
         a = audio.detach().abs().flatten()
         if a.numel() == 0:
             return 0.0
         try:
             p95 = torch.quantile(a, 0.95).item()
+            p90 = torch.quantile(a, 0.90).item()
             p50 = torch.quantile(a, 0.50).item()
+            p10 = torch.quantile(a, 0.10).item()
         except Exception:
             a_sorted, _ = torch.sort(a)
-            idx95 = int(0.95 * (a_sorted.numel() - 1))
-            idx50 = int(0.50 * (a_sorted.numel() - 1))
-            p95 = a_sorted[idx95].item()
-            p50 = a_sorted[idx50].item()
-        dyn = max(0.0, min(1.0, (p95 - p50) / max(1e-5, p95)))
-        return dyn
+            n = a_sorted.numel() - 1
+            p95 = a_sorted[int(0.95 * n)].item()
+            p90 = a_sorted[int(0.90 * n)].item()
+            p50 = a_sorted[int(0.50 * n)].item()
+            p10 = a_sorted[int(0.10 * n)].item()
+        upper = max(0.0, min(1.0, (p95 - p50) / max(1e-5, p95)))
+        span = max(0.0, min(1.0, (p90 - p10) / max(1e-5, p90)))
+        return 0.5 * upper + 0.5 * span
 
     def _f0_stats_parselmouth(self, audio: torch.Tensor) -> Tuple[float, float]:
         if parselmouth is None:
@@ -252,11 +275,16 @@ class ProsodyScorer:
         # Liveliness: energy dynamics + F0 via parselmouth
         dyn_score = self._energy_dynamics(audio)
         f0_mean, f0_std = self._f0_stats_parselmouth(audio)
-        # Map F0 std (variability) to [0..1] with soft bounds
-        f0_score = max(0.0, min(1.0, f0_std / 35.0))
+        # Map F0 std (variability) to [0..1] using a configurable [low, high]
+        # band. Anything below `f0_std_low` is treated as monotone (0.0);
+        # anything above `f0_std_high` saturates at 1.0.
+        f0_range = max(1e-6, self.f0_std_high - self.f0_std_low)
+        f0_score = max(0.0, min(1.0, (f0_std - self.f0_std_low) / f0_range))
         liveliness_raw = 0.5 * dyn_score + 0.5 * f0_score
-        # Triangle around configurable center (half-width fixed at 0.5)
-        T = max(0.0, 1.0 - 2.0 * abs(liveliness_raw - self.liv_target))
+        # Triangle around configurable center with configurable half-width
+        # (`liveliness_halfwidth`). Smaller half-width -> steeper falloff ->
+        # more discrimination between similar candidates.
+        T = max(0.0, 1.0 - abs(liveliness_raw - self.liv_target) / self.liv_halfwidth)
         # Fixed gamma sharpening to emphasize vicinity of the target
         liveliness = T ** 1.2
 

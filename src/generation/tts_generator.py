@@ -61,12 +61,14 @@ class TTSGenerator:
         self.device = device if device != "auto" else self._detect_device()
         
         # Get seed from config if not provided
+        generation_config = config.get("generation", {})
         if seed is None:
-            generation_config = config.get("generation", {})
             self.global_seed = generation_config.get("global_seed", 0)
         else:
             self.global_seed = seed
-            
+
+        self.seed_fixed = bool(generation_config.get("seed_fixed", False))
+
         self.seed = self.global_seed
 
         # Set task-global seed once for consistent generation
@@ -80,8 +82,20 @@ class TTSGenerator:
             logger.info("🎲 Using random seed per generation (global_seed = 0)")
             logger.info("")
 
+        if self.seed_fixed:
+            if self.global_seed > 0:
+                logger.info(
+                    "🎲 seed_fixed=true: per-candidate torch.manual_seed uses only the effective "
+                    "base seed (no candidate index or text hash). See docs/SEEDING.md"
+                )
+            else:
+                logger.warning(
+                    "seed_fixed=true but global_seed is 0: set global_seed > 0 or "
+                    "generation.speakers[].seed > 0 for a fixed torch seed; otherwise "
+                    "behavior matches random-seed mode where applicable."
+                )
+
         # Get model type from config
-        generation_config = config.get("generation", {})
         self.model_type = generation_config.get("model_type", "standard")
 
         # Model type convenience flags
@@ -168,6 +182,18 @@ class TTSGenerator:
             return 0
         else:
             return speaker_seed
+
+    def _torch_seed_per_candidate(self, base: int, candidate_idx: int, text: str) -> int:
+        """Torch seed for one candidate row (chunk text + index)."""
+        if self.seed_fixed and base > 0:
+            return base
+        return base + (candidate_idx * 1000) + hash(text) % 10000
+
+    def _torch_seed_immediate_retry(self, base: int, attempt: int) -> int:
+        """Torch seed inside Chatterbox immediate-retry loop."""
+        if self.seed_fixed and base > 0:
+            return int(base)
+        return int(base + attempt * 9973)
 
     # ------------------------------------------------------------------
     # Candidate-ready hook (incremental save)
@@ -676,7 +702,7 @@ class TTSGenerator:
 
         for i in range(num_candidates):
             is_conservative = conservative_enabled and (i + 1) == num_candidates
-            candidate_seed = base_seed + (i * 1000) + hash(text) % 10000
+            candidate_seed = self._torch_seed_per_candidate(base_seed, i, text)
 
             if is_conservative:
                 params = dict(filtered_base)
@@ -910,7 +936,7 @@ class TTSGenerator:
                         )
                 candidate_type = "EXPRESSIVE"
 
-            candidate_seed = base_seed + (i * 1000) + hash(text) % 10000
+            candidate_seed = self._torch_seed_per_candidate(base_seed, i, text)
             logger.info(
                 f"VIBEVOICE CAND {i+1}/{num_candidates} (lang={language_name}) "
                 f"({'CONS' if is_conservative else 'EXP'}): "
@@ -1028,7 +1054,7 @@ class TTSGenerator:
                     )
 
                 candidate_idx = start_candidate_idx + i
-                candidate_seed = base_seed + (candidate_idx * 1000) + hash(text) % 10000
+                candidate_seed = self._torch_seed_per_candidate(base_seed, candidate_idx, text)
 
                 logger.info(
                     f"VIBEVOICE RETRY {i+1}/{max_retries}: cfg_scale={params.get('cfg_scale', '-')}, "
@@ -1099,7 +1125,7 @@ class TTSGenerator:
                     )
 
                 candidate_idx = start_candidate_idx + i
-                candidate_seed = base_seed + (candidate_idx * 1000) + hash(text) % 10000
+                candidate_seed = self._torch_seed_per_candidate(base_seed, candidate_idx, text)
 
                 logger.info(
                     f"QWEN3 RETRY {i+1}/{max_retries}: temp={params.get('temperature', '-')}, "
@@ -1328,7 +1354,7 @@ class TTSGenerator:
             min_p = _clamp(base_min_p + 0.05 * attempts, 0.0, 1.0)
             top_p = _clamp(base_top_p - 0.05 * attempts, 0.0, 1.0)
             temp = _clamp(base_temperature - 0.05 * attempts, 0.05, 2.0)
-            attempt_seed = int(base_seed + attempts * 9973)
+            attempt_seed = self._torch_seed_immediate_retry(base_seed, attempts)
 
             try:
                 torch.manual_seed(attempt_seed)
@@ -1497,7 +1523,7 @@ class TTSGenerator:
         if num_candidates == 1 and is_conservative_enabled:
             logger.debug("Single candidate mode with conservative enabled - generating only conservative candidate")
             try:
-                candidate_seed = effective_seed + hash(text) % 10000
+                candidate_seed = self._torch_seed_per_candidate(effective_seed, 0, text)
                 var_exaggeration = cc.get("exaggeration", 0.4)
                 var_cfg_weight = cc.get("cfg_weight", 0.3)
                 var_temperature = cc.get("temperature", 0.5)
@@ -1540,7 +1566,7 @@ class TTSGenerator:
 
         for i in range(num_candidates):
             try:
-                candidate_seed = effective_seed + (i * 1000) + hash(text) % 10000
+                candidate_seed = self._torch_seed_per_candidate(effective_seed, i, text)
                 is_conservative = is_conservative_enabled and (i + 1) == num_candidates
 
                 if is_conservative:
@@ -1666,7 +1692,7 @@ class TTSGenerator:
 
         for i in candidate_indices:
             try:
-                candidate_seed = effective_seed + (i * 1000) + hash(text) % 10000
+                candidate_seed = self._torch_seed_per_candidate(effective_seed, i, text)
                 is_conservative = is_conservative_enabled and (i + 1) == total_candidates
 
                 if is_conservative:
@@ -1968,7 +1994,9 @@ class TTSGenerator:
                 exaggeration=core_exaggeration,
                 cfg_weight=core_cfg_weight,
                 temperature=core_temperature,
-                base_seed=self.get_speaker_seed(speaker_id) + (i * 1000) + hash(text) % 10000,
+                base_seed=self._torch_seed_per_candidate(
+                    self.get_speaker_seed(speaker_id), i, text
+                ),
                 language_id=language_id,
                 additional_params=additional_params,
                 reference_audio_path=str(reference_audio_path),

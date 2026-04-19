@@ -25,8 +25,9 @@ generation:
   model_type: standard  # Options: "standard", "multilingual", "turbo", "qwen3", and VibeVoice Hub: "vibevoice" (7B Q8), "vibevoice_1_5b" (1.5B), "vibevoice_q4" (7B Q4 low-VRAM) — same tts_params for all three
                         # qwen3 expert: add  qwen3_attn_impl: flash_attention_2  here to override the default sdpa attention (fa not recommended – measured slower for TTS batch-1 workloads)
   default_speaker: stephan_moebius_1
-  global_seed: 12345  # Global seed for all TTS generations. 0 = random seed per generation
-  
+  global_seed: 12345  # Base Seed + Candidate-Offset + Text-Hash keeps Tasks reproducible but Chunks discerned
+  seed_fixed: false    # true = single integer for all torch.manual_seed calls (see docs/SEEDING.md); requires global_seed > 0 or speaker seed > 0
+
   # Speaker definitions - Define all your speakers here and reference them by id in any other job. The default speaker should have all possible key/value pairs defined!
 
   speakers:
@@ -198,7 +199,7 @@ generation:
 
 validation:
   whisper_model: small # base small medium large
-  similarity_threshold: 0.64  # WhisperValidator: token-based similarity of original and transcribed text tokens
+  similarity_threshold: 0.70  # WhisperValidator: token-based similarity of original and transcribed text tokens
   similarity_threshold_bonus_max: 0.08  # Upper cap for the length/punctuation based threshold reduction
   min_quality_score: 0.72  #  WhisperValidator: 70% * similarity_score + 30% * length_score
   numbers_normalization_mode: placeholder  # off|placeholder|digits|words (applied only for language != 'en')
@@ -253,25 +254,28 @@ validation:
     enabled: true
     weights:
       semantic_alignment: 0.0   #No deliverer yet
-      flow: 0.30                # Derived from wpm_min and wpm_max
-      liveliness: 0.30
+      flow: 0.20                # Derived from wpm_min and wpm_max
+      liveliness: 0.35
       intelligibility: 0.0      #No deliverer yet
-      mos: 0.40                 # MOS-Weight, note: MOS will score double as per gamma_mos
+      mos: 0.45                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
-      wpm_min: 128        
-      wpm_max: 146
+      wpm_min: 124              # halfwidth (150-124)/2= 13 -> target wpm 137  
+      wpm_max: 150
       liveliness_target: 0.44
+      liveliness_halfwidth: 0.15        # half-width of the triangular liveliness window (smaller -> more discriminative)
+      f0_std_low_hz: 12.0               # f0 std (Hz) mapped to 0.0 (monotone speech)
+      f0_std_high_hz: 37.0              # f0 std (Hz) mapped to 1.0 (lively prosody)
     select:
       alpha_quality: 0.50       # Whisper Quality-Weight
       beta_prosody: 0.30        # Prosody-Weight
       gamma_mos: 0.20           # additional MOS-direct weight
     thresholds:
-      min_prosody_score: 0.45   # Prosody-Gate
+      min_prosody_score: 0.5   # Prosody-Gate
 
   mos:
     provider: combined         # combined|nisqa|utmos
     enabled_languages: [de, en] # Language-Gate: MOS only für de/en
-    min_mos: 3.0               # MOS-Threshold (1..5); ~>3.5 is good
+    min_mos: 2.5               # MOS-Threshold (1..5); ~>3.5 is good. Also acts as scale floor for mos_unit.
     scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
     nisqa_weights_path: "NISQA/weights/nisqa_tts.tar"  # NISQA-TTS v1 Naturalness
     prefer_utmosv2: false      # prefer utmosv2 predictor via VERSA if available; fallback to utmos

@@ -205,7 +205,8 @@ CandidateManager.generate_candidates_for_chunk() → GenerationResult
 #     candidates (candidate 0 = base, candidate i>0 = base + deviation * i/(N-1)).
 #   - use_sampling=false → greedy LM (top_p/temperature ignored).
 #   - voice_speed_factor resamples the *reference* audio, not the output.
-#   - Per-candidate seed: base_seed(speaker) + i*1000 + hash(text)%10000.
+#   - Per-candidate seed: base_seed(speaker) + i*1000 + hash(text)%10000
+#     (unless generation.seed_fixed=true; see docs/SEEDING.md).
 #   - generation.vibevoice.language_strict guards non-en/zh languages.
 
 # Multilingual Support
@@ -443,7 +444,8 @@ Without a `parent:` field the behavior is identical to the previous 2-level syst
 generation:
   num_candidates: 3
   model_type: standard          # standard|multilingual|turbo|qwen3|vibevoice|vibevoice_1_5b|vibevoice_q4
-  global_seed: 12345            # 0 = random per candidate
+  global_seed: 12345            # 0 = random per candidate (see docs/SEEDING.md)
+  seed_fixed: false             # true = single torch seed end-to-end (requires seed > 0)
 
 validation:
   similarity_threshold: 0.64    # dynamically adjusted by length/punctuation
