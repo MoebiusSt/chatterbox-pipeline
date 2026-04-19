@@ -14,7 +14,7 @@ chunking:
   target_chunk_limit: 380
   max_chunk_limit: 460
   min_chunk_length: 80
-  spacy_model: en_core_web_sm # use de_core_web_sm for german jobs
+  spacy_model: en_core_web_sm # use de_core_news_sm for german jobs (spaCy has no de_core_web_*)
   force_paragraph_chunks: true  # true (Chatterbox default): every \n\n is a HARD chunk boundary → paragraph-break silence guaranteed.
                                 # false (VibeVoice): only \n\n\n+ (2+ empty lines) is a HARD boundary (→ long-pause silence);
                                 #   single \n\n is a preferred but soft split-point (greedy packing still applies).
@@ -229,8 +229,8 @@ validation:
   preprocessing:
     tail_trim:
       enabled: true
-      lookback_seconds: 4.0
-      post_speech_silence_ms: 150
+      lookback_seconds: 3.0
+      post_speech_silence_ms: 200
       fade_out_ms: 100
       prefer_whisperx: true
       whisperx_device: cuda
@@ -243,7 +243,7 @@ validation:
         search_window_words: 30
         language_gate: [en, de, fr, es, it]
       vad:
-        aggressiveness: 2        # 0..3
+        aggressiveness: 1        # 0..3
         frame_ms: 20
         min_voiced_ms: 70
         hangover_ms: 150
@@ -258,15 +258,15 @@ validation:
       intelligibility: 0.0      #No deliverer yet
       mos: 0.40                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
-      wpm_min: 125        
-      wpm_max: 145
+      wpm_min: 128        
+      wpm_max: 146
       liveliness_target: 0.44
     select:
       alpha_quality: 0.50       # Whisper Quality-Weight
       beta_prosody: 0.30        # Prosody-Weight
       gamma_mos: 0.20           # additional MOS-direct weight
     thresholds:
-      min_prosody_score: 0.50   # Prosody-Gate
+      min_prosody_score: 0.45   # Prosody-Gate
 
   mos:
     provider: combined         # combined|nisqa|utmos
@@ -313,4 +313,4 @@ audio:
     enabled: true            # Enable/disable audio normalization
     target_level: -1.3      # Target loudness level in dB (unit depends on method)
     method: "peak"            # Normalization method: "lufs", "rms", or "peak"
-    saturation_factor: 0.03   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)
+    saturation_factor: 0.02   # TanH saturation compression: 0.0=none, 1.0=strong (with loudness compensation)

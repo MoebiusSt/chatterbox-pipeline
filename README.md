@@ -212,6 +212,7 @@ Shortform: -m
 # Execution strategies with force-overwriting final audio:
 python src/cbpipe.py --mode last-new or new-last   # Execute latest task + create new final audio for all given jobs. 
 python src/cbpipe.py --mode all-new or new-all     # Execute all tasks + new final audios for all given jobs.
+# Note that for mode all-new or new-last, that the task-directory already has to exist. 
 ```
 
 ```bash

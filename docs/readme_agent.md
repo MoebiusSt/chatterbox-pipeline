@@ -53,17 +53,19 @@ TextPreprocessor.normalize() → normalized text
 
 # Chunking  
 SpaCyChunker.chunk_text() → List[TextChunk]
-# Chatterbox/Qwen3 defaults: target_chunk_limit=380, max_chunk_limit=460,
-#                            force_paragraph_chunks=true
-#                            → every \n\n is a HARD chunk boundary (paragraph-break silence guaranteed)
+# Chatterbox defaults:        target_chunk_limit=380, max_chunk_limit=460,
+#                             force_paragraph_chunks=true
+#                             → every \n\n is a HARD chunk boundary (paragraph-break silence guaranteed)
+# Qwen3 defaults:             target_chunk_limit=1200, max_chunk_limit=2000,
+#                             force_paragraph_chunks=false (longform, see VV semantics below)
 # VibeVoice defaults:         target_chunk_limit=2800, max_chunk_limit=4800,
-#                            force_paragraph_chunks=false
-#                            → HARD boundaries: only \n\n\n+ (2+ empty lines); last chunk before
-#                              such a break gets paragraph_break_type="long" → Assembly inserts
-#                              audio.silence_duration.long (default 1.30 s).
-#                              SOFT boundaries: single \n\n is a preferred but not mandatory
-#                              split-point (greedy packing still applies within a hard section).
-#                              Micro-chunks are merged into neighbors, never across hard breaks.
+#                             force_paragraph_chunks=false
+# Longform (Qwen3 / VibeVoice): HARD boundaries only at \n\n\n+ (2+ empty lines); last chunk
+#   before such a break gets paragraph_break_type="long" → Assembly inserts
+#   audio.silence_duration.long (default 1.30 s).
+#   SOFT boundaries: single \n\n is a preferred but not mandatory split-point
+#   (greedy packing still applies within a hard section).
+#   Micro-chunks are merged into neighbors, never across hard breaks.
 # Features: sentence-boundary aware, speaker-transition priority (HIGHEST),
 #           paragraph-break awareness, micro-chunk merge
 

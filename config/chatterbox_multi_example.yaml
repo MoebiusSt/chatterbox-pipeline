@@ -1,0 +1,39 @@
+# Counterpart to vibevoice_example.yaml: same text/speaker, Chatterbox Multilingual TTS.
+# Used for side-by-side comparison (short-chunk Chatterbox vs. long-chunk VibeVoice).
+
+parent: defaults/chatterbox_multi.yaml
+
+job:
+  name: chatterbox-multi-example
+  run-label:
+
+input:
+  text_file: input-document.txt
+
+generation:
+  model_type: multilingual
+  num_candidates: 3
+  default_speaker: stephan_moebius_7_DE
+
+  speakers:
+    - id: stephan_moebius_7_DE
+      language: de
+      reference_audio: stephan_moebius_7_DE.wav
+      tts_params:
+        exaggeration: 1.27
+        exaggeration_max_deviation: 0.25
+        cfg_weight: 0.25
+        cfg_weight_max_deviation: 0.05
+        temperature: 1.15
+        temperature_max_deviation: 0.1
+        repetition_penalty: 2.00
+        min_p: 0.12
+        top_p: 1.00
+      conservative_candidate:
+        enabled: true
+        exaggeration: 1.22
+        cfg_weight: 0.33
+        temperature: 1.05
+        repetition_penalty: 2.00
+        min_p: 0.19
+        top_p: 1.00

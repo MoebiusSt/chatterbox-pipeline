@@ -622,6 +622,8 @@ class ConfigManager:
             # Remove speakers from job_config so it doesn't get processed again
             job_config_copy = copy.deepcopy(job_config)
             job_config_copy["generation"].pop("speakers", None)
+            # Keep replace_speakers on job_config_copy so it is merged into `merged`
+            # and persisted in task YAML (task reload uses merge_configs with default).
             merge_recursive(merged, job_config_copy)
         else:
             merge_recursive(merged, job_config)
@@ -707,6 +709,7 @@ class ConfigManager:
         3. New speakers are appended
         4. Missing tts_params are inherited from base config
         5. default_speaker aliases ("default", "0", "reset") reference the configured default_speaker
+        6. If generation.replace_speakers is true, unprocessed base speakers are not appended
 
         Args:
             base_config: Base configuration (usually from default_config.yaml)
@@ -719,6 +722,9 @@ class ConfigManager:
 
         base_speakers = merged.get("generation", {}).get("speakers", [])
         job_speakers = job_config.get("generation", {}).get("speakers", [])
+        replace_speakers = bool(
+            job_config.get("generation", {}).get("replace_speakers")
+        )
 
         if not job_speakers:
             return merged
@@ -768,11 +774,12 @@ class ConfigManager:
 
             merged_speakers.append(merged_speaker)
 
-        # Add remaining base speakers that weren't overridden
-        for base_speaker in base_speakers:
-            base_speaker_id = base_speaker.get("id")
-            if base_speaker_id not in processed_ids:
-                merged_speakers.append(copy.deepcopy(base_speaker))
+        # Add remaining base speakers that weren't overridden (unless job opts out)
+        if not replace_speakers:
+            for base_speaker in base_speakers:
+                base_speaker_id = base_speaker.get("id")
+                if base_speaker_id not in processed_ids:
+                    merged_speakers.append(copy.deepcopy(base_speaker))
 
         # Update merged config
         merged["generation"]["speakers"] = merged_speakers

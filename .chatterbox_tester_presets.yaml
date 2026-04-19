@@ -191,14 +191,14 @@ petra_ries2_DE.wav::vibevoice:
   diffusion_steps: 20.0
   voice_speed_factor: 0.94
   use_sampling: true
-petra_ries2_DE_3s.wav::qwen3:
-  temperature: 0.9
-  top_k: 70.0
+petra_ries2_DE_15s.wav::qwen3:
+  temperature: 0.96
+  top_k: 178.0
   top_p: 1.0
-  subtalker_temperature: 1.15
-  subtalker_top_k: 169.0
+  subtalker_temperature: 1.7
+  subtalker_top_k: 142.0
   subtalker_top_p: 1.0
-  repetition_penalty: 1.0
+  repetition_penalty: 1.05
 petra_ries2_IT-Fake.wav::vibevoice:
   temperature: 0.9
   top_p: 0.98

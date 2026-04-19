@@ -1,0 +1,35 @@
+parent: defaults/vibevoice.yaml
+
+job:
+  name: vibevoice-example
+  run-label:
+
+input:
+  text_file: input-document.txt
+
+generation:
+  model_type: vibevoice  # override to vibevoice_1_5b or vibevoice_q4 in your job if needed
+  # Override model_type to vibevoice_1_5b or vibevoice_q4 here if needed.
+  # All three VibeVoice variants use the same tts_params keys.
+  num_candidates: 2
+  default_speaker: stephan_moebius
+
+  speakers:
+    - id: stephan_moebius
+      reference_audio: stephan_moebius_7_DE.wav
+      language: de
+      tts_params:
+        temperature: 0.95 # MIN value; ramps UP
+        temperature_max_deviation: 0.55
+        top_p: 0.98
+        cfg_scale: 1.30 # MIN value; ramps UP across candidates
+        cfg_scale_max_deviation: 0.38
+        diffusion_steps: 25
+        voice_speed_factor: 1.00
+        use_sampling: true
+      conservative_candidate:
+        enabled: false
+        cfg_scale: 1.6
+        temperature: 0.90
+        top_p: 0.90
+        diffusion_steps: 24

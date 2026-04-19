@@ -14,6 +14,9 @@ Supported models:
   vibevoice_1_5b VibeVoice-1.5B (reference model)
   vibevoice_q4   VibeVoice-Large-Q4 (DevParker low-VRAM quant)
 
+GUI text field: Chatterbox models are capped at 500 characters; qwen3 and all VibeVoice
+variants use 10000 so long-form input can be pasted (same cap as VibeVoice).
+
 Environment (VibeVoice only):
   CHATTERBOX_TESTER_VIBEVOICE_ATTN  Override attention backend for the Qwen2 LM (all VV models).
     If unset, per-model defaults are used:
@@ -118,6 +121,10 @@ _SLIDER_CONFIG = [
 
 _SLIDER_MODELS: Dict[str, list] = {row[0]: row[5] for row in _SLIDER_CONFIG}
 _VIBEVOICE_UI_MODELS = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
+
+# Tester-only UI limit (characters). Chatterbox stays short; long-form models match VibeVoice.
+_LONGFORM_TEXT_UI_LIMIT = 10000
+_LONGFORM_TEXT_UI_MODELS = _VIBEVOICE_UI_MODELS | {"qwen3"}
 # Optional global override. Empty string → per-model defaults in model_cache.py take effect.
 _VIBEVOICE_TESTER_ATTN: str = os.environ.get(
     "CHATTERBOX_TESTER_VIBEVOICE_ATTN", ""
@@ -632,7 +639,7 @@ class ChatterboxTester:
 
         char_count_frame = tk.Frame(self.root)
         char_count_frame.pack(fill=tk.X, padx=10)
-        self.char_count_label = tk.Label(char_count_frame, text="max. 500 characters",
+        self.char_count_label = tk.Label(char_count_frame, text="0/500 characters",
                                          font=("Arial", 9), fg="gray")
         self.char_count_label.pack(anchor=tk.W)
 
@@ -827,6 +834,7 @@ class ChatterboxTester:
 
         text_limit = self._get_text_limit()
         self.text_limit_label.config(text=f"Text to speak (max. {text_limit} characters):")
+        self._update_char_count()
 
         # ref_text indicator (only relevant for qwen3)
         self._update_ref_text_indicator()
@@ -1150,7 +1158,11 @@ class ChatterboxTester:
         self._text_save_timer = self.root.after(500, self._save_state_to_history)
 
     def _get_text_limit(self) -> int:
-        return 10000 if self.model_var.get() in _VIBEVOICE_UI_MODELS else 500
+        return (
+            _LONGFORM_TEXT_UI_LIMIT
+            if self.model_var.get() in _LONGFORM_TEXT_UI_MODELS
+            else 500
+        )
 
     def _update_char_count(self):
         text = self.text_widget.get("1.0", tk.END).strip()
