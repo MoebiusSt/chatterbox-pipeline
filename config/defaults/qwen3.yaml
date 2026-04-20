@@ -425,14 +425,14 @@ generation:
       reference_audio: petra_ries2_DE_15s.wav
       language: de
       tts_params:
-        temperature: 0.95 # MIN value; ramps UP across candidates
-        temperature_max_deviation: 0.7
-        top_k: 100 # MIN value; ramps UP across candidates
-        top_k_max_deviation: 65
+        temperature: 1.08 # MIN value; ramps UP across candidates
+        temperature_max_deviation: 0.30
+        top_k: 120 # MIN value; ramps UP across candidates
+        top_k_max_deviation: 35
         top_p: 1.0
         repetition_penalty: 1.04
-        subtalker_temperature: 1.45 # CENTER value; ramps DOWN-OVER-CENTER
-        subtalker_temperature_max_deviation: 0.7
+        subtalker_temperature: 1.50 # CENTER value; ramps DOWN-OVER-CENTER
+        subtalker_temperature_max_deviation: 0.5
         subtalker_top_k: 90 # MIN value; ramps UP across candidates
         subtalker_top_k_max_deviation: 50
         subtalker_top_p: 1.0

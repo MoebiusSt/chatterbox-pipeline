@@ -212,11 +212,12 @@ class UserCandidateManager:
             # Update current selections
             self.current_selections[str(chunk_idx)] = candidate_idx
 
-            # Save to task_metrics.json
+            # Persist only the changed chunk and tag it as a USER selection so
+            # later re-validation runs will not silently override it.
             success = self.file_manager.update_selected_candidates(
-                {int(k): v for k, v in self.current_selections.items()}
+                {int(chunk_idx): int(candidate_idx)}, source="user"
             )
-            
+
             return success
         except Exception as e:
             logger.error(f"Failed to save candidate selection: {e}")

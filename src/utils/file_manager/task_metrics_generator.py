@@ -9,9 +9,16 @@ import logging
 import statistics
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 logger = logging.getLogger(__name__)
+
+# Marker field in task_metrics.json that lists chunk-keys (1-based, as strings)
+# whose ``selected_candidate`` was explicitly chosen by the user via the
+# Audio User Selection Editor. Selections in this set are NEVER overwritten by
+# automatic re-validation; they are only invalidated when the underlying
+# candidates are re-rendered (see ``clear_user_selections``).
+USER_SELECTION_FIELD = "user_selected_chunks"
 
 
 class TaskMetricsGenerator:
@@ -109,7 +116,7 @@ class TaskMetricsGenerator:
                         invalid_entries += 1
                         continue
                 if selections_0based:
-                    if not self.update_selected_candidates(selections_0based):
+                    if not self.update_selected_candidates(selections_0based, source="auto"):
                         logger.debug("Legacy selection migration: update_selected_candidates returned False")
             except Exception:
                 # Count as invalid batch, but continue to strip legacy field below
@@ -166,20 +173,37 @@ class TaskMetricsGenerator:
             logger.error(f"Failed to load selected candidates from task_metrics.json: {e}")
             return {}
 
-    def update_selected_candidates(self, selections: Dict[int, int]) -> bool:
+    def update_selected_candidates(
+        self, selections: Dict[int, int], source: str = "user"
+    ) -> bool:
         """
         Update selected candidates in task_metrics.json.
-        
+
         Args:
             selections: Dictionary mapping chunk_idx to candidate_idx (0-based)
-            
+            source: Origin of the selection.
+                - ``"user"`` (default): explicit selection from the Audio User
+                  Selection Editor. The chunk-key is added to
+                  ``user_selected_chunks`` so future automatic re-validation
+                  will NOT override it.
+                - ``"auto"``: selection chosen by the pipeline (best_candidate
+                  fallback / re-validation realignment). The chunk-key is
+                  removed from ``user_selected_chunks`` if present.
+
         Returns:
-            True if update successful, False otherwise
+            True if update successful, False otherwise.
+
+        In addition to updating the ``selected_candidates`` map and the per-chunk
+        ``selected_candidate`` field, this method also rebuilds the affected
+        chunks' ``candidate_metrics`` (audio_filename, generation_params,
+        validation, prosody, final_selection_score, gates, audio_duration) from
+        the latest ``whisper/whisper_metrics.json``. This keeps task_metrics
+        internally consistent after a selection change instead of leaving the
+        old candidate's metrics behind.
         """
         try:
             task_metrics_path = self.task_directory / "task_metrics.json"
-            
-            # Load existing task metrics
+
             if task_metrics_path.exists():
                 with open(task_metrics_path, "r", encoding="utf-8") as f:
                     task_metrics = json.load(f)
@@ -187,29 +211,53 @@ class TaskMetricsGenerator:
                 logger.warning("task_metrics.json not found - cannot update selected candidates")
                 return False
 
-            # Convert 0-based to 1-based indexing
-            selected_candidates_1based = {}
+            normalized_source = "user" if str(source).lower() == "user" else "auto"
+
+            selected_candidates_1based = dict(task_metrics.get("selected_candidates", {}) or {})
+            user_marked: Set[str] = set()
+            for k in (task_metrics.get(USER_SELECTION_FIELD) or []):
+                try:
+                    user_marked.add(str(int(k)))
+                except Exception:
+                    continue
+
             for chunk_idx_0based, candidate_idx_0based in selections.items():
-                chunk_key_1based = str(chunk_idx_0based + 1)
-                candidate_idx_1based = candidate_idx_0based + 1
+                chunk_key_1based = str(int(chunk_idx_0based) + 1)
+                candidate_idx_1based = int(candidate_idx_0based) + 1
                 selected_candidates_1based[chunk_key_1based] = candidate_idx_1based
+                if normalized_source == "user":
+                    user_marked.add(chunk_key_1based)
+                else:
+                    user_marked.discard(chunk_key_1based)
 
-            # Update selected candidates
             task_metrics["selected_candidates"] = selected_candidates_1based
+            task_metrics[USER_SELECTION_FIELD] = sorted(user_marked, key=lambda k: int(k))
 
-            # Update chunk-specific selected_candidate values
+            whisper_metrics = self._load_whisper_metrics()
+            config = self._load_config() or {}
             chunks = task_metrics.get("chunks", [])
+
             for chunk_idx_0based, candidate_idx_0based in selections.items():
-                chunk_idx_1based = chunk_idx_0based + 1
-                candidate_idx_1based = candidate_idx_0based + 1
-                
-                # Find the chunk in the chunks array
+                chunk_idx_1based = int(chunk_idx_0based) + 1
+                candidate_idx_1based = int(candidate_idx_0based) + 1
+
+                chunk_entry = None
                 for chunk in chunks:
                     if chunk.get("chunk_meta", {}).get("idx") == chunk_idx_1based:
-                        chunk["candidates"]["selected_candidate"] = candidate_idx_1based
+                        chunk_entry = chunk
                         break
+                if chunk_entry is None:
+                    continue
 
-            # Save updated task metrics
+                chunk_entry.setdefault("candidates", {})["selected_candidate"] = candidate_idx_1based
+                self._refresh_candidate_metrics_inplace(
+                    chunk_entry,
+                    chunk_idx_0based=int(chunk_idx_0based),
+                    selected_candidate_0based=int(candidate_idx_0based),
+                    whisper_metrics=whisper_metrics,
+                    config=config,
+                )
+
             with open(task_metrics_path, "w", encoding="utf-8") as f:
                 json.dump(task_metrics, f, indent=2, ensure_ascii=False)
 
@@ -218,6 +266,114 @@ class TaskMetricsGenerator:
         except Exception as e:
             logger.error(f"Failed to update selected candidates in task_metrics.json: {e}")
             return False
+
+    def get_user_selected_chunks(self) -> Set[int]:
+        """Return the set of 0-based chunk indices marked as user selections.
+
+        Reads the ``user_selected_chunks`` field from task_metrics.json.
+        Returns an empty set if the file or field is missing (legacy tasks);
+        in that case all selections are treated as automatic and may be
+        realigned by re-validation.
+        """
+        try:
+            task_metrics_path = self.task_directory / "task_metrics.json"
+            if not task_metrics_path.exists():
+                return set()
+            with open(task_metrics_path, "r", encoding="utf-8") as f:
+                tm = json.load(f)
+            out: Set[int] = set()
+            for k in (tm.get(USER_SELECTION_FIELD) or []):
+                try:
+                    out.add(int(k) - 1)
+                except Exception:
+                    continue
+            return out
+        except Exception as e:
+            logger.debug(f"get_user_selected_chunks failed: {e}")
+            return set()
+
+    def clear_user_selections(self, chunk_indices_0based: Iterable[int]) -> bool:
+        """Remove chunks from ``user_selected_chunks`` (e.g. after re-rendering).
+
+        After candidate WAVs are re-rendered, the previous user selection no
+        longer refers to the same audio content, so we drop the user marker.
+        The next re-validation will realign these chunks to the new
+        ``best_candidate`` automatically.
+
+        The ``selected_candidates`` map itself is left untouched here; the
+        actual realignment to a new best candidate happens in
+        ``update_selected_candidates(..., source="auto")`` or in the next
+        ``generate_task_metrics`` rebuild.
+        """
+        try:
+            task_metrics_path = self.task_directory / "task_metrics.json"
+            if not task_metrics_path.exists():
+                return True
+            with open(task_metrics_path, "r", encoding="utf-8") as f:
+                tm = json.load(f)
+            existing = set()
+            for k in (tm.get(USER_SELECTION_FIELD) or []):
+                try:
+                    existing.add(str(int(k)))
+                except Exception:
+                    continue
+            to_drop = {str(int(i) + 1) for i in chunk_indices_0based}
+            new_set = existing - to_drop
+            if new_set == existing:
+                return True
+            tm[USER_SELECTION_FIELD] = sorted(new_set, key=lambda k: int(k))
+            with open(task_metrics_path, "w", encoding="utf-8") as f:
+                json.dump(tm, f, indent=2, ensure_ascii=False)
+            logger.info(
+                f"Cleared user selections for chunks: {sorted(int(k) for k in (existing & to_drop))}"
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to clear user selections: {e}")
+            return False
+
+    def _refresh_candidate_metrics_inplace(
+        self,
+        chunk_entry: Dict[str, Any],
+        chunk_idx_0based: int,
+        selected_candidate_0based: int,
+        whisper_metrics: Dict[str, Any],
+        config: Dict[str, Any],
+    ) -> None:
+        """Rewrite ``chunk_entry["candidates"]["candidate_metrics"]`` from the
+        latest whisper data so audio_filename/validation/prosody/final_score
+        match the (possibly changed) selection.
+
+        Quietly leaves the existing block intact when whisper data for the
+        target candidate is missing; this avoids destroying the previous
+        record before re-validation has populated new data.
+        """
+        whisper_chunks = whisper_metrics.get("chunks", {}) if isinstance(whisper_metrics, dict) else {}
+        whisper_chunk = whisper_chunks.get(str(chunk_idx_0based), {}) or {}
+        candidates_data = whisper_chunk.get("candidates", {}) or {}
+        sel_data = candidates_data.get(str(selected_candidate_0based), {}) or {}
+        if not isinstance(sel_data, dict) or not sel_data:
+            return
+
+        selected_1based = selected_candidate_0based + 1
+        cand_block = chunk_entry.setdefault("candidates", {})
+        cand_block["candidate_metrics"] = {
+            "audio_duration": (
+                self._get_candidate_audio_duration(chunk_idx_0based, selected_candidate_0based)
+                or sel_data.get("audio_duration")
+                or (sel_data.get("quality_details") or {}).get("audio_duration")
+                or 0.0
+            ),
+            "audio_filename": f"candidate_{selected_1based:02d}.wav",
+            "generation_params": self._get_selected_candidate_generation_params(
+                sel_data, chunk_idx_0based, selected_candidate_0based
+            ),
+            "validation": self._extract_validation_data(sel_data),
+            "prosody": sel_data.get("prosody"),
+            "final_selection_score": sel_data.get("final_selection_score"),
+            "passes_mos_gate": sel_data.get("passes_mos_gate"),
+            "passes_similarity_gate": sel_data.get("passes_similarity_gate"),
+        }
 
     def _load_whisper_metrics(self) -> Dict[str, Any]:
         """Load whisper metrics data."""
@@ -292,6 +448,7 @@ class TaskMetricsGenerator:
 
         existing_task_metrics_path = self.task_directory / "task_metrics.json"
         existing_selected_candidates_1based: Dict[str, int] = {}
+        existing_user_selected_chunks: Set[str] = set()
         if existing_task_metrics_path.exists():
             try:
                 with open(existing_task_metrics_path, "r", encoding="utf-8") as f:
@@ -306,9 +463,15 @@ class TaskMetricsGenerator:
                                 # skip invalid entries
                                 pass
                         existing_selected_candidates_1based = dict(selected_candidates_1based)
+                    for k in (existing_task_metrics.get(USER_SELECTION_FIELD) or []):
+                        try:
+                            existing_user_selected_chunks.add(str(int(k)))
+                        except Exception:
+                            continue
             except Exception:
                 # If loading fails, proceed without existing selections
                 existing_selected_candidates_1based = {}
+                existing_user_selected_chunks = set()
 
         # Build chunks array
         chunks = []
@@ -347,7 +510,12 @@ class TaskMetricsGenerator:
                     if str(cand_idx_0) in candidates_map:
                         selected_candidate_0based = cand_idx_0
                     else:
-                        # fall through to compute best
+                        # User selection no longer matches an available candidate
+                        # (e.g. after re-rendering with fewer candidates). Drop
+                        # the user marker so the next re-validation may realign
+                        # this chunk to the new best candidate without leaving
+                        # an inconsistent record behind.
+                        existing_user_selected_chunks.discard(existing_key_1based)
                         raise KeyError("Existing selection not found in whisper candidates")
                 except Exception:
                     # 2) Compute fallback from whisper (best_candidate or by score)
@@ -595,6 +763,12 @@ class TaskMetricsGenerator:
             "audio_duration_seconds": audio_duration_seconds,
             "total_chunks": len(chunks),
             "selected_candidates": selected_candidates_1based,
+            USER_SELECTION_FIELD: sorted(
+                # Only keep markers for chunks that actually have a selection
+                # in the rebuilt map, so stale markers cannot survive.
+                (k for k in existing_user_selected_chunks if k in selected_candidates_1based),
+                key=lambda k: int(k),
+            ),
             "chunks": chunks,
             "summary": summary,
             "task_runtime": task_runtime,

@@ -259,7 +259,7 @@ validation:
       intelligibility: 0.0      #No deliverer yet
       mos: 0.45                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
-      wpm_min: 124              # halfwidth (150-124)/2= 13 -> target wpm 137  
+      wpm_min: 120              # halfwidth (150-120)/2= 15 -> target wpm 135  
       wpm_max: 150
       liveliness_target: 0.44
       liveliness_halfwidth: 0.15        # half-width of the triangular liveliness window (smaller -> more discriminative)

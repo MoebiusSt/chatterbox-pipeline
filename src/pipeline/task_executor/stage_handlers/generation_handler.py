@@ -240,6 +240,17 @@ class GenerationHandler:
                             )
                             return False
 
+                        # Re-rendering replaces the audio content of every
+                        # candidate slot, so any prior USER selection no
+                        # longer refers to the same audio. Drop the marker
+                        # so the next validation may realign automatically.
+                        try:
+                            self.file_manager.clear_user_selections([chunk.idx])
+                        except Exception as e:
+                            logger.debug(
+                                f"clear_user_selections failed for chunk {chunk_num}: {e}"
+                            )
+
                         logger.info(
                             f"✅ Successfully generated {len(candidates)} candidates"
                         )

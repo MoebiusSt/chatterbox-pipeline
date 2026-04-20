@@ -318,11 +318,33 @@ class FileManager:
         task_metrics_generator = TaskMetricsGenerator(self.task_directory, getattr(self, 'config', None))
         return task_metrics_generator.get_selected_candidates()
 
-    def update_selected_candidates(self, selections: Dict[int, int]) -> bool:
-        """Update selected candidates in task_metrics.json."""
+    def update_selected_candidates(
+        self, selections: Dict[int, int], source: str = "user"
+    ) -> bool:
+        """Update selected candidates in task_metrics.json.
+
+        Args:
+            selections: Mapping of chunk_idx (0-based) to candidate_idx (0-based).
+            source: ``"user"`` for explicit Audio User Selection Editor picks
+                (marker is set so re-validation will not override them) or
+                ``"auto"`` for pipeline-driven realignment to the new best
+                candidate (marker is cleared).
+        """
         from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
         task_metrics_generator = TaskMetricsGenerator(self.task_directory, getattr(self, 'config', None))
-        return task_metrics_generator.update_selected_candidates(selections)
+        return task_metrics_generator.update_selected_candidates(selections, source=source)
+
+    def get_user_selected_chunks(self) -> set:
+        """Return 0-based chunk indices whose selection was made by the user."""
+        from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+        task_metrics_generator = TaskMetricsGenerator(self.task_directory, getattr(self, 'config', None))
+        return task_metrics_generator.get_user_selected_chunks()
+
+    def clear_user_selections(self, chunk_indices_0based) -> bool:
+        """Drop user-selection markers for the given chunks (e.g. after re-render)."""
+        from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+        task_metrics_generator = TaskMetricsGenerator(self.task_directory, getattr(self, 'config', None))
+        return task_metrics_generator.clear_user_selections(chunk_indices_0based)
 
     # Delegated Operations - Final Audio Handler
     def save_final_audio(self, audio, metadata: dict) -> bool:

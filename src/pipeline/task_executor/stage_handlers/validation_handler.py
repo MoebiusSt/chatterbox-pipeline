@@ -570,6 +570,11 @@ class ValidationHandler:
                 logger.error("Failed to save validation metrics")
                 return False
 
+            # Realign auto-selections to new best_candidate; preserve user picks.
+            self._realign_selections_after_validation(
+                validated_chunk_indices=list(validation_results.keys())
+            )
+
             logger.info("")
             logger.info("✅ Validation stage completed successfully")
             return True
@@ -1507,6 +1512,15 @@ class ValidationHandler:
                 logger.error("Failed to update validation metrics selectively")
                 return False
 
+            # Realign automatic selections in task_metrics.json to the new
+            # best_candidate computed above. USER selections (marker
+            # ``user_selected_chunks``) are preserved verbatim and only have
+            # their candidate_metrics refreshed so prosody/final_score reflect
+            # the new validation data.
+            self._realign_selections_after_validation(
+                validated_chunk_indices=list(validation_results.keys())
+            )
+
             logger.info("")
             logger.info("✅ Selective validation stage completed successfully")
             return True
@@ -1707,7 +1721,78 @@ class ValidationHandler:
         except Exception as e:
             logger.error(f"Failed to update enhanced metrics selectively: {e}")
             return False
-    
+
+    def _realign_selections_after_validation(
+        self, validated_chunk_indices: List[int]
+    ) -> None:
+        """Realign automatic selections in task_metrics.json to the new
+        ``best_candidate`` from whisper_metrics, while keeping USER selections
+        untouched.
+
+        For each validated chunk:
+          * If the chunk is NOT marked as a user selection: update
+            ``selected_candidates`` to the new whisper ``best_candidate``
+            (source="auto"). Also refreshes candidate_metrics in task_metrics.
+          * If the chunk IS marked as a user selection: leave the selection
+            unchanged but refresh its candidate_metrics block so prosody and
+            final_selection_score reflect the new validation data
+            (source="user" preserves the marker).
+
+        Silent no-op when task_metrics.json or whisper data is unavailable.
+        """
+        if not validated_chunk_indices:
+            return
+        try:
+            user_marked = self.file_manager.get_user_selected_chunks() or set()
+            metrics = self.file_manager.get_metrics() or {}
+            whisper_chunks = metrics.get("chunks", {}) if isinstance(metrics, dict) else {}
+            current_selections = self.file_manager.get_selected_candidates() or {}
+
+            auto_realign: Dict[int, int] = {}
+            user_refresh: Dict[int, int] = {}
+
+            for chunk_idx in validated_chunk_indices:
+                wch = whisper_chunks.get(str(chunk_idx)) or whisper_chunks.get(chunk_idx) or {}
+                if not isinstance(wch, dict):
+                    continue
+                best = wch.get("best_candidate")
+                if best is None:
+                    continue
+                try:
+                    best_idx = int(best)
+                except Exception:
+                    continue
+
+                if chunk_idx in user_marked:
+                    # Refresh candidate_metrics for the chunk's CURRENT selection
+                    # (not the new best). Preserves the user marker.
+                    current = current_selections.get(chunk_idx)
+                    if current is None:
+                        continue
+                    cand_map = wch.get("candidates", {}) or {}
+                    if str(int(current)) in cand_map:
+                        user_refresh[int(chunk_idx)] = int(current)
+                else:
+                    if int(current_selections.get(chunk_idx, -1)) != best_idx:
+                        auto_realign[int(chunk_idx)] = best_idx
+                    else:
+                        # Same selection but candidate_metrics may be stale
+                        # (prosody/final_score from older scoring).
+                        auto_realign[int(chunk_idx)] = best_idx
+
+            if auto_realign:
+                self.file_manager.update_selected_candidates(auto_realign, source="auto")
+                logger.info(
+                    f"Realigned auto-selections for {len(auto_realign)} chunk(s) to new best_candidate"
+                )
+            if user_refresh:
+                self.file_manager.update_selected_candidates(user_refresh, source="user")
+                logger.info(
+                    f"Refreshed candidate_metrics for {len(user_refresh)} user-selected chunk(s)"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to realign selections after validation: {e}")
+
     def _enhance_chunks_with_language_id(self, chunks: List[TextChunk]) -> None:
         """
         Enhance chunks with language_id from speaker configuration.
