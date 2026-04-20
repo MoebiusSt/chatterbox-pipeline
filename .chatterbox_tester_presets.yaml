@@ -192,13 +192,13 @@ petra_ries2_DE.wav::vibevoice:
   voice_speed_factor: 0.94
   use_sampling: true
 petra_ries2_DE_15s.wav::qwen3:
-  temperature: 0.96
-  top_k: 178.0
+  temperature: 1.21
+  top_k: 137.0
   top_p: 1.0
-  subtalker_temperature: 1.7
-  subtalker_top_k: 142.0
+  subtalker_temperature: 1.5
+  subtalker_top_k: 120.0
   subtalker_top_p: 1.0
-  repetition_penalty: 1.05
+  repetition_penalty: 1.04
 petra_ries2_IT-Fake.wav::vibevoice:
   temperature: 0.9
   top_p: 0.98
@@ -220,6 +220,14 @@ stefan_backes_DE.wav:
   repetition_penalty: 2.1
   min_p: 0.17
   top_p: 0.96
+stefan_backes_DE_15s.wav::qwen3:
+  temperature: 1.21
+  top_k: 137.0
+  top_p: 1.0
+  subtalker_temperature: 1.5
+  subtalker_top_k: 120.0
+  subtalker_top_p: 1.0
+  repetition_penalty: 1.04
 stefan_backes_DE_kurz.wav:
   exaggeration: 1.45
   cfg_weight: 0.19

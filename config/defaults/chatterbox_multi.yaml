@@ -16,7 +16,7 @@ generation:
   
   speakers:
     - id: stefan_backes_DE # ---- DONE ----
-      reference_audio: stefan_backes_DE_kurz.wav
+      reference_audio: stefan_backes_DE.wav
       language: de
       tts_params:
         exaggeration: 1.45
@@ -48,27 +48,6 @@ generation:
         repetition_penalty: 2.00
         min_p: 0.17
         top_p: 1.00
-
-    - id: stephan_moebius_1 # ---- DONE ----
-      reference_audio: stephan_moebius_1.wav
-      language: en
-      tts_params:
-        exaggeration: 0.4
-        exaggeration_max_deviation: 0.1
-        cfg_weight: 0.4
-        cfg_weight_max_deviation: 0.1
-        temperature: 0.75
-        temperature_max_deviation: 0.1
-        repetition_penalty: 3
-        min_p: 0.08  
-        top_p: 0.95
-      conservative_candidate:
-        enabled: true
-        exaggeration: 0.4
-        cfg_weight: 0.4
-        temperature: 0.8
-        min_p: 0.09
-        top_p: 0.93
 
     - id: stephan_moebius_2 # ---- DONE ----
       reference_audio: stephan_moebius_2.wav
@@ -110,7 +89,7 @@ generation:
         cfg_weight: 0.4
         temperature: 0.8
         
-    - id: stephan_moebius_3_DE # ---- DONE ----
+    - id: stephan_moebius_3_DE-FAKE # ---- DONE ----
       reference_audio: stephan_moebius_3.wav
       language: de
       seed: 0
@@ -189,7 +168,7 @@ generation:
         top_p: 0.82
 
     - id: stephan_moebius_7_FR # ---- DONE ----
-      reference_audio: stephan_moebius_7_FR-fake.wav
+      reference_audio: stephan_moebius_7_FR-fake_15s.wav
       language: fr
       tts_params:
         exaggeration: 1.11
@@ -347,7 +326,7 @@ generation:
         cfg_weight: 0.6
         temperature: 0.8
 
-    - id: david_barnes_2_DE # ---- DONE ----
+    - id: david_barnes_2_DE-FAKE # ---- DONE ----
       reference_audio: david_barnes_2.wav
       language: de
       tts_params:
@@ -364,30 +343,7 @@ generation:
         enabled: false
         
     - id: david_barnes_DE-fake # ---- DONE ----
-      reference_audio: david-barnes_DE-fake.wav
-      language: de
-      seed: 0
-      tts_params:
-        exaggeration: 1.44
-        exaggeration_max_deviation: 0.1
-        cfg_weight: 0.16
-        cfg_weight_max_deviation: 0.05
-        temperature: 1.24
-        temperature_max_deviation: 0.1
-        repetition_penalty: 1.95
-        min_p: 0.05
-        top_p: 1.00
-      conservative_candidate:
-        enabled: true
-        exaggeration: 1.40
-        cfg_weight: 0.20
-        temperature: 1.10
-        repetition_penalty: 2.00
-        min_p: 0.15
-        top_p: 0.98
-
-    - id: david_barnes_DE_2-fake # ---- DONE ----
-      reference_audio: david-barnes_DE_2-fake.wav
+      reference_audio: david-barnes_DE_2_fake.wav
       language: de
       seed: 0
       tts_params:
@@ -513,7 +469,7 @@ generation:
         top_p: 0.95
 
     - id: glen_hallstrom_1                     
-      reference_audio: glen_hallstrom_15.wav   
+      reference_audio: glen_hallstrom_1.wav   
       language: en
       tts_params:
         exaggeration: 0.45                  
@@ -534,7 +490,7 @@ generation:
         top_p: 0.9     
 
     - id: glen_hallstrom_2
-      reference_audio: glen_hallstrom_25.wav
+      reference_audio: glen_hallstrom_2.wav
       language: en
       tts_params:
         exaggeration: 0.45
@@ -553,7 +509,7 @@ generation:
         temperature: 0.8
 
     - id: glen_hallstrom_3
-      reference_audio: glen_hallstrom_35.wav
+      reference_audio: glen_hallstrom_3.wav
       language: en
       tts_params:
         exaggeration: 0.7
@@ -573,8 +529,8 @@ generation:
         min_p: 0.10
         top_p: 0.90
 
-    - id: glen_hallstrom_3_DE # ---- DONE ----
-      reference_audio: glen_hallstrom_35.wav
+    - id: glen_hallstrom_3_DE-FAKE # ---- DONE ----
+      reference_audio: glen_hallstrom_3.wav
       language: de
       tts_params:
         exaggeration: 0.7
@@ -695,8 +651,8 @@ generation:
       conservative_candidate:
         enabled: false
 
-    - id: maryjohn
-      reference_audio: maryjohn_bright.wav
+    - id: maryjohn_DE_Fake
+      reference_audio: maryjohn.wav
       language: de
       tts_params:
         exaggeration: 1.50
@@ -718,6 +674,7 @@ generation:
         top_p: 0.92
 
     - id: maryjohn_ruhig
+      reference_audio: maryjohn.wav
       language: en
       tts_params:
         exaggeration: 0.3
@@ -729,8 +686,11 @@ generation:
         repetition_penalty: 1.3
         min_p: 0.05
         top_p: 0.98
+      conservative_candidate:
+        enabled: false
 
     - id: maryjohn_aufgeregter
+      reference_audio: maryjohn.wav
       language: en
       tts_params:
         exaggeration: 0.65
@@ -742,6 +702,8 @@ generation:
         repetition_penalty: 1.3
         min_p: 0.05
         top_p: 0.98
+      conservative_candidate:
+        enabled: false
 
     - id: lenhart
       reference_audio: hans-juergen-lenhart.wav
