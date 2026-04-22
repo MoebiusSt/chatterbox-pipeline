@@ -18,11 +18,11 @@ generation:
       language: en
       tts_params:
         # Chatterbox/Turbo parameters – see readme_agent.md for ramp semantics.
-        exaggeration: 0.45            # MAX value; ramps DOWN across candidates
-        exaggeration_max_deviation: 0.10
-        cfg_weight: 0.15              # MIN value; ramps UP across candidates
+        exaggeration: 0.45            # start; negative dev → ramp DOWN
+        exaggeration_max_deviation: -0.1
+        cfg_weight: 0.15              # start; positive dev → ramp UP
         cfg_weight_max_deviation: 0.20
-        temperature: 0.90             # MIN value; ramps UP across candidates
+        temperature: 0.90             # start; positive dev → ramp UP
         temperature_max_deviation: 0.20
         repetition_penalty: 1.5
         min_p: 0.06

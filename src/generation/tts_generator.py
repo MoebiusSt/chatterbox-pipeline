@@ -530,12 +530,11 @@ class TTSGenerator:
         Calculate ramped TTS parameters for candidate variation.
 
         For Chatterbox models (standard/multilingual/turbo):
-          - exaggeration: ramp DOWN from base to (base - max_deviation)
-          - cfg_weight:   ramp UP   from base to (base + max_deviation)
-          - temperature:  ramp UP   from base to (base + max_deviation)
+          - exaggeration, cfg_weight, temperature:  base + (dev * ramp_position)
+            Use negative *dev* for a downward ramp (e.g. exaggeration).
 
         For Qwen3:
-          - Only temperature is ramped UP; exaggeration/cfg_weight are not applicable.
+          - Only temperature is ramped; exaggeration/cfg_weight are not applicable.
         """
         if num_expressive_minus_one <= 0:
             return dict(base_params)
@@ -552,7 +551,7 @@ class TTSGenerator:
             exag_dev = base_params.get("exaggeration_max_deviation", 0.15)
             base_cfg = base_params.get("cfg_weight", 0.7)
             cfg_dev = base_params.get("cfg_weight_max_deviation", 0.15)
-            params["exaggeration"] = base_exag - (exag_dev * ramp_position)
+            params["exaggeration"] = base_exag + (exag_dev * ramp_position)
             params["cfg_weight"] = base_cfg + (cfg_dev * ramp_position)
 
         return params
@@ -714,9 +713,9 @@ class TTSGenerator:
             else:
                 params = dict(filtered_base)
 
-                # subtalker_temperature: regular RAMP-DOWN from MAX (base)
-                # across expressive candidates.
-                if subtalker_temp_base is not None and subtalker_temp_dev > 0:
+                # subtalker_temperature: from base, ramp via base + (dev * ramp_pos)
+                # (negative dev = RAMP-DOWN, positive dev = RAMP-UP; same as other params)
+                if subtalker_temp_base is not None and subtalker_temp_dev != 0:
                     params["subtalker_temperature"] = subtalker_temp_base
 
                 if i > 0 and num_expressive > 1:
@@ -724,15 +723,15 @@ class TTSGenerator:
                     # temperature: RAMP-UP
                     params["temperature"] = base_temperature + (temp_deviation * ramp_pos)
                     # top_k: RAMP-UP
-                    if top_k_base is not None and top_k_dev > 0:
+                    if top_k_base is not None and top_k_dev != 0:
                         params["top_k"] = int(round(top_k_base + top_k_dev * ramp_pos))
-                    # subtalker_temperature: RAMP-DOWN
-                    if subtalker_temp_base is not None and subtalker_temp_dev > 0:
+                    # subtalker_temperature: base + (dev * ramp_pos)
+                    if subtalker_temp_base is not None and subtalker_temp_dev != 0:
                         params["subtalker_temperature"] = (
-                            subtalker_temp_base - subtalker_temp_dev * ramp_pos
+                            subtalker_temp_base + subtalker_temp_dev * ramp_pos
                         )
                     # subtalker_top_k: RAMP-UP
-                    if subtalker_top_k_base is not None and subtalker_top_k_dev > 0:
+                    if subtalker_top_k_base is not None and subtalker_top_k_dev != 0:
                         params["subtalker_top_k"] = int(round(subtalker_top_k_base + subtalker_top_k_dev * ramp_pos))
 
                 candidate_type = "EXPRESSIVE"
@@ -1583,7 +1582,7 @@ class TTSGenerator:
                         var_temperature = base_temperature
                     else:
                         ramp_position = i / (num_expressive - 1)
-                        var_exaggeration = base_exaggeration - (exag_max_deviation * ramp_position)
+                        var_exaggeration = base_exaggeration + (exag_max_deviation * ramp_position)
                         var_cfg_weight = base_cfg_weight + (cfg_max_deviation * ramp_position)
                         var_temperature = base_temperature + (temp_max_deviation * ramp_position)
 
@@ -1709,7 +1708,7 @@ class TTSGenerator:
                         var_temperature = base_temperature
                     else:
                         ramp_position = i / (num_expressive - 1)
-                        var_exaggeration = base_exaggeration - (exag_max_deviation * ramp_position)
+                        var_exaggeration = base_exaggeration + (exag_max_deviation * ramp_position)
                         var_cfg_weight = base_cfg_weight + (cfg_max_deviation * ramp_position)
                         var_temperature = base_temperature + (temp_max_deviation * ramp_position)
 

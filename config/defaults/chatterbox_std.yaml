@@ -18,7 +18,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.45              
-        exaggeration_max_deviation: 0.10
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.15                
         cfg_weight_max_deviation: 0.20  
         temperature: 0.9                
@@ -39,7 +39,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.45
-        exaggeration_max_deviation: 0.20
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.25
         cfg_weight_max_deviation: 0.15
         temperature: 0.95
@@ -58,7 +58,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.5
-        exaggeration_max_deviation: 0.20
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.15
         cfg_weight_max_deviation: 0.30
         temperature: 0.88
@@ -77,7 +77,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.55
-        exaggeration_max_deviation: 0.20
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.15
         cfg_weight_max_deviation: 0.25
         temperature: 0.9
@@ -96,7 +96,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.65
-        exaggeration_max_deviation: 0.25
+        exaggeration_max_deviation: -0.25
         cfg_weight: 0.35
         cfg_weight_max_deviation: 0.30
         temperature: 1.1
@@ -115,7 +115,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.60
-        exaggeration_max_deviation: 0.15
+        exaggeration_max_deviation: -0.15
         cfg_weight: 0.25
         cfg_weight_max_deviation: 0.2
         temperature: 1.0
@@ -134,7 +134,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.60
-        exaggeration_max_deviation: 0.10
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.25
         cfg_weight_max_deviation: 0.20
         temperature: 1.0
@@ -152,7 +152,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.55
-        exaggeration_max_deviation: 0.10
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.3
         cfg_weight_max_deviation: 0.15
         temperature: 1.05
@@ -173,7 +173,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.5
-        exaggeration_max_deviation: 0.1
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.35
         cfg_weight_max_deviation: 0.15
         temperature: 1.05
@@ -192,7 +192,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.5
-        exaggeration_max_deviation: 0.2
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.4
         cfg_weight_max_deviation: 0.2
         temperature: 1.20
@@ -211,7 +211,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.40
-        exaggeration_max_deviation: 0.15
+        exaggeration_max_deviation: -0.15
         cfg_weight: 0.4
         cfg_weight_max_deviation: 0.25
         temperature: 1.05
@@ -230,7 +230,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.65
-        exaggeration_max_deviation: 0.2
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.2
         cfg_weight_max_deviation: 0.4
         temperature: 1.0
@@ -249,7 +249,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.65
-        exaggeration_max_deviation: 0.15
+        exaggeration_max_deviation: -0.15
         cfg_weight: 0.3
         cfg_weight_max_deviation: 0.15
         temperature: 0.95
@@ -268,7 +268,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.45                  
-        exaggeration_max_deviation: 0.10    
+        exaggeration_max_deviation: -0.1    
         cfg_weight: 0.45                    
         cfg_weight_max_deviation: 0.20      
         temperature: 1.0                    
@@ -289,7 +289,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.45
-        exaggeration_max_deviation: 0.2
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.50
         cfg_weight_max_deviation: 0.3
         temperature: 0.90
@@ -308,7 +308,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.5
-        exaggeration_max_deviation: 0.25
+        exaggeration_max_deviation: -0.25
         cfg_weight: 0.5
         cfg_weight_max_deviation: 0.25
         temperature: 0.9
@@ -327,7 +327,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.50
-        exaggeration_max_deviation: 0.20
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.15
         cfg_weight_max_deviation: 0.40
         temperature: 0.95
@@ -345,7 +345,7 @@ generation:
       reference_audio: peter_yearsley_1.wav
       tts_params:
         exaggeration: 0.60
-        exaggeration_max_deviation: 0.25
+        exaggeration_max_deviation: -0.25
         cfg_weight: 0.3
         cfg_weight_max_deviation: 0.3
         temperature: 0.95
@@ -379,7 +379,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.55
-        exaggeration_max_deviation: 0.18
+        exaggeration_max_deviation: -0.18
         cfg_weight: 0.41
         cfg_weight_max_deviation: 0.28
         temperature: 0.95
@@ -399,7 +399,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.3
-        exaggeration_max_deviation: 0.1
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.4
         cfg_weight_max_deviation: 0.1
         temperature: 0.95
@@ -412,7 +412,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.65
-        exaggeration_max_deviation: 0.1
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.6
         cfg_weight_max_deviation: 0.2
         temperature: 0.95
@@ -426,7 +426,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.25
-        exaggeration_max_deviation: 0.10
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.1
         cfg_weight_max_deviation: 0.10
         temperature: 0.9               
@@ -442,7 +442,7 @@ generation:
       language: de
       tts_params:
         exaggeration: 0.40
-        exaggeration_max_deviation: 0.1
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.35
         cfg_weight_max_deviation: 0.10
         temperature: 0.8                
@@ -458,7 +458,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.40
-        exaggeration_max_deviation: 0.1
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.40
         cfg_weight_max_deviation: 0.10
         temperature: 0.8                

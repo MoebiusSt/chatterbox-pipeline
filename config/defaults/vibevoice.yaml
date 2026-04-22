@@ -50,12 +50,12 @@ generation:
       language: en # vibevoice has many languages available. The language param is not used, but needed for whisper.
       tts_params:
         # VibeVoice parameters – see readme_agent.md or default_config.yaml for ramp semantics.
-        temperature: 0.95             # MIN value; ramps UP (only with use_sampling=true)
+        temperature: 0.95             # start; positive *temperature_max_deviation* → ramp UP (only with use_sampling=true)
         temperature_max_deviation: 0.4
         top_p: 0.98                   # used only with use_sampling=true
-        cfg_scale: 1.30               # MIN value; ramps UP across candidates
+        cfg_scale: 1.30               # start; positive *cfg_scale_max_deviation* → ramp UP
         cfg_scale_max_deviation: 0.15
-        diffusion_steps: 20          # MIN value; ramps UP across candidates
+        diffusion_steps: 20          # start; positive *diffusion_steps_max_deviation* → ramp UP
         diffusion_steps_max_deviation: 10  # (0 = no ramp;)
         voice_speed_factor: 1.00
         use_sampling: true           # false = deterministic; true = sampling mode with top_p, and temperature
@@ -71,12 +71,12 @@ generation:
       language: de
       reference_audio: mike_kamp_2_DE_15s.wav
       tts_params:
-        temperature: 1.70 # MIN value; ramps UP
+        temperature: 1.70 # start; positive dev → ramp UP
         temperature_max_deviation: 0.15
         top_p: 0.99
-        cfg_scale: 1.28 # MIN value; ramps UP across candidates
+        cfg_scale: 1.28 # start; positive dev → ramp UP
         cfg_scale_max_deviation: 0.12
-        diffusion_steps: 45 # MIN value; ramps UP across candidates
+        diffusion_steps: 45 # start; positive dev → ramp UP
         diffusion_steps_max_deviation: 10  # (0 = no ramp;)
         voice_speed_factor: 1.04
         use_sampling: true
@@ -91,12 +91,12 @@ generation:
       reference_audio: annie_coleman_rothenberg_1_DE-fake_15s.wav
       language: de
       tts_params:
-        temperature: 1.60             # MIN value; ramps UP (only with use_sampling=true)
+        temperature: 1.60             # start; positive dev → ramp UP (only with use_sampling=true)
         temperature_max_deviation: 0.20
         top_p: 0.99                   # used only with use_sampling=true
-        cfg_scale: 1.25               # MIN value; ramps UP across candidates
+        cfg_scale: 1.25               # start; positive dev → ramp UP
         cfg_scale_max_deviation: 0.20
-        diffusion_steps: 35          # MIN value; ramps UP across candidates
+        diffusion_steps: 35          # start; positive dev → ramp UP
         diffusion_steps_max_deviation: 15  # (0 = no ramp;)
         voice_speed_factor: 0.98
         use_sampling: true

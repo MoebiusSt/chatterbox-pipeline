@@ -137,7 +137,7 @@ config/*private*
 config/*
 
 # Keep reference yaml files
-!config/defaults/
+!config/defaults/*.yaml
 !config/default_config.yaml
 !config/radio-broadcast_example.yaml
 !config/speakers_example.yaml

@@ -19,10 +19,10 @@ generation:
       reference_audio: stephan_moebius_7_DE.wav
       language: de
       tts_params:
-        temperature: 0.95 # MIN value; ramps UP
+        temperature: 0.95 # start; positive *temperature_max_deviation* → ramp UP
         temperature_max_deviation: 0.55
         top_p: 0.98
-        cfg_scale: 1.30 # MIN value; ramps UP across candidates
+        cfg_scale: 1.30 # start; positive *cfg_scale_max_deviation* → ramp UP
         cfg_scale_max_deviation: 0.38
         diffusion_steps: 25
         voice_speed_factor: 1.00

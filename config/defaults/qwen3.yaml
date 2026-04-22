@@ -41,17 +41,17 @@ generation:
       tts_params:
         do_sample: true
         max_new_tokens: 4096           # raised for longform chunks (target=1200, max=2000 chars)
-        # Qwen3 parameters – see readme_agent.md for ramp semantics.
+        # Qwen3 parameters – see readme_agent.md (unified ramp: param = base + dev*ramp_pos).
         # Chatterbox-only params (exaggeration, cfg_weight, min_p) are silently skipped.
-        temperature: 0.85             # MIN value; ramps UP across candidates
+        temperature: 0.85             # start; positive *temperature_max_deviation* → ramp UP
         temperature_max_deviation: 0.30
-        top_k: 50                     # MIN value; ramps UP across candidates
+        top_k: 50                     # start; positive *top_k_max_deviation* → ramp UP
         top_k_max_deviation: 100
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.8   # MAX value; ramps DOWN
-        subtalker_temperature_max_deviation: 0.6
-        subtalker_top_k: 200          # MIN value; ramps UP across candidates
+        subtalker_temperature: 1.8   # start; sign of *subtalker_temperature_max_deviation* sets direction
+        subtalker_temperature_max_deviation: -0.6
+        subtalker_top_k: 200          # start; positive *subtalker_top_k_max_deviation* → ramp UP
         subtalker_top_k_max_deviation: 50
         subtalker_top_p: 1.0
         subtalker_dosample: true
@@ -391,15 +391,15 @@ generation:
       reference_audio: erik_prochnow_DE_15s.wav
       language: de
       ttts_params:
-        temperature: 1.15 # MIN value; ramps UP across candidates
+        temperature: 1.15 # start; positive *temperature_max_deviation* → ramp UP
         temperature_max_deviation: 0.25
-        top_k: 120 # MIN value; ramps UP across candidates
+        top_k: 120 # start; positive *top_k_max_deviation* → ramp UP
         top_k_max_deviation: 30
         top_p: 0.99
         repetition_penalty: 1.07
-        subtalker_temperature: 1.40 # MAX value; ramps DOWN
-        subtalker_temperature_max_deviation: 0.20
-        subtalker_top_k: 170 # MIN value; ramps UP across candidates
+        subtalker_temperature: 1.40 # start; sign of *subtalker_temperature_max_deviation* sets direction
+        subtalker_temperature_max_deviation: -0.2
+        subtalker_top_k: 170 # start; positive *subtalker_top_k_max_deviation* → ramp UP
         subtalker_top_k_max_deviation: 20
         subtalker_top_p: 0.97
       conservative_candidate:

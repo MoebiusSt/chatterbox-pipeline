@@ -403,6 +403,7 @@ class TaskExecutor:
                     try:
                         task_metrics_generator = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
                         task_metrics_generator.generate_task_metrics()
+                        task_metrics_generator.generate_analysis_metrics()
                     except Exception as e:
                         logger.warning(f"Failed to generate task metrics: {e}")
                     result = TaskResult(
@@ -453,6 +454,7 @@ class TaskExecutor:
                     try:
                         task_metrics_generator = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
                         task_metrics_generator.generate_task_metrics()
+                        task_metrics_generator.generate_analysis_metrics()
                     except Exception as e:
                         logger.warning(f"Failed to generate task metrics: {e}")
                     result = TaskResult(
@@ -495,6 +497,7 @@ class TaskExecutor:
             try:
                 task_metrics_generator = TaskMetricsGenerator(self.file_manager.task_directory, self.config)
                 task_metrics_generator.generate_task_metrics()
+                task_metrics_generator.generate_analysis_metrics()
             except Exception as e:
                 logger.warning(f"Failed to generate task metrics: {e}")
             

@@ -19,7 +19,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.25
-        exaggeration_max_deviation: 0.10
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.1
         cfg_weight_max_deviation: 0.10
         temperature: 0.9               
@@ -34,7 +34,7 @@ generation:
       language: de
       tts_params:
         exaggeration: 0.40
-        exaggeration_max_deviation: 0.1
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.35
         cfg_weight_max_deviation: 0.10
         temperature: 0.8                
@@ -49,7 +49,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.40
-        exaggeration_max_deviation: 0.1
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.40
         cfg_weight_max_deviation: 0.10
         temperature: 0.8                

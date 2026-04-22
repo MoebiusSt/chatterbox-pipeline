@@ -32,7 +32,7 @@ generation:
     - id: test2
       tts_params:
         exaggeration: 0.80  #only ramp down exaggeration, evaluate effect of exaggeration
-        exaggeration_max_deviation: 0.5
+        exaggeration_max_deviation: -0.5
         cfg_weight: 0.50
         cfg_weight_max_deviation: 0.0
         temperature: 1.05

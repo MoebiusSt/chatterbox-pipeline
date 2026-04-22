@@ -13,7 +13,7 @@ generation:
     - id: stephan_moebius_4  # and overriding some speaker parameters below
       tts_params:
         exaggeration: 0.5
-        exaggeration_max_deviation: 0.15
+        exaggeration_max_deviation: -0.15
         cfg_weight: 0.25
         cfg_weight_max_deviation: 0.20
         temperature: 1.0
@@ -37,7 +37,7 @@ generation:
     - id: stephan_moebius_3
       tts_params:
         exaggeration: 0.7
-        exaggeration_max_deviation: 0.40
+        exaggeration_max_deviation: -0.4
         min_p: 0.08
         top_p: 0.92
 

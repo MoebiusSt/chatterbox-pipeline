@@ -2,11 +2,13 @@
 """
 TaskMetricsGenerator for creating comprehensive task overview metrics.
 Generates task_metrics.json with all chunks, selected candidates, and runtime information.
+Also generates analysis_metrics.json for parameter-sweep analysis.
 """
 
 import json
 import logging
 import statistics
+from collections import Counter
 from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List, Optional, Set
@@ -19,6 +21,10 @@ logger = logging.getLogger(__name__)
 # automatic re-validation; they are only invalidated when the underlying
 # candidates are re-rendered (see ``clear_user_selections``).
 USER_SELECTION_FIELD = "user_selected_chunks"
+
+# Schema version for analysis_metrics.json – bump when the structure changes
+# in a backward-incompatible way.
+ANALYSIS_METRICS_SCHEMA_VERSION = "1.0"
 
 
 class TaskMetricsGenerator:
@@ -989,6 +995,343 @@ class TaskMetricsGenerator:
         except Exception as e:
             logger.warning(f"Failed to get fallback generation params for chunk {chunk_idx_0based}: {e}")
             return {}
+
+    def generate_analysis_metrics(self) -> bool:
+        """
+        Generate analysis_metrics.json for parameter-sweep analysis.
+
+        Writes a compact JSON file next to task_metrics.json that contains all
+        candidates per chunk with their generation parameters and quality scores,
+        but without bulk text / transcription fields.  Designed for efficient
+        analysis of multi-speaker, multi-candidate experiments.
+
+        Returns:
+            True if generation successful, False otherwise.
+        """
+        try:
+            logger.info("📊 Generating analysis metrics")
+
+            whisper_metrics = self._load_whisper_metrics()
+            chunks_metadata = self._load_chunks_metadata()
+            task_runtime = self._load_task_runtime()
+            config = self._load_config()
+
+            if not whisper_metrics:
+                logger.warning("No whisper metrics found - cannot generate analysis metrics")
+                return False
+
+            analysis_metrics = self._build_analysis_metrics(
+                whisper_metrics, chunks_metadata, task_runtime, config
+            )
+
+            output_path = self.task_directory / "analysis_metrics.json"
+            with open(output_path, "w", encoding="utf-8") as f:
+                # Use compact separators to keep file size small (no indentation).
+                json.dump(analysis_metrics, f, separators=(",", ":"), ensure_ascii=False)
+
+            logger.debug(f"✅ Analysis metrics saved to: {output_path}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to generate analysis metrics: {e}")
+            return False
+
+    def _load_selected_candidates_from_task_metrics(self) -> Dict[str, int]:
+        """
+        Load selected candidates (1-based chunk key → 1-based candidate index)
+        from task_metrics.json.
+
+        Returns an empty dict when the file is missing or unreadable.
+        """
+        task_metrics_path = self.task_directory / "task_metrics.json"
+        if not task_metrics_path.exists():
+            return {}
+        try:
+            with open(task_metrics_path, "r", encoding="utf-8") as f:
+                tm = json.load(f)
+            sc = tm.get("selected_candidates", {})
+            if not isinstance(sc, dict):
+                return {}
+            result: Dict[str, int] = {}
+            for k, v in sc.items():
+                try:
+                    result[str(int(k))] = int(v)
+                except Exception:
+                    pass
+            return result
+        except Exception as e:
+            logger.debug(f"_load_selected_candidates_from_task_metrics failed: {e}")
+            return {}
+
+    def _load_candidates_metadata_map(
+        self, chunk_idx_0based: int
+    ) -> Optional[Dict[int, Dict[str, Any]]]:
+        """
+        Load candidates_metadata.json for a chunk and return a dict keyed by
+        candidate_idx (0-based).
+
+        Returns None when the file is absent or unreadable.
+        """
+        try:
+            chunk_dir = self.candidates_dir / f"chunk_{chunk_idx_0based + 1:03d}"
+            meta_path = chunk_dir / "candidates_metadata.json"
+            if not meta_path.exists():
+                return None
+            with open(meta_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            result: Dict[int, Dict[str, Any]] = {}
+            for cand in data.get("candidates", []):
+                idx = cand.get("candidate_idx")
+                if isinstance(idx, int):
+                    result[idx] = cand
+            return result
+        except Exception as e:
+            logger.debug(f"_load_candidates_metadata_map failed for chunk {chunk_idx_0based}: {e}")
+            return None
+
+    def _build_analysis_metrics(
+        self,
+        whisper_metrics: Dict[str, Any],
+        chunks_metadata: Dict[str, Any],
+        task_runtime: Dict[str, Any],
+        config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build the analysis_metrics.json structure."""
+
+        # ── task section ──────────────────────────────────────────────────────
+        job_name = self.task_directory.parent.name if self.task_directory.parent else ""
+        task_name = self.task_directory.name
+        run_label: str = ""
+        timestamp: str = ""
+        model_type: str = ""
+
+        if isinstance(config, dict):
+            run_label = (config.get("job") or {}).get("run-label", "") or ""
+            model_type = (config.get("generation") or {}).get("model_type", "") or ""
+
+        try:
+            m = re.search(r"_(\d{8}_\d{6})$", task_name)
+            if m:
+                timestamp = m.group(1)
+        except Exception:
+            pass
+
+        whisper_chunks = whisper_metrics.get("chunks", {})
+        total_chunks = len(whisper_chunks)
+        total_candidates_generated = sum(
+            len(v.get("candidates", {}))
+            for v in whisper_chunks.values()
+            if isinstance(v, dict)
+        )
+
+        task_runtime_seconds: Optional[int] = None
+        if isinstance(task_runtime, dict):
+            try:
+                raw_rt = task_runtime.get("total_execution_seconds")
+                if raw_rt is not None:
+                    task_runtime_seconds = int(round(float(raw_rt)))
+            except Exception:
+                pass
+
+        # ── speaker stats ─────────────────────────────────────────────────────
+        chunks_meta_list: List[Dict[str, Any]] = chunks_metadata.get("chunks", [])
+
+        # Build maps: speaker_id → chunk count and per-chunk candidate counts
+        speaker_chunk_counts: Dict[str, int] = {}
+        speaker_candidate_counts: Dict[str, List[int]] = {}
+
+        for meta in chunks_meta_list:
+            sid = meta.get("speaker_id", "")
+            chunk_idx_0 = meta.get("idx", -1)
+            speaker_chunk_counts.setdefault(sid, 0)
+            speaker_candidate_counts.setdefault(sid, [])
+            speaker_chunk_counts[sid] += 1
+            chunk_key = str(chunk_idx_0)
+            if chunk_key in whisper_chunks:
+                n_cands = len(whisper_chunks[chunk_key].get("candidates", {}))
+                if n_cands > 0:
+                    speaker_candidate_counts[sid].append(n_cands)
+
+        # Speaker config lookup
+        config_speakers: Dict[str, Dict[str, Any]] = {}
+        if isinstance(config, dict):
+            for spk in (config.get("generation") or {}).get("speakers", []):
+                sid = spk.get("id", "")
+                if sid:
+                    config_speakers[sid] = spk
+
+        speakers: Dict[str, Any] = {}
+        for sid, chunk_count in speaker_chunk_counts.items():
+            spk_cfg = config_speakers.get(sid, {})
+            cand_counts = speaker_candidate_counts.get(sid, [])
+            if cand_counts:
+                num_candidates_per_chunk = Counter(cand_counts).most_common(1)[0][0]
+            else:
+                num_candidates_per_chunk = (
+                    (config.get("generation") or {}).get("num_candidates", 0)
+                    if isinstance(config, dict) else 0
+                )
+            speakers[sid] = {
+                "chunk_count": chunk_count,
+                "num_candidates_per_chunk": num_candidates_per_chunk,
+                "reference_audio": spk_cfg.get("reference_audio", ""),
+                "language": spk_cfg.get("language", ""),
+            }
+
+        # ── selected candidates ───────────────────────────────────────────────
+        selected_candidates_1based = self._load_selected_candidates_from_task_metrics()
+
+        # ── chunks list ───────────────────────────────────────────────────────
+        _EXCLUDED_GEN_PARAMS = {"seed", "language_id"}
+
+        def _r4(v: Any) -> Optional[float]:
+            try:
+                return round(float(v), 4) if v is not None else None
+            except Exception:
+                return None
+
+        def _r2(v: Any) -> Optional[float]:
+            try:
+                return round(float(v), 2) if v is not None else None
+            except Exception:
+                return None
+
+        def _r1(v: Any) -> Optional[float]:
+            try:
+                return round(float(v), 1) if v is not None else None
+            except Exception:
+                return None
+
+        chunk_keys_sorted = sorted(whisper_chunks.keys(), key=lambda k: int(k))
+        chunks_list: List[Dict[str, Any]] = []
+
+        for chunk_key in chunk_keys_sorted:
+            chunk_idx_0 = int(chunk_key)
+            chunk_idx_1 = chunk_idx_0 + 1
+            whisper_chunk = whisper_chunks[chunk_key]
+            if not isinstance(whisper_chunk, dict):
+                continue
+
+            chunk_meta = next(
+                (meta for meta in chunks_meta_list if meta.get("idx") == chunk_idx_0),
+                {},
+            )
+            speaker_id = chunk_meta.get("speaker_id") or whisper_chunk.get("speaker_id", "")
+            text_length = chunk_meta.get("text_length", 0)
+
+            # Selected candidate (1-based); fall back to 1 when unavailable
+            selected_candidate_1 = selected_candidates_1based.get(str(chunk_idx_1), 1)
+
+            # Load per-candidate generation params and duration from candidates_metadata
+            cand_meta_map = self._load_candidates_metadata_map(chunk_idx_0)
+
+            candidates_whisper = whisper_chunk.get("candidates", {})
+            candidate_keys_sorted = sorted(candidates_whisper.keys(), key=lambda k: int(k))
+            candidates_list: List[Dict[str, Any]] = []
+
+            for cand_key in candidate_keys_sorted:
+                cand_idx_0 = int(cand_key)
+                cand_idx_1 = cand_idx_0 + 1
+                cand_data = candidates_whisper[cand_key]
+                if not isinstance(cand_data, dict):
+                    continue
+
+                # Generation params (exclude internal-only keys)
+                gen_params: Dict[str, Any] = {}
+                if cand_meta_map is not None:
+                    raw_params = (cand_meta_map.get(cand_idx_0) or {}).get(
+                        "generation_params", {}
+                    ) or {}
+                    gen_params = {
+                        k: v for k, v in raw_params.items()
+                        if k not in _EXCLUDED_GEN_PARAMS
+                    }
+
+                # Audio duration – prefer candidates_metadata, fall back to whisper data
+                audio_duration: Optional[float] = None
+                if cand_meta_map is not None:
+                    raw_dur = (cand_meta_map.get(cand_idx_0) or {}).get("audio_duration")
+                    if isinstance(raw_dur, (int, float)) and raw_dur > 0:
+                        audio_duration = _r2(raw_dur)
+                if audio_duration is None:
+                    fallback_dur = cand_data.get("audio_duration") or (
+                        (cand_data.get("quality_details") or {}).get("audio_duration")
+                    )
+                    audio_duration = _r2(fallback_dur)
+
+                # Scores
+                qd = cand_data.get("quality_details") or {}
+                individual = qd.get("individual_scores") or {}
+                val_metrics = qd.get("validation_metrics") or {}
+                prosody = cand_data.get("prosody") or {}
+                prosody_enabled = bool(prosody.get("enabled", False)) if prosody else False
+                prosody_sub = (prosody.get("subscores") or {}) if prosody_enabled else {}
+
+                scores: Dict[str, Any] = {
+                    "final_selection_score": _r4(cand_data.get("final_selection_score")),
+                    "overall_quality_score": _r4(
+                        cand_data.get("overall_quality_score")
+                        or individual.get("overall_score")
+                    ),
+                    "whisper_similarity": _r4(
+                        individual.get("similarity_score")
+                        or val_metrics.get("whisper_similarity")
+                    ),
+                    "whisper_quality": _r4(val_metrics.get("whisper_quality")),
+                    "length_score": _r4(individual.get("length_score")),
+                    "penalty_score": _r4(individual.get("penalty_score")),
+                    # Prosody fields: always present, null when prosody was disabled
+                    "prosody_score": _r4(prosody.get("prosody_score")) if prosody_enabled else None,
+                    "prosody_flow": _r4(prosody_sub.get("flow")) if prosody_enabled else None,
+                    "prosody_liveliness": _r4(prosody_sub.get("liveliness")) if prosody_enabled else None,
+                    "prosody_intelligibility": _r4(prosody_sub.get("intelligibility")) if prosody_enabled else None,
+                    "prosody_mos": _r4(prosody_sub.get("mos")) if prosody_enabled else None,
+                    "raw_mos": _r4(prosody.get("raw_mos")) if prosody_enabled else None,
+                    "wpm": _r1(prosody.get("wpm")) if prosody_enabled else None,
+                }
+
+                gates: Dict[str, Any] = {
+                    "is_valid": cand_data.get("is_valid"),
+                    "passes_mos_gate": cand_data.get("passes_mos_gate"),
+                    "passes_similarity_gate": cand_data.get("passes_similarity_gate"),
+                }
+
+                candidates_list.append({
+                    "idx": cand_idx_1,
+                    "generation_params": gen_params,
+                    "scores": scores,
+                    "gates": gates,
+                    "audio_duration": audio_duration,
+                })
+
+            chunks_list.append({
+                "chunk_idx": chunk_idx_1,
+                "speaker_id": speaker_id,
+                "text_length": text_length,
+                "selected_candidate": selected_candidate_1,
+                "candidates": candidates_list,
+            })
+
+        try:
+            chunks_list.sort(key=lambda c: c["chunk_idx"])
+        except Exception:
+            pass
+
+        return {
+            "schema_version": ANALYSIS_METRICS_SCHEMA_VERSION,
+            "task": {
+                "job_name": job_name,
+                "task_name": task_name,
+                "run_label": run_label,
+                "timestamp": timestamp,
+                "model_type": model_type,
+                "total_chunks": total_chunks,
+                "total_candidates_generated": total_candidates_generated,
+                "task_runtime_seconds": task_runtime_seconds,
+            },
+            "speakers": speakers,
+            "chunks": chunks_list,
+        }
 
     def _extract_validation_data(self, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
         """

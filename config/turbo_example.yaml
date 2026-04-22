@@ -18,7 +18,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.45
-        exaggeration_max_deviation: 0.10
+        exaggeration_max_deviation: -0.1
         cfg_weight: 0.4
         cfg_weight_max_deviation: 0.10
         temperature: 0.8

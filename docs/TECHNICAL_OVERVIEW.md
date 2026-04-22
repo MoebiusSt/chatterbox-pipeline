@@ -189,8 +189,9 @@ SpaCyChunker.chunk_text(text) → List[TextChunk]
 ```python
 TTSGenerator.generate_candidates(text, N) → List[AudioCandidate]
 CandidateManager.generate_candidates_for_chunk() → GenerationResult
-# N candidates per chunk with model-specific ramp semantics; last candidate may
-# be a "CONSERVATIVE" fallback (params from speaker.conservative_candidate) when
+# N candidates per chunk. Ramped params use one rule: value = base + (dev * ramp_pos).
+# Positive dev = ramp up, negative = ramp down. Last candidate may be a
+# "CONSERVATIVE" fallback (params from speaker.conservative_candidate) when
 # conservative_candidate.enabled=true.
 
 # Supported model types (src/utils/language_registry.py):
@@ -201,8 +202,8 @@ CandidateManager.generate_candidates_for_chunk() → GenerationResult
 # VibeVoice specifics (src/generation/tts_generator.py):
 #   - Supported tts_params: cfg_scale, temperature, top_p, diffusion_steps,
 #                           voice_speed_factor, use_sampling
-#   - Expressive ramp: cfg_scale and temperature both RAMP-UP across expressive
-#     candidates (candidate 0 = base, candidate i>0 = base + deviation * i/(N-1)).
+#   - Expressive ramp: same unified formula as other models; cfg_scale, temperature,
+#     diffusion_steps when deviation non-zero (candidate 0 = base).
 #   - use_sampling=false → greedy LM (top_p/temperature ignored).
 #   - voice_speed_factor resamples the *reference* audio, not the output.
 #   - Per-candidate seed: base_seed(speaker) + i*1000 + hash(text)%10000
@@ -376,6 +377,47 @@ class QualityScore:
 - **Input**: Text file (`data/input/texts/*.txt`)
 - **Output**: WAV file (`data/output/{job_name}/*.wav`)
 - **Config**: YAML (`config/default_config.yaml`, `config/jobs/*.yaml`)
+
+### Per-Task JSON Outputs
+
+Each task directory contains three JSON artifacts written by `TaskMetricsGenerator`
+(`src/utils/file_manager/task_metrics_generator.py`):
+
+| File | Purpose |
+|---|---|
+| `whisper/whisper_metrics.json` | Raw Whisper/validation data for all candidates, including full transcriptions. |
+| `task_metrics.json` | Task overview: selected candidates, summary statistics, per-chunk text. Used by the pipeline and the Audio User Selection Editor. |
+| `analysis_metrics.json` | Compact analysis file for parameter-sweep experiments (see below). |
+
+#### `analysis_metrics.json`
+
+Written alongside `task_metrics.json` after every successful task completion.
+Designed for efficient offline analysis of multi-speaker, multi-candidate jobs
+(e.g. temperature sweeps or RAMP-strategy comparisons).
+
+**What it contains** (per candidate, per chunk):
+- `generation_params` – all sampling parameters (temperature, top_k, …), without
+  `seed` or `language_id`
+- `scores` – `final_selection_score`, `overall_quality_score`, `whisper_similarity`,
+  `whisper_quality`, `length_score`, `penalty_score`, and all `prosody_*` subscores
+  (`prosody_score`, `prosody_flow`, `prosody_liveliness`, `prosody_intelligibility`,
+  `prosody_mos`, `raw_mos`, `wpm`)
+- `gates` – `is_valid`, `passes_mos_gate`, `passes_similarity_gate`
+- `audio_duration`
+- `selected_candidate` (1-based) per chunk
+
+**What it omits:** full text, transcriptions, audio filenames, and any path-based
+fields.
+
+**Schema stability rules:**
+- Prosody fields are always present; they are `null` when prosody scoring was disabled
+  for a run (consistent schema over compact schema).
+- All float scores are rounded to 4 decimal places; `wpm` to 1; `audio_duration` to 2.
+- `schema_version` (currently `"1.0"`) is a module-level constant
+  (`ANALYSIS_METRICS_SCHEMA_VERSION` in `task_metrics_generator.py`) so breaking
+  changes can be tracked.
+- The file is a pure addition; `task_metrics.json` and `whisper_metrics.json` are
+  never modified by `generate_analysis_metrics()`.
 
 ### Key Data Structures
 ```python

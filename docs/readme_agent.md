@@ -112,31 +112,28 @@ TTSGenerator.generate_candidates() → List[AudioCandidate]
 # - Last candidate: Conservative parameters (optional, for stability)
 # - conservative_candidate + num_candidates == 2 → Ramping disabled (only 1 expressive slot; no cfg/temp/diffusion_steps ramp across expressives)
 
+# Unified ramp (all model types, all ramped params in tts_generator.py):
+#   candidate_value = base + (max_deviation * ramp_position),  ramp_position in [0, 1]
+#   across expressive candidates (candidate 1 = ramp_position 0 → always *base*).
+#   Positive *max_deviation* → ramp UP; negative → ramp DOWN.
+#
 # Parameter behavior (Chatterbox models: standard / multilingual / turbo)
-exaggeration: RAMP-DOWN from MAX (config) to MIN (config - max_deviation)
-cfg_weight: RAMP-UP from MIN (config) to MAX (config + max_deviation)
-temperature: RAMP-UP from MIN (config) to MAX (config + max_deviation)
-
+#   exaggeration:  use negative *exaggeration_max_deviation* for a downward ramp (legacy used MAX+subtraction)
+#   cfg_weight / temperature:  positive *max_deviation* ramps UP from the configured start value
+#
 # Parameter behavior (Qwen3)
-temperature:           RAMP-UP from MIN (config) to MAX (config + temperature_max_deviation)
-top_k:                 RAMP-UP from MIN (config) to MAX (config + top_k_max_deviation)
-subtalker_top_k:       RAMP-UP from MIN (config) to MAX (config + subtalker_top_k_max_deviation)
-subtalker_temperature: RAMP-DOWN from MAX (config) to MIN (config - subtalker_temperature_max_deviation)
-                       Candidate 1 = config (max), last expressive = config - dev (min)
+#   temperature, top_k, subtalker_top_k:  positive *max_deviation* ramps UP
+#   subtalker_temperature:  sign of *subtalker_temperature_max_deviation* sets direction (negative = DOWN)
 
 # Parameter behavior (VibeVoice: vibevoice / vibevoice_1_5b / vibevoice_q4)
 # Implemented in TTSGenerator.generate_vibevoice_candidates (src/generation/tts_generator.py).
-cfg_scale:      MIN value; RAMP-UP across expressive candidates
-                Candidate 1 (i=0) = base cfg_scale
-                Candidate i>0    = cfg_scale + cfg_scale_max_deviation * i / (num_expressive-1)
+cfg_scale:      same unified formula; base = first expressive value
                 (higher = calmer/more stable; too low < ~1.2 risks artefacts)
-temperature:    MIN value; RAMP-UP across expressive candidates (same formula as cfg_scale)
-                Only applied to the LM when use_sampling=true; with use_sampling=false the
+temperature:    same; only applied to the LM when use_sampling=true; with use_sampling=false the
                 LM runs greedy and temperature/top_p are ignored.
 top_p:          nucleus sampling threshold; applied only when use_sampling=true (not ramped)
-diffusion_steps: int; MIN on first expressive; RAMP-UP across expressive candidates when
-                 diffusion_steps_max_deviation > 0 (same ramp_pos as cfg_scale/temperature;
-                 clamp 5–60). Default deviation 0 leaves steps at base for all expressives.
+diffusion_steps: int; ramp via *diffusion_steps_max_deviation* (non-zero; same ramp_pos; clamp 5–60).
+                 Default deviation 0 leaves steps at base for all expressives.
                  Last candidate may override via conservative_candidate.diffusion_steps.
 voice_speed_factor: resamples the *reference* audio by this factor (1.00 = unchanged,
                     ~0.98..1.05 for subtle speed tweaks); does NOT time-stretch the output.

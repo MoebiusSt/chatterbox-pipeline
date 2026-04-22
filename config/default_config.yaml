@@ -39,28 +39,24 @@ generation:
         # Parameters not supported by the active model_type are gracefully skipped at runtime.
         #
         # Chatterbox models (standard / multilingual / turbo):
-        # - exaggeration: MAX value (will ramp DOWN from MAX to exaggeration-exag_max_deviation)
-        # - cfg_weight: MIN value (will ramp UP from MIN to cfg_weight+max_dev)
-        # - temperature: MIN value (will ramp UP from MIN to temp+max_dev)
+        # Ramping (all expressive): param = base + (dev * ramp_pos), ramp_pos 0..1. Positive dev = ramp UP, negative = DOWN.
+        # - exaggeration: start value; use negative *exaggeration_max_deviation* to ramp DOWN (e.g. -0.1)
+        # - cfg_weight:   start; positive *cfg_weight_max_deviation* ramps UP
+        # - temperature:  start; positive *temperature_max_deviation* ramps UP
         # - min_p, top_p, repetition_penalty: passed as-is
         # - turbo only: top_k (default 1000), norm_loudness (bool, enables built-in loudness normalization)
         #
         # Qwen3 model (qwen3):
-        # - temperature              default 0.9  | MIN value; RAMP-UP across candidates
+        # Same formula: param = base + (dev * ramp_pos) for all ramped fields.
+        # - temperature              default 0.9  | start; RAMP-UP with positive *temperature_max_deviation*
         #                                            <1 more confident/deterministic, >1 more random/creative
-        # - temperature_max_deviation             | ramp UP by this amount over candidates
-        # - top_k                    default 50   | MIN value; RAMP-UP; lower = more deterministic
-        # - top_k_max_deviation                   | ramp UP by this amount over candidates
+        # - top_k                    default 50   | start; RAMP-UP with positive *top_k_max_deviation*
         # - top_p                    default 1.0  | lower = more focused, reduce diversity (not ramped)
         # - repetition_penalty       default 1.05 | raise to 1.1–1.15 to suppress repetitions (not ramped)
         # - max_new_tokens           default 2048 | hard cap on output length (stops at limit or EOS)
         # - do_sample                default true | false = greedy decoding (deterministic, less natural)
-        # - subtalker_top_k                       | MIN value; RAMP-UP; controls acoustic sub-model diversity
-        # - subtalker_top_k_max_deviation         | ramp UP by this amount over candidates
-        # - subtalker_temperature                 | MAX value; RAMP-DOWN across candidates:
-        #                                           candidate 1 = base (max), last = base - dev (min)
-        #                                           higher → more prosodic variation
-        # - subtalker_temperature_max_deviation   | full downward range from max to min
+        # - subtalker_top_k          | start; RAMP-UP with positive *subtalker_top_k_max_deviation*
+        # - subtalker_temperature   | start; positive dev = RAMP-UP, negative = RAMP-DOWN
         # - subtalker_top_p / subtalker_dosample  | not ramped
         # - exaggeration / cfg_weight / min_p are not supported and will be silently skipped
         #
@@ -74,14 +70,14 @@ generation:
         # - voice_speed_factor       default 1.0  | try adjusts reference voice speed in very small increments (0.98, 1.05)
         # - use_sampling             default false| false=deterministic, true=sampling with temperature/top_p
 
-        exaggeration: 0.45                  # give MAX here
-        exaggeration_max_deviation: 0.10    # ramp DOWN 
+        exaggeration: 0.45                  # start (candidate 1)
+        exaggeration_max_deviation: -0.1    # negative dev → ramp DOWN
 
-        cfg_weight: 0.15                    # give MIN here
-        cfg_weight_max_deviation: 0.20      # ramp UP 
+        cfg_weight: 0.15                    # start
+        cfg_weight_max_deviation: 0.20      # positive dev → ramp UP
 
-        temperature: 0.9                    # give MIN here
-        temperature_max_deviation: 0.20     # ramp UP 
+        temperature: 0.9                    # start
+        temperature_max_deviation: 0.20     # positive dev → ramp UP
 
         repetition_penalty: 1.5             # Penalty for repeated output tokens (default is 1.2, was 2.0 earlier) 
         
@@ -103,7 +99,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.5
-        exaggeration_max_deviation: 0.20
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.15
         cfg_weight_max_deviation: 0.30
         temperature: 0.88
@@ -122,7 +118,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.55
-        exaggeration_max_deviation: 0.20
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.15
         cfg_weight_max_deviation: 0.25
         temperature: 0.9
@@ -156,7 +152,7 @@ generation:
       language: en
       tts_params:
         exaggeration: 0.80  #only ramp down exaggeration, evaluate effect of exaggeration
-        exaggeration_max_deviation: 0.5
+        exaggeration_max_deviation: -0.5
         cfg_weight: 0.50
         cfg_weight_max_deviation: 0.0
         temperature: 1.05
