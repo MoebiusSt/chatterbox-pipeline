@@ -49,10 +49,10 @@ generation:
         top_k_max_deviation: 100
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.8   # MAX value; ramps DOWN
-        subtalker_temperature_max_deviation: 0.6
         subtalker_top_k: 200          # MIN value; ramps UP across candidates
         subtalker_top_k_max_deviation: 50
+        subtalker_temperature: 1.5   # CENTER value; ramps DOWN-OVER-CENTER
+        subtalker_temperature_max_deviation: 0.6
         subtalker_top_p: 1.0
         subtalker_dosample: true
       conservative_candidate:
@@ -61,8 +61,8 @@ generation:
         top_k: 100            
         top_p: 0.99
         repetition_penalty: 1.05
-        subtalker_temperature: 1.30
         subtalker_top_k: 110    
+        subtalker_temperature: 1.30
         subtalker_top_p: 1.0
     - id: annie_coleman_rothenberg_2_15s
       reference_audio: annie_coleman_rothenberg_2_15s.wav
@@ -74,10 +74,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 220
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -91,10 +91,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 220
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -108,10 +108,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -125,10 +125,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 220
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -142,10 +142,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 220
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -159,27 +159,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.188333
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 187
         subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: david-barnes_2_DE-fake_15s
-      reference_audio: david-barnes_2_DE-fake_15s.wav
-      language: de
-      tts_params:
-        temperature: 1.04
-        temperature_max_deviation: 0.0
-        top_k: 131
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
         subtalker_temperature: 1.188333
         subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 187
-        subtalker_top_k_max_deviation: 0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -193,10 +176,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.188333
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 187
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.188333
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -210,10 +193,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 153
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -227,10 +210,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 220
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -244,10 +227,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 153
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -261,10 +244,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -278,10 +261,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -295,10 +278,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 153
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -312,10 +295,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 153
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -329,10 +312,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 153
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -346,10 +329,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -363,10 +346,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 153
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.371667
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -380,28 +363,28 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
     - id: erik_prochnow_DE_15s
       reference_audio: erik_prochnow_DE_15s.wav
       language: de
-      ttts_params:
-        temperature: 1.15 # MIN value; ramps UP across candidates
-        temperature_max_deviation: 0.25
-        top_k: 120 # MIN value; ramps UP across candidates
-        top_k_max_deviation: 30
-        top_p: 0.99
-        repetition_penalty: 1.07
-        subtalker_temperature: 1.40 # MAX value; ramps DOWN
-        subtalker_temperature_max_deviation: 0.20
-        subtalker_top_k: 170 # MIN value; ramps UP across candidates
-        subtalker_top_k_max_deviation: 20
-        subtalker_top_p: 0.97
+      tts_params:
+        temperature: 0.72
+        temperature_max_deviation: 0.0
+        top_k: 38
+        top_k_max_deviation: 0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
     - id: martina-zimmermann_DE_15s
@@ -414,10 +397,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -431,10 +414,44 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 220
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_p: 1.0
+      conservative_candidate:
+        enabled: false
+    - id: petra_ries2_DE_15s
+      reference_audio: petra_ries2_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.08 # MIN value; ramps UP across candidates
+        temperature_max_deviation: 0.30
+        top_k: 120 # MIN value; ramps UP across candidates
+        top_k_max_deviation: 35
+        top_p: 1.0
+        repetition_penalty: 1.04
+        subtalker_temperature: 1.50 # CENTER value; ramps DOWN-OVER-CENTER
+        subtalker_temperature_max_deviation: 0.5
+        subtalker_top_k: 90 # MIN value; ramps UP across candidates
+        subtalker_top_k_max_deviation: 50
+        subtalker_top_p: 1.0
+      conservative_candidate:
+        enabled: false
+    - id: petra_ries_DE_15s
+      reference_audio: petra_ries_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.2
+        temperature_max_deviation: 0.0
+        top_k: 178
+        top_k_max_deviation: 0
+        top_p: 1.0
+        repetition_penalty: 1.05
+        subtalker_top_k: 220
+        subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -448,10 +465,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 220
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.0
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -465,10 +482,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -482,10 +499,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 120
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.555
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false
@@ -499,10 +516,10 @@ generation:
         top_k_max_deviation: 0
         top_p: 1.0
         repetition_penalty: 1.05
-        subtalker_temperature: 1.188333
-        subtalker_temperature_max_deviation: 0.0
         subtalker_top_k: 187
         subtalker_top_k_max_deviation: 0
+        subtalker_temperature: 1.188333
+        subtalker_temperature_max_deviation: 0.0
         subtalker_top_p: 1.0
       conservative_candidate:
         enabled: false

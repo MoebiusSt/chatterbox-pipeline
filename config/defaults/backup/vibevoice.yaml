@@ -67,45 +67,36 @@ generation:
         # Last candidate: overrides expressive ramp; set diffusion_steps here for a fixed conservative DDPM depth
         diffusion_steps: 24
         voice_speed_factor: 1.00
-    - id: mike_kamp_2_DE_15s.wav
+    - id: petra_ries2_DE
+      reference_audio: petra_ries2_DE.wav
       language: de
-      reference_audio: mike_kamp_2_DE_15s.wav
       tts_params:
-        temperature: 1.70 # MIN value; ramps UP
-        temperature_max_deviation: 0.15
-        top_p: 0.99
-        cfg_scale: 1.28 # MIN value; ramps UP across candidates
-        cfg_scale_max_deviation: 0.12
-        diffusion_steps: 45 # MIN value; ramps UP across candidates
+        temperature: 1.10 # MIN value; ramps UP
+        temperature_max_deviation: 0.35
+        top_p: 0.93
+        cfg_scale: 1.45 # MIN value; ramps UP across candidates
+        cfg_scale_max_deviation: 0.1
+        diffusion_steps: 20 # MIN value; ramps UP across candidates
         diffusion_steps_max_deviation: 10  # (0 = no ramp;)
-        voice_speed_factor: 1.04
+        voice_speed_factor: 0.94
         use_sampling: true
       conservative_candidate:
         enabled: true
-        temperature: 1.70
-        top_p: 0.98
-        cfg_scale: 1.35      
-        diffusion_steps: 45
-        voice_speed_factor: 1.04
-    - id: annie_coleman_rothenberg_1_DE-fake_15s.wav
-      reference_audio: annie_coleman_rothenberg_1_DE-fake_15s.wav
-      language: de
+        temperature: 1.10
+        top_p: 0.90
+        cfg_scale: 1.5      
+        diffusion_steps: 28
+        voice_speed_factor: 0.95
+    - id: petra_ries2_IT
+      reference_audio: petra_ries2_IT-Fake.wav
+      language: it
       tts_params:
-        temperature: 1.60             # MIN value; ramps UP (only with use_sampling=true)
-        temperature_max_deviation: 0.20
-        top_p: 0.99                   # used only with use_sampling=true
-        cfg_scale: 1.25               # MIN value; ramps UP across candidates
-        cfg_scale_max_deviation: 0.20
-        diffusion_steps: 35          # MIN value; ramps UP across candidates
-        diffusion_steps_max_deviation: 15  # (0 = no ramp;)
-        voice_speed_factor: 0.98
+        temperature: 0.95
+        temperature_max_deviation: 0.3
+        top_p: 0.95
+        cfg_scale: 1.70
+        cfg_scale_max_deviation: 0.23
+        diffusion_steps: 70
+        diffusion_steps_max_deviation: 30 
+        voice_speed_factor: 0.95
         use_sampling: true
-      conservative_candidate:
-        enabled: true
-        temperature: 1.40
-        temperature_max_deviation: 0
-        top_p: 0.98
-        cfg_scale: 1.35
-        cfg_scale_max_deviation: 0
-        diffusion_steps: 40
-    

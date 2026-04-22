@@ -57,10 +57,10 @@ generation:
         # - do_sample                default true | false = greedy decoding (deterministic, less natural)
         # - subtalker_top_k                       | MIN value; RAMP-UP; controls acoustic sub-model diversity
         # - subtalker_top_k_max_deviation         | ramp UP by this amount over candidates
-        # - subtalker_temperature                 | MAX value; RAMP-DOWN across candidates:
-        #                                           candidate 1 = base (max), last = base - dev (min)
+        # - subtalker_temperature                 | CENTER value; RAMP-DOWN-OVER-CENTER:
+        #                                           candidate 1 = base + dev/2 (max), last = base - dev/2 (min)
         #                                           higher → more prosodic variation
-        # - subtalker_temperature_max_deviation   | full downward range from max to min
+        # - subtalker_temperature_max_deviation   | full range (half above, half below center)
         # - subtalker_top_p / subtalker_dosample  | not ramped
         # - exaggeration / cfg_weight / min_p are not supported and will be silently skipped
         #

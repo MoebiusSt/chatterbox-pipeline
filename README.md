@@ -43,7 +43,7 @@ An enhanced Text-to-Speech pipeline wrapper around resemble-ai/chatterbox
 - **Reference Text**: Place a `.txt` sidecar file next to your reference `.wav` (e.g. `speaker.wav` + `speaker.txt`) — cbpipe discovers and passes it automatically as `ref_text` for higher cloning quality; falls back to x-vector-only mode if no transcript is found
 - **Prompt Caching**: Voice-clone prompts are built once per speaker with `create_voice_clone_prompt` and cached in-session, avoiding redundant re-encoding across chunks
 - **Reference Audio Check**: cbpipe warns if a reference audio clip exceeds the recommended 3-second limit for this model
-- **Dedicated Parameter Set**: `temperature` (ramped across candidates), `top_k`, `top_p`, `repetition_penalty`, `max_new_tokens`, `do_sample`, and the full `subtalker_*` parameter set are all configurable via `tts_params`; unsupported Chatterbox-specific params (e.g. `exaggeration`, `min_p`) are silently skipped
+- **Dedicated Parameter Set**: `temperature`, `top_k`, `top_p`, `repetition_penalty`, `max_new_tokens`, `do_sample`, and the full `subtalker_*` parameter set are all configurable via `tts_params`; for Qwen3 ramping, `temperature`/`top_k`/`subtalker_top_k` ramp UP and `subtalker_temperature` ramps DOWN from MAX (`config`) to `config - subtalker_temperature_max_deviation`; unsupported Chatterbox-specific params (e.g. `exaggeration`, `min_p`) are silently skipped
 
 #### Validation
 - **WhisperValidator**: Speech-to-text re-validation of generated audio candidates using local Whisper models (base/small/medium/large).

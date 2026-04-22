@@ -714,10 +714,10 @@ class TTSGenerator:
             else:
                 params = dict(filtered_base)
 
-                # RAMP-DOWN-OVER-CENTER: subtalker_temperature center-offset applies to all
-                # expressive candidates (including i=0 which is the maximum)
+                # subtalker_temperature: regular RAMP-DOWN from MAX (base)
+                # across expressive candidates.
                 if subtalker_temp_base is not None and subtalker_temp_dev > 0:
-                    params["subtalker_temperature"] = subtalker_temp_base + subtalker_temp_dev / 2
+                    params["subtalker_temperature"] = subtalker_temp_base
 
                 if i > 0 and num_expressive > 1:
                     ramp_pos = i / max(1, num_expressive - 1)
@@ -726,10 +726,10 @@ class TTSGenerator:
                     # top_k: RAMP-UP
                     if top_k_base is not None and top_k_dev > 0:
                         params["top_k"] = int(round(top_k_base + top_k_dev * ramp_pos))
-                    # subtalker_temperature: RAMP-DOWN-OVER-CENTER
+                    # subtalker_temperature: RAMP-DOWN
                     if subtalker_temp_base is not None and subtalker_temp_dev > 0:
                         params["subtalker_temperature"] = (
-                            subtalker_temp_base + subtalker_temp_dev / 2 - subtalker_temp_dev * ramp_pos
+                            subtalker_temp_base - subtalker_temp_dev * ramp_pos
                         )
                     # subtalker_top_k: RAMP-UP
                     if subtalker_top_k_base is not None and subtalker_top_k_dev > 0:

@@ -25,7 +25,7 @@ generation:
         top_p: 1.0
         subtalker_top_k: 200
         subtalker_top_k_max_deviation: 50
-        subtalker_temperature: 1.45
+        subtalker_temperature: 1.65
         subtalker_temperature_max_deviation: 0.4
       conservative_candidate:
         enabled: false

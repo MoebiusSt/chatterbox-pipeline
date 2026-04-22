@@ -5,6 +5,7 @@ Allows users to edit and select different audio candidates for final assembly.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Set, Tuple
 
@@ -223,6 +224,39 @@ class UserCandidateManager:
             logger.error(f"Failed to save candidate selection: {e}")
             return False
 
+    def _print_candidate_selector_screen(
+        self,
+        chunk_idx: int,
+        chunks: List,
+        candidate_infos: List[CandidateInfo],
+    ) -> None:
+        """Print chunk header, candidate table, and action menu."""
+        chunk = chunks[chunk_idx]
+        print(
+            f"\nSelect audio candidate for chunk: {chunk_idx+1:03d} / {len(chunks):03d}"
+        )
+        print()
+        clean_text = chunk.text.replace("\n", " ").replace("\r", " ")
+        clean_text = " ".join(clean_text.split())
+        print(f'Text: "{clean_text}"')
+        print()
+        print(f"Number of candidates: {len(candidate_infos)}")
+
+        current_selected = int(self.current_selections.get(str(chunk_idx), 0)) + 1
+        print(f"Current selected Candidate: {current_selected}")
+        print()
+
+        self._print_candidate_table(candidate_infos)
+
+        print()
+        print("Select action:")
+        print(f"1-{len(candidate_infos):<2} - Select candidate")
+        if chunk_idx < len(chunks) - 1:
+            print("n       - Next Chunk")
+        if chunk_idx > 0:
+            print("p       - Previous Chunk")
+        print("c       - Return")
+
     def show_candidate_overview(self, task_info: Dict) -> None:
         """Display candidate overview prompt."""
         print("\nCandidates selected as best matching for the final audio assembly:")
@@ -278,38 +312,13 @@ class UserCandidateManager:
                 print(f"Invalid chunk index: {chunk_idx + 1}")
                 return -1
 
-            chunk = chunks[chunk_idx]
             candidate_infos = self.get_candidate_info(chunk_idx)
 
             if not candidate_infos:
                 print(f"No candidates found for chunk {chunk_idx + 1}")
                 return -1
 
-            print(
-                f"\nSelect audio candidate for chunk: {chunk_idx+1:03d} / {len(chunks):03d}"
-            )
-            print()
-            # Clean text for display - remove line breaks and normalize whitespace
-            clean_text = chunk.text.replace("\n", " ").replace("\r", " ")
-            clean_text = " ".join(clean_text.split())
-            print(f'Text: "{clean_text}"')
-            print()
-            print(f"Number of candidates: {len(candidate_infos)}")
-
-            current_selected = int(self.current_selections.get(str(chunk_idx), 0)) + 1
-            print(f"Current selected Candidate: {current_selected}")
-            print()
-
-            self._print_candidate_table(candidate_infos)
-
-            print()
-            print("Select action:")
-            print(f"1-{len(candidate_infos):<2} - Select candidate")
-            if chunk_idx < len(chunks) - 1:
-                print("n       - Next Chunk")
-            if chunk_idx > 0:
-                print("p       - Previous Chunk")
-            print("c       - Return")
+            self._print_candidate_selector_screen(chunk_idx, chunks, candidate_infos)
 
             while True:
                 choice = input("\n> ").strip()
@@ -320,51 +329,50 @@ class UserCandidateManager:
                     return -2  # Signal next chunk
                 elif choice.lower() == "p" and chunk_idx > 0:
                     return -3  # Signal previous chunk
+                elif (combined := re.match(r"^(\d+)([npc])$", choice.strip().lower())):
+                    candidate_num = int(combined.group(1))
+                    suffix = combined.group(2)
+                    if 1 <= candidate_num <= len(candidate_infos):
+                        candidate_idx = candidate_num - 1
+                        if self.save_candidate_selection(chunk_idx, candidate_idx):
+                            print(
+                                f"Selected candidate {candidate_num} for chunk {chunk_idx + 1}"
+                            )
+                            if suffix == "c":
+                                return -1
+                            if suffix == "n":
+                                if chunk_idx < len(chunks) - 1:
+                                    return -2
+                                print("Already at last chunk.")
+                            elif suffix == "p":
+                                if chunk_idx > 0:
+                                    return -3
+                                print("Already at first chunk.")
+                            candidate_infos = self.get_candidate_info(chunk_idx)
+                            self._print_candidate_selector_screen(
+                                chunk_idx, chunks, candidate_infos
+                            )
+                        else:
+                            print("Failed to save selection. Please try again.")
+                    else:
+                        print(
+                            f"Invalid choice. Please enter 1-{len(candidate_infos)} or 'c'"
+                        )
                 elif choice.isdigit():
                     candidate_num = int(choice)
                     if 1 <= candidate_num <= len(candidate_infos):
                         candidate_idx = candidate_num - 1  # Convert to 0-based
                         # Save selection immediately
                         if self.save_candidate_selection(chunk_idx, candidate_idx):
-                            # Update display for next iteration
                             for info in candidate_infos:
                                 info.is_selected = info.candidate_id == candidate_idx
                             print(
                                 f"Selected candidate {candidate_num} for chunk {chunk_idx + 1}"
                             )
-                            # Continue the loop to show updated display instead of recursion
-                            candidate_infos = self.get_candidate_info(
-                                chunk_idx
-                            )  # Refresh data
-                            print(
-                                f"\nSelect audio candidate for chunk: {chunk_idx+1:03d} / {len(chunks):03d}"
+                            candidate_infos = self.get_candidate_info(chunk_idx)
+                            self._print_candidate_selector_screen(
+                                chunk_idx, chunks, candidate_infos
                             )
-                            print()
-                            # Clean text for display - remove line breaks and normalize whitespace
-                            clean_text = chunk.text.replace("\n", " ").replace(
-                                "\r", " "
-                            )
-                            clean_text = " ".join(clean_text.split())
-                            print(f'Text: "{clean_text}"')
-                            print()
-                            print(f"Number of candidates: {len(candidate_infos)}")
-
-                            current_selected = (
-                                int(self.current_selections.get(str(chunk_idx), 0)) + 1
-                            )
-                            print(f"Current selected Candidate: {current_selected}")
-                            print()
-
-                            self._print_candidate_table(candidate_infos)
-
-                            print()
-                            print("Select action:")
-                            print(f"1-{len(candidate_infos):<2} - Select candidate")
-                            if chunk_idx < len(chunks) - 1:
-                                print("n       - Next Chunk")
-                            if chunk_idx > 0:
-                                print("p       - Previous Chunk")
-                            print("c       - Return")
                         else:
                             print("Failed to save selection. Please try again.")
                     else:

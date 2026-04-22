@@ -325,25 +325,9 @@ generation:
         exaggeration: 0.35
         cfg_weight: 0.6
         temperature: 0.8
-        
-    - id: david_barnes_2 # ---- DONE ----
+
+    - id: david_barnes_2_DE-FAKE # ---- DONE ----
       reference_audio: david_barnes_2.wav
-      language: en
-      tts_params:
-        exaggeration: 1.05
-        exaggeration_max_deviation: 0.2
-        cfg_weight: 0.22
-        cfg_weight_max_deviation: 0.06
-        temperature: 0.95
-        temperature_max_deviation: 0.20
-        repetition_penalty: 2.50
-        min_p: 0.19
-        top_p: 0.99
-      conservative_candidate:
-        enabled: false
-        
-    - id: david_barnes_2_DE-fake # ---- DONE ----
-      reference_audio: david_barnes_2_15s.wav
       language: de
       tts_params:
         exaggeration: 1.05
@@ -358,8 +342,8 @@ generation:
       conservative_candidate:
         enabled: false
         
-    - id: david_barnes_2_DE-fake # ---- DONE ----
-      reference_audio: david_barnes_2_DE-fake.wav
+    - id: david_barnes_DE-fake # ---- DONE ----
+      reference_audio: david-barnes_DE_2_fake.wav
       language: de
       seed: 0
       tts_params:
@@ -774,6 +758,80 @@ generation:
         top_p: 0.98                     
       conservative_candidate:
         enabled: false
+        
+    - id: petra_ries_DE # ---- DONE ----
+      reference_audio: petra_ries_DE.wav
+      language: de
+      tts_params:
+        exaggeration: 0.8
+        exaggeration_max_deviation: 0.5
+        cfg_weight: 0.3
+        cfg_weight_max_deviation: 0.2
+        temperature: 0.6
+        temperature_max_deviation: 0.3
+        repetition_penalty: 1.8
+        min_p: 0.06
+        top_p: 0.99
+      conservative_candidate:
+        enabled: false
+
+    - id: petra_ries_DE_LEBHAFT # ---- DONE ----
+      reference_audio: petra_ries_DE.wav
+      language: de
+      tts_params:
+        exaggeration: 1.45
+        exaggeration_max_deviation: 0.7
+        cfg_weight: 0.27
+        cfg_weight_max_deviation: 0.13
+        temperature: 1.05
+        temperature_max_deviation: 0.15
+        repetition_penalty: 2.0
+        min_p: 0.07
+        top_p: 0.99
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.5
+        cfg_weight: 0.4
+        temperature: 0.7
+        min_p: 0.15
+        top_p: 0.92
+
+    - id: petra_ries2_DE # ---- DONE ----
+      reference_audio: petra_ries2_DE.wav
+      language: de
+      tts_params:
+        exaggeration: 0.7
+        exaggeration_max_deviation: 0.4
+        cfg_weight: 0.3
+        cfg_weight_max_deviation: 0.2
+        temperature: 0.55
+        temperature_max_deviation: 0.35
+        repetition_penalty: 1.8
+        min_p: 0.06
+        top_p: 0.98
+      conservative_candidate:
+        enabled: false
+    
+    - id: petra_ries2_DE_LEBHAFT # ---- DONE ----
+      reference_audio: petra_ries2_DE.wav
+      language: de
+      tts_params:
+        exaggeration: 1.45
+        exaggeration_max_deviation: 0.9
+        cfg_weight: 0.27
+        cfg_weight_max_deviation: 0.15
+        temperature: 1.05
+        temperature_max_deviation: 0.15
+        repetition_penalty: 2.2
+        min_p: 0.08
+        top_p: 0.99
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.3
+        cfg_weight: 0.3
+        temperature: 0.7
+        min_p: 0.15
+        top_p: 0.9
 
     - id: ulrich_joosten1 # ---- DONE ----
       language: de

@@ -1,0 +1,39 @@
+# Model-specific default config for ChatterboxTurboTTS (English-only, fast).
+# Inherits everything from default_config.yaml and overrides model-specific values.
+# Job configs that use Turbo can reference this file:
+#
+#   parent: defaults/turbo.yaml
+#
+# They then only need to specify job-specific overrides (text file, speakers, etc.).
+
+parent: default_config.yaml
+
+generation:
+  model_type: turbo
+  default_speaker: stephan_moebius_1
+
+  speakers:
+    - id: stephan_moebius_1
+      reference_audio: stephan_moebius_1.wav
+      language: en
+      tts_params:
+        # Chatterbox/Turbo parameters – see readme_agent.md for ramp semantics.
+        exaggeration: 0.45            # MAX value; ramps DOWN across candidates
+        exaggeration_max_deviation: 0.10
+        cfg_weight: 0.15              # MIN value; ramps UP across candidates
+        cfg_weight_max_deviation: 0.20
+        temperature: 0.90             # MIN value; ramps UP across candidates
+        temperature_max_deviation: 0.20
+        repetition_penalty: 1.5
+        min_p: 0.06
+        top_p: 0.94
+        # Turbo extras
+        top_k: 1000
+        norm_loudness: false          # true enables built-in loudness normalization
+      conservative_candidate:
+        enabled: true
+        exaggeration: 0.4
+        cfg_weight: 0.35
+        temperature: 0.8
+        min_p: 0.08
+        top_p: 0.9

@@ -373,6 +373,13 @@ class ChatterboxTester:
         self._update_ref_text_indicator()
         print(f"Reference audio list refreshed: {len(self.reference_audio_files)} files found")
 
+    def _reload_reference_audio_and_presets(self):
+        """Reload reference audio files and presets from disk."""
+        self._refresh_reference_audio_list()
+        self._load_presets()
+        self._update_load_button_state()
+        print("Reloaded reference audio list and presets file")
+
     # ------------------------------------------------------------------ #
     # Preset helpers                                                        #
     # ------------------------------------------------------------------ #
@@ -442,7 +449,7 @@ class ChatterboxTester:
         )
 
         tk.Button(ref_frame, text="⭯", font=("Arial", 9),
-                  command=self._refresh_reference_audio_list,
+                  command=self._reload_reference_audio_and_presets,
                   bg="#f0f0f0", width=3, cursor="hand2").pack(side=tk.LEFT, padx=2)
 
         self.load_preset_btn = tk.Button(
@@ -2121,7 +2128,7 @@ class ChatterboxTester:
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         ref_name  = Path(self.ref_audio_var.get()).stem
-        base_name = f"test_{ref_name}_{timestamp}"
+        base_name = f"{timestamp}_test_{ref_name}"
         output_path = output_dir / f"{base_name}.wav"
         yaml_path   = output_dir / f"{base_name}.yaml"
 

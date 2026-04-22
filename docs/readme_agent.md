@@ -107,7 +107,7 @@ TTSGenerator.generate_candidates() → List[AudioCandidate]
 # - Soft check: warns but does not abort
 
 # RAMP Strategy (N candidates per chunk)
-# - Candidate 1: Exact config parameters (baseline, with center-offset for RAMP-DOWN-OVER-CENTER params)
+# - Candidate 1: Exact config parameters (baseline)
 # - Candidates 2-N: Linear interpolation from config to deviation limits
 # - Last candidate: Conservative parameters (optional, for stability)
 # - conservative_candidate + num_candidates == 2 → Ramping disabled (only 1 expressive slot; no cfg/temp/diffusion_steps ramp across expressives)
@@ -121,8 +121,8 @@ temperature: RAMP-UP from MIN (config) to MAX (config + max_deviation)
 temperature:           RAMP-UP from MIN (config) to MAX (config + temperature_max_deviation)
 top_k:                 RAMP-UP from MIN (config) to MAX (config + top_k_max_deviation)
 subtalker_top_k:       RAMP-UP from MIN (config) to MAX (config + subtalker_top_k_max_deviation)
-subtalker_temperature: RAMP-DOWN-OVER-CENTER: config value is CENTER
-                       Candidate 1 = config + dev/2 (max), last expressive = config - dev/2 (min)
+subtalker_temperature: RAMP-DOWN from MAX (config) to MIN (config - subtalker_temperature_max_deviation)
+                       Candidate 1 = config (max), last expressive = config - dev (min)
 
 # Parameter behavior (VibeVoice: vibevoice / vibevoice_1_5b / vibevoice_q4)
 # Implemented in TTSGenerator.generate_vibevoice_candidates (src/generation/tts_generator.py).
