@@ -413,9 +413,18 @@ fields.
 - Prosody fields are always present; they are `null` when prosody scoring was disabled
   for a run (consistent schema over compact schema).
 - All float scores are rounded to 4 decimal places; `wpm` to 1; `audio_duration` to 2.
-- `schema_version` (currently `"1.0"`) is a module-level constant
+- `schema_version` (currently `"1.1"`) is a module-level constant
   (`ANALYSIS_METRICS_SCHEMA_VERSION` in `task_metrics_generator.py`) so breaking
   changes can be tracked.
+- Per speaker, `ramp_spec` records the **resolved** ramp axes from the speaker’s
+  `tts_params` (post-config cascade): for each base parameter with non-zero
+  `*_max_deviation`, an object with `base`, `max_deviation` (signed; negative
+  means ramp down), and `end` = `base + max_deviation`. Integer axes (`top_k`,
+  `subtalker_top_k`, `diffusion_steps`) are integers. Non-ramped parameters
+  (`top_p`, `repetition_penalty`, `min_p`, etc.) are omitted. If there are no
+  ramp axes, `ramp_spec` is the empty object `{}` (not `null`).
+- Chunk source metadata is read from `texts/chunks_metadata.json` via
+  `TaskMetricsGenerator._load_chunks_metadata()` (not `texts/chunks.json`).
 - The file is a pure addition; `task_metrics.json` and `whisper_metrics.json` are
   never modified by `generate_analysis_metrics()`.
 

@@ -7,11 +7,12 @@ Also generates analysis_metrics.json for parameter-sweep analysis.
 
 import json
 import logging
+import math
 import statistics
 from collections import Counter
 from pathlib import Path
 import re
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,27 @@ USER_SELECTION_FIELD = "user_selected_chunks"
 
 # Schema version for analysis_metrics.json – bump when the structure changes
 # in a backward-incompatible way.
-ANALYSIS_METRICS_SCHEMA_VERSION = "1.0"
+ANALYSIS_METRICS_SCHEMA_VERSION = "1.1"
+
+# Allowlist of ramp axes exported in analysis_metrics "ramp_spec" (resolved tts_params).
+# Maintenance: new model parameters (e.g. speaker_style_temperature) only appear in
+# analysis output after a row is added: (name in JSON, base key, *_max_deviation key).
+# The generator must also implement ramping for that axis in tts_generator.py for jobs
+# that use it; language_registry / config allowlists are separate and may need updates too.
+# Non-ramped constants (top_p, min_p, repetition_penalty) are never listed here.
+RAMPABLE_PARAMS: Tuple[Tuple[str, str, str], ...] = (
+    ("exaggeration", "exaggeration", "exaggeration_max_deviation"),
+    ("cfg_weight", "cfg_weight", "cfg_weight_max_deviation"),
+    ("temperature", "temperature", "temperature_max_deviation"),
+    ("top_k", "top_k", "top_k_max_deviation"),
+    ("subtalker_temperature", "subtalker_temperature", "subtalker_temperature_max_deviation"),
+    ("subtalker_top_k", "subtalker_top_k", "subtalker_top_k_max_deviation"),
+    ("cfg_scale", "cfg_scale", "cfg_scale_max_deviation"),
+    ("diffusion_steps", "diffusion_steps", "diffusion_steps_max_deviation"),
+)
+
+# Subset of RAMPABLE_PARAMS keys (first element of each triple) that serialize as int.
+_RAMP_SPEC_INT_KEYS = frozenset({"top_k", "subtalker_top_k", "diffusion_steps"})
 
 
 class TaskMetricsGenerator:
@@ -1089,6 +1110,46 @@ class TaskMetricsGenerator:
             logger.debug(f"_load_candidates_metadata_map failed for chunk {chunk_idx_0based}: {e}")
             return None
 
+    @staticmethod
+    def _build_speaker_ramp_spec(tts_params: Any) -> Dict[str, Any]:
+        """
+        Resolved ramp axes for analysis: base, signed max_deviation, and end = base + deviation.
+        Only includes parameters with non-zero *_max_deviation. Empty dict if none.
+        """
+        if not isinstance(tts_params, dict):
+            return {}
+        out: Dict[str, Any] = {}
+        for spec_key, base_key, dev_key in RAMPABLE_PARAMS:
+            raw_dev = tts_params.get(dev_key, 0)
+            try:
+                dev = float(raw_dev)
+            except (TypeError, ValueError):
+                continue
+            if dev == 0.0 or not math.isfinite(dev):
+                continue
+            if base_key not in tts_params:
+                continue
+            try:
+                base_f = float(tts_params[base_key])
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(base_f):
+                continue
+            end_f = base_f + dev
+            if spec_key in _RAMP_SPEC_INT_KEYS:
+                out[spec_key] = {
+                    "base": int(round(base_f)),
+                    "max_deviation": int(round(dev)),
+                    "end": int(round(end_f)),
+                }
+            else:
+                out[spec_key] = {
+                    "base": round(base_f, 4),
+                    "max_deviation": round(dev, 4),
+                    "end": round(end_f, 4),
+                }
+        return out
+
     def _build_analysis_metrics(
         self,
         whisper_metrics: Dict[str, Any],
@@ -1171,11 +1232,15 @@ class TaskMetricsGenerator:
                     (config.get("generation") or {}).get("num_candidates", 0)
                     if isinstance(config, dict) else 0
                 )
+            tts = (spk_cfg.get("tts_params") or {}) if isinstance(spk_cfg, dict) else {}
+            if not isinstance(tts, dict):
+                tts = {}
             speakers[sid] = {
                 "chunk_count": chunk_count,
                 "num_candidates_per_chunk": num_candidates_per_chunk,
                 "reference_audio": spk_cfg.get("reference_audio", ""),
                 "language": spk_cfg.get("language", ""),
+                "ramp_spec": self._build_speaker_ramp_spec(tts),
             }
 
         # ── selected candidates ───────────────────────────────────────────────

@@ -287,6 +287,51 @@ def test_speakers_section(task_dir: Path) -> None:
     assert isinstance(spk["num_candidates_per_chunk"], int)
     assert isinstance(spk["reference_audio"], str)
     assert isinstance(spk["language"], str)
+    assert "ramp_spec" in spk
+    assert spk["ramp_spec"] == {}
+
+
+def test_ramp_spec_negative_subtalker_temperature(task_dir: Path) -> None:
+    """ramp_spec preserves sign of max_deviation; end = base + max_deviation."""
+    from src.utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+
+    cfg = _make_config()
+    cfg["generation"]["speakers"][0]["tts_params"] = {
+        "subtalker_temperature": 1.45,
+        "subtalker_temperature_max_deviation": -0.30,
+    }
+
+    TaskMetricsGenerator(task_dir, cfg).generate_analysis_metrics()
+    spk = json.loads(
+        (task_dir / "analysis_metrics.json").read_text(encoding="utf-8")
+    )["speakers"]["spk_A"]
+
+    assert spk["ramp_spec"]["subtalker_temperature"] == {
+        "base": 1.45,
+        "max_deviation": -0.3,
+        "end": 1.15,
+    }
+
+
+def test_ramp_spec_empty_when_all_max_deviation_zero(task_dir: Path) -> None:
+    """A speaker with no ramp axes (all deviations 0) gets ramp_spec: {} not null."""
+    from src.utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+
+    cfg = _make_config()
+    cfg["generation"]["speakers"][0]["tts_params"] = {
+        "temperature": 1.1,
+        "temperature_max_deviation": 0,
+        "subtalker_top_k": 100,
+        "subtalker_top_k_max_deviation": 0,
+    }
+
+    TaskMetricsGenerator(task_dir, cfg).generate_analysis_metrics()
+    spk = json.loads(
+        (task_dir / "analysis_metrics.json").read_text(encoding="utf-8")
+    )["speakers"]["spk_A"]
+
+    assert spk["ramp_spec"] is not None
+    assert spk["ramp_spec"] == {}
 
 
 def test_chunks_section_structure(task_dir: Path) -> None:
