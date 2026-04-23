@@ -398,7 +398,7 @@ class MenuOrchestrator:
                 # Format: text_base_YYYYMMDD_HHMMSS (no run_label)
                 text_file = file_parts[0]
 
-        # Format: "job-name - run-label - doc-name.txt - date - time"
+        # Format: "job-name - run_label - doc-name.txt - date - time"
         run_label_display = task.run_label if task.run_label else "no-label"
         return f"{task.job_name} - {run_label_display} - {text_file}.txt - {date_str} - {time_str}"
 

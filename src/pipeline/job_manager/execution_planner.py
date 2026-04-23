@@ -115,7 +115,7 @@ class ExecutionPlanner:
                     config_files[0]
                 )
                 job_name = first_config.get("job", {}).get("name", "")
-                run_label = first_config.get("job", {}).get("run-label", "")
+                run_label = first_config.get("job", {}).get("run_label", "")
 
                 # OPTIMIZATION: Skip loading existing tasks if --mode new is explicitly specified
                 existing_tasks = []
@@ -125,7 +125,7 @@ class ExecutionPlanner:
                     if args.mode in ["all", "last", "all-new"] and run_label:
                         filter_by_run_label = run_label
                         logger.debug(
-                            f"Filtering existing tasks by run-label: '{run_label}' for mode: {args.mode}"
+                            f"Filtering existing tasks by run_label: '{run_label}' for mode: {args.mode}"
                         )
 
                     existing_tasks = self.job_manager.find_existing_tasks(
@@ -311,7 +311,7 @@ class ExecutionPlanner:
 
         Tasks are considered distinct if they differ in any of:
         - job: name
-        - job: run-label
+        - job: run_label
         - input: text_file
 
         Args:
@@ -336,7 +336,7 @@ class ExecutionPlanner:
                 job_config = self.config_manager.load_cascading_config(config_path)
 
                 job_name = job_config.get("job", {}).get("name", "")
-                run_label = job_config.get("job", {}).get("run-label", "")
+                run_label = job_config.get("job", {}).get("run_label", "")
                 text_file = job_config.get("input", {}).get("text_file", "")
 
                 # Create signature for uniqueness check
@@ -348,11 +348,11 @@ class ExecutionPlanner:
                     distinct_tasks.append(new_task)
                     seen_signatures.add(task_signature)
                     logger.debug(
-                        f"Task signature: job='{job_name}', run-label='{run_label}', text_file='{text_file}'"
+                        f"Task signature: job='{job_name}', run_label='{run_label}', text_file='{text_file}'"
                     )
                 else:
                     logger.debug(
-                        f"Skipping duplicate task signature: job='{job_name}', run-label='{run_label}', text_file='{text_file}'"
+                        f"Skipping duplicate task signature: job='{job_name}', run_label='{run_label}', text_file='{text_file}'"
                     )
 
             except Exception as e:

@@ -2,7 +2,7 @@ parent: defaults/vibevoice.yaml
 
 job:
   name: vibevoice-example
-  run-label:
+  run_label:
 
 input:
   text_file: input-document.txt

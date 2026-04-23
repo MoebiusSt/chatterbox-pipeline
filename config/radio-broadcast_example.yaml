@@ -2,7 +2,7 @@ parent: defaults/chatterbox.yaml
 
 job:
   name: radio-broadcast
-  run-label: war-of-the-worlds
+  run_label: war-of-the-worlds
 
 input:
   text_file: radio-broadcast_example.txt # file name in texts folder

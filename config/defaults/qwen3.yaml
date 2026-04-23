@@ -391,16 +391,16 @@ generation:
       reference_audio: erik_prochnow_DE_15s.wav
       language: de
       ttts_params:
-        temperature: 1.15 # start; positive *temperature_max_deviation* → ramp UP
-        temperature_max_deviation: 0.25
-        top_k: 120 # start; positive *top_k_max_deviation* → ramp UP
-        top_k_max_deviation: 30
+        temperature: 1.19 # start; positive *temperature_max_deviation* → ramp UP
+        temperature_max_deviation: 0.36
+        top_k: 130 # start; positive *top_k_max_deviation* → ramp UP
+        top_k_max_deviation: 40
         top_p: 0.99
         repetition_penalty: 1.07
         subtalker_temperature: 1.40 # start; sign of *subtalker_temperature_max_deviation* sets direction
-        subtalker_temperature_max_deviation: -0.2
-        subtalker_top_k: 170 # start; positive *subtalker_top_k_max_deviation* → ramp UP
-        subtalker_top_k_max_deviation: 20
+        subtalker_temperature_max_deviation: -0.24
+        subtalker_top_k: 186 # start; positive *subtalker_top_k_max_deviation* → ramp UP
+        subtalker_top_k_max_deviation: 24
         subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false

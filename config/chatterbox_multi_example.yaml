@@ -5,7 +5,7 @@ parent: defaults/chatterbox_multi.yaml
 
 job:
   name: chatterbox-multi-example
-  run-label:
+  run_label:
 
 input:
   text_file: input-document.txt

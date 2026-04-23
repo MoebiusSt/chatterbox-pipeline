@@ -173,7 +173,7 @@ class ConfigManager:
         This only touches string-typed identifier fields and leaves real boolean flags intact.
         Fields adjusted:
           - job.name
-          - job.run-label
+          - job.run_label
           - generation.default_speaker
           - generation.speakers[].id
           - generation.speakers[].language
@@ -191,18 +191,27 @@ class ConfigManager:
                 job["name"] = self._coerce_to_string_identifier(job["name"])
                 if original != job["name"]:
                     logger.debug(f"Identifier normalization: job.name '{original}' → '{job['name']}'")
-            if "run-label" in job:
-                original = job["run-label"]
-                # Gracefully handle None/False/True for run-label → empty string
+            # Backward compatibility: migrate legacy key "run-label" → "run_label"
+            if "run-label" in job and "run_label" not in job:
+                job["run_label"] = job.pop("run-label")
+                logger.debug("Backward compat: migrated job.run-label → job.run_label")
+            elif "run-label" in job:
+                # Both keys present: run_label wins, discard run-label
+                job.pop("run-label")
+                logger.debug("Backward compat: discarded legacy job.run-label (run_label already set)")
+
+            if "run_label" in job:
+                original = job["run_label"]
+                # Gracefully handle None/False/True for run_label → empty string
                 val = original
                 if val is None:
-                    job["run-label"] = ""
+                    job["run_label"] = ""
                 elif isinstance(val, bool):
-                    job["run-label"] = ""  # booleans are never valid labels
+                    job["run_label"] = ""  # booleans are never valid labels
                 else:
-                    job["run-label"] = self._coerce_to_string_identifier(val)
-                if original != job["run-label"]:
-                    logger.debug(f"Identifier normalization: job.run-label '{original}' → '{job['run-label']}'")
+                    job["run_label"] = self._coerce_to_string_identifier(val)
+                if original != job["run_label"]:
+                    logger.debug(f"Identifier normalization: job.run_label '{original}' → '{job['run_label']}'")
 
         # generation identifiers
         gen = cfg.get("generation")
@@ -355,8 +364,9 @@ class ConfigManager:
         """
         Sanitize path identifiers by replacing underscores with hyphens.
 
-        This prevents conflicts with the filename schema that uses underscores
-        as separators: {run_label}_{text_base}_{timestamp}
+        Keeps underscores reserved for the filename schema separators:
+        - single underscore _ : separates timestamp parts (YYYYMMDD_HHMMSS)
+        - double underscore __ : separates run_label from text_base
 
         Args:
             value: The string to sanitize
@@ -378,10 +388,10 @@ class ConfigManager:
 
         Sanitizes:
         - job: name (used for directory names)
-        - job: run-label (used in filename schema)
+        - job: run_label (used in filename schema)
 
-        The filename schema uses underscores as separators:
-        {run_label}_{text_base}_{timestamp}
+        The filename schema: {run_label}__{text_base}_{timestamp}
+        (double underscore separates run_label from text_base)
 
         Args:
             config: Configuration dictionary
@@ -406,14 +416,14 @@ class ConfigManager:
                         f"Sanitized job name: '{original_name}' → '{sanitized_name}'"
                     )
 
-            # Sanitize run-label
-            if "run-label" in job_section and isinstance(job_section["run-label"], str):
-                original_label = job_section["run-label"]
+            # Sanitize run_label
+            if "run_label" in job_section and isinstance(job_section["run_label"], str):
+                original_label = job_section["run_label"]
                 sanitized_label = self._sanitize_path_identifier(original_label)
                 if original_label != sanitized_label:
-                    job_section["run-label"] = sanitized_label
+                    job_section["run_label"] = sanitized_label
                     logger.debug(
-                        f"Sanitized run-label: '{original_label}' → '{sanitized_label}'"
+                        f"Sanitized run_label: '{original_label}' → '{sanitized_label}'"
                     )
 
         # NOTE: Input files (text_file, reference_audio) are NOT sanitized!
@@ -587,8 +597,8 @@ class ConfigManager:
         config.pop("parent", None)
 
         # Apply path sanitization to final merged config
-        # This converts underscores to hyphens in job: name and job: run-label
-        # to prevent conflicts with filename schema: {run_label}_{text_base}_{timestamp}
+        # Sanitizes job: name and job: run_label for use in directory/filename schema:
+        # {run_label}__{text_base}_{timestamp}
         config = self._apply_path_sanitization(config)
 
         return config
@@ -923,12 +933,14 @@ class ConfigManager:
             
             # Define expected nested parameters
             if nested_param == "tts_params":
-                expected_keys = [
-                    "exaggeration", "exaggeration_max_deviation", 
-                    "cfg_weight", "cfg_weight_max_deviation",
-                    "temperature", "temperature_max_deviation",
-                    "repetition_penalty", "min_p", "top_p"
-                ]
+                # Union of all keys present in any fallback (model-agnostic; Qwen3/VibeVoice
+                # keys are not hardcoded). Static allowlists went stale for top_k/subtalker_*.
+                expected_keys_set: set[str] = set()
+                for _, source_speaker in fallback_sources:
+                    source_nested = source_speaker.get(nested_param, {})
+                    if isinstance(source_nested, dict):
+                        expected_keys_set.update(source_nested.keys())
+                expected_keys = sorted(expected_keys_set)
             elif nested_param == "conservative_candidate":
                 expected_keys = [
                     "enabled", "exaggeration", "cfg_weight", 
@@ -1166,6 +1178,60 @@ class ConfigManager:
             
         return fallback_id
 
+    def _parse_task_filename(self, filename: str) -> tuple:
+        """
+        Parse a task filename into (run_label, text_base, timestamp).
+
+        Supports two schemas:
+        - New (double-underscore separator):  {run_label}__{text_base}_{YYYYMMDD}_{HHMMSS}
+        - Legacy (single-underscore, compat): {text_base}_{YYYYMMDD}_{HHMMSS}
+          or heuristic {run_label}_{text_base}_{YYYYMMDD}_{HHMMSS}
+
+        Returns:
+            Tuple of (run_label, text_base, timestamp)
+        """
+        fallback_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if "__" in filename:
+            # New schema: {run_label}__{text_base}_{YYYYMMDD}_{HHMMSS}
+            label_part, rest = filename.split("__", 1)
+            parts = rest.split("_")
+            if len(parts) >= 2:
+                time_part = parts[-1]
+                date_part = parts[-2]
+                timestamp = f"{date_part}_{time_part}"
+                text_base = "_".join(parts[:-2]) if len(parts) > 2 else parts[0]
+            else:
+                timestamp = fallback_timestamp
+                text_base = rest
+            return label_part, text_base, timestamp
+
+        # Legacy schema: no __ separator
+        parts = filename.split("_")
+        if len(parts) >= 3:
+            time_part = parts[-1]
+            date_part = parts[-2]
+            timestamp = f"{date_part}_{time_part}"
+            if len(parts) >= 4:
+                # Heuristic: first part is run_label
+                run_label = parts[0]
+                text_base = "_".join(parts[1:-2])
+            else:
+                run_label = ""
+                text_base = parts[0]
+        elif len(parts) >= 2:
+            time_part = parts[-1]
+            date_part = parts[-2]
+            timestamp = f"{date_part}_{time_part}"
+            run_label = ""
+            text_base = parts[0]
+        else:
+            timestamp = fallback_timestamp
+            run_label = ""
+            text_base = filename
+
+        return run_label, text_base, timestamp
+
     def create_task_config(
         self, config: Dict[str, Any], timestamp: Optional[str] = None
     ) -> TaskConfig:
@@ -1184,7 +1250,7 @@ class ConfigManager:
         job_name = config["job"][
             "name"
         ]  # Already sanitized in _apply_path_sanitization()
-        run_label = config["job"].get("run-label", "")  # Already sanitized
+        run_label = config["job"].get("run_label", "")  # Already sanitized
         text_file = config["input"]["text_file"]  # Original filename preserved
 
         # Extract and sanitize text_base for path generation ONLY
@@ -1197,10 +1263,11 @@ class ConfigManager:
                 f"Sanitized text_base for path generation: '{original_text_base}' → '{sanitized_text_base}'"
             )
 
-        # Create task directory name using sanitized components
+        # Create task directory name using sanitized components.
+        # Double underscore __ separates run_label from text_base for unambiguous parsing.
         if run_label:
-            task_dir_name = f"{run_label}_{sanitized_text_base}_{timestamp}"
-            task_name = f"{run_label}_{sanitized_text_base}_{timestamp}"
+            task_dir_name = f"{run_label}__{sanitized_text_base}_{timestamp}"
+            task_name = f"{run_label}__{sanitized_text_base}_{timestamp}"
         else:
             task_dir_name = f"{sanitized_text_base}_{timestamp}"
             task_name = f"{sanitized_text_base}_{timestamp}"
@@ -1242,7 +1309,7 @@ class ConfigManager:
         sanitized_text_base = self._sanitize_path_identifier(original_text_base)
 
         if task_config.run_label:
-            config_filename = f"{task_config.run_label}_{sanitized_text_base}_{task_config.timestamp}_config.yaml"
+            config_filename = f"{task_config.run_label}__{sanitized_text_base}_{task_config.timestamp}_config.yaml"
         else:
             config_filename = (
                 f"{sanitized_text_base}_{task_config.timestamp}_config.yaml"
@@ -1297,43 +1364,15 @@ class ConfigManager:
         if filename.endswith("_config"):
             filename = filename[:-7]  # Remove _config suffix
 
-        # Parse filename components
-        parts = filename.split("_")
-        if len(parts) >= 3:
-            # Format: run_label_text_base_YYYYMMDD_HHMMSS
-            # Last two parts are date and time
-            time_part = parts[-1]  # HHMMSS
-            date_part = parts[-2]  # YYYYMMDD
-            timestamp = f"{date_part}_{time_part}"  # YYYYMMDD_HHMMSS
-
-            if len(parts) >= 4:
-                run_label = parts[0]
-                text_base = "_".join(parts[1:-2])
-            else:
-                run_label = ""
-                text_base = parts[0]
-        elif len(parts) >= 2:
-            # Format: text_base_YYYYMMDD_HHMMSS (no run_label)
-            time_part = parts[-1]  # HHMMSS
-            date_part = parts[-2]  # YYYYMMDD
-            timestamp = f"{date_part}_{time_part}"  # YYYYMMDD_HHMMSS
-            run_label = ""
-            text_base = parts[0]
-        else:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            run_label = ""
-            text_base = filename
+        run_label, text_base, timestamp = self._parse_task_filename(filename)
 
         # Determine task directory
         job_name = config_data["job"]["name"]
         task_directory = config_path.parent / filename
 
+        task_name = f"{run_label}__{text_base}_{timestamp}" if run_label else f"{text_base}_{timestamp}"
         task_config = TaskConfig(
-            task_name=(
-                f"{run_label}_{text_base}_{timestamp}"
-                if run_label
-                else f"{text_base}_{timestamp}"
-            ),
+            task_name=task_name,
             run_label=run_label,
             timestamp=timestamp,
             base_output_dir=task_directory,
@@ -1363,27 +1402,7 @@ class ConfigManager:
         if filename.endswith("_config"):
             filename = filename[:-7]
 
-        parts = filename.split("_")
-        if len(parts) >= 3:
-            time_part = parts[-1]
-            date_part = parts[-2]
-            timestamp = f"{date_part}_{time_part}"
-            if len(parts) >= 4:
-                run_label = parts[0]
-                text_base = "_".join(parts[1:-2])
-            else:
-                run_label = ""
-                text_base = parts[0]
-        elif len(parts) >= 2:
-            time_part = parts[-1]
-            date_part = parts[-2]
-            timestamp = f"{date_part}_{time_part}"
-            run_label = ""
-            text_base = parts[0]
-        else:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            run_label = ""
-            text_base = filename
+        run_label, text_base, timestamp = self._parse_task_filename(filename)
 
         # Determine job name directly from YAML (fallback to parent dir name)
         job_name = (
@@ -1392,10 +1411,11 @@ class ConfigManager:
             else None
         ) or config_path.parent.name
 
-        task_directory = config_path.parent / (filename)
+        task_directory = config_path.parent / filename
 
+        task_name = f"{run_label}__{text_base}_{timestamp}" if run_label else f"{text_base}_{timestamp}"
         task_config = TaskConfig(
-            task_name=(f"{run_label}_{text_base}_{timestamp}" if run_label else f"{text_base}_{timestamp}"),
+            task_name=task_name,
             run_label=run_label,
             timestamp=timestamp,
             base_output_dir=task_directory,
@@ -1476,7 +1496,7 @@ class ConfigManager:
 
         Args:
             job_name: Name of the job to search for
-            run_label: Optional run-label to filter tasks by. If provided, only tasks with matching run-label are returned.
+            run_label: Optional run_label to filter tasks by. If provided, only tasks with matching run_label are returned.
 
         Returns:
             List of TaskConfig objects, sorted by timestamp (newest first)
@@ -1487,7 +1507,7 @@ class ConfigManager:
         if not job_dir.exists():
             if run_label:
                 logger.debug(
-                    f"Found 0 tasks for job '{job_name}' with run-label '{run_label}' (job directory not found)"
+                    f"Found 0 tasks for job '{job_name}' with run_label '{run_label}' (job directory not found)"
                 )
             else:
                 logger.debug(
@@ -1497,7 +1517,9 @@ class ConfigManager:
 
         # Pre-filter files based on filename pattern if run_label is specified
         if run_label:
-            # Sanitize run_label for filename matching (same logic as in create_task_config)
+            # Sanitize run_label for filename matching (same logic as in create_task_config).
+            # Use single-underscore glob to match both new (__) and legacy (_) schemas,
+            # since {run_label}__* is also matched by {run_label}_*.
             sanitized_run_label = self._sanitize_path_identifier(run_label)
             pattern = f"{sanitized_run_label}_*_config.yaml"
             config_files = list(job_dir.glob(pattern))
@@ -1539,11 +1561,11 @@ class ConfigManager:
 
         if run_label:
             logger.debug(
-                f"Found {len(tasks)} tasks for job '{job_name}' with run-label '{run_label}'"
+                f"Found {len(tasks)} tasks for job '{job_name}' with run_label '{run_label}'"
             )
         else:
             logger.debug(
-                f"Found {len(tasks)} tasks for job '{job_name}' (no run-label filter)"
+                f"Found {len(tasks)} tasks for job '{job_name}' (no run_label filter)"
             )
 
         return tasks

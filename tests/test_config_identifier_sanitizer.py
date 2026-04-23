@@ -14,7 +14,7 @@ def test_identifier_sanitizer_handles_yaml_reserved_words(tmp_path: Path):
     (project_root / "data" / "output").mkdir(parents=True, exist_ok=True)
 
     default_yaml = {
-        "job": {"name": "default", "run-label": ""},
+        "job": {"name": "default", "run_label": ""},
         "input": {"text_file": "input-document.txt"},
         "chunking": {},
         "generation": {
@@ -42,7 +42,7 @@ def test_identifier_sanitizer_handles_yaml_reserved_words(tmp_path: Path):
 
     # Create a job config that uses YAML reserved words for identifiers
     job_yaml = {
-        "job": {"name": True, "run-label": None},  # will be coerced to "true" and "null"
+        "job": {"name": True, "run_label": None},  # will be coerced to "true" and ""
         "input": {"text_file": "input-document.txt"},
         "generation": {
             "default_speaker": False,  # will be coerced to "false"
@@ -65,7 +65,7 @@ def test_identifier_sanitizer_handles_yaml_reserved_words(tmp_path: Path):
 
     # Expect coerced string identifiers
     assert isinstance(merged["job"]["name"], str) and merged["job"]["name"].lower() == "true"
-    assert isinstance(merged["job"]["run-label"], str) and merged["job"]["run-label"].lower() == "null"
+    assert isinstance(merged["job"]["run_label"], str) and merged["job"]["run_label"] == ""
 
     spk_ids = [s.get("id") for s in merged["generation"]["speakers"]]
     # One speaker has id "false" (string), and base remains

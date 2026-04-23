@@ -2,7 +2,7 @@ parent: defaults/chatterbox_std.yaml
 
 job:
   name: switching-speakers
-  run-label: example
+  run_label: example
 input:
   text_file: speakers_example.txt
 generation:

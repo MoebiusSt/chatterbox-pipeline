@@ -1,6 +1,6 @@
 job:
   name: default
-  run-label:   # empty by default, use it to organise the tasks/files/folders
+  run_label:   # empty by default, use it to organise the tasks/files/folders
 
 input:
   text_file: input-document.txt     # txt-file in data/input/texts folder. Also accepts relative paths below the data/input/texts folder.
@@ -207,7 +207,7 @@ validation:
   preprocessing:
     tail_trim:
       enabled: true
-      lookback_seconds: 3.0
+      lookback_seconds: 2.0
       post_speech_silence_ms: 200
       fade_out_ms: 100
       prefer_whisperx: true
@@ -231,10 +231,10 @@ validation:
     enabled: true
     weights:
       semantic_alignment: 0.0   #No deliverer yet
-      flow: 0.20                # Derived from wpm_min and wpm_max
+      flow: 0.25                # Derived from wpm_min and wpm_max
       liveliness: 0.35
       intelligibility: 0.0      #No deliverer yet
-      mos: 0.45                 # MOS-Weight, note: MOS will score double as per gamma_mos
+      mos: 0.40                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
       wpm_min: 120              # halfwidth (150-120)/2= 15 -> target wpm 135  
       wpm_max: 150
@@ -243,9 +243,9 @@ validation:
       f0_std_low_hz: 12.0               # f0 std (Hz) mapped to 0.0 (monotone speech)
       f0_std_high_hz: 37.0              # f0 std (Hz) mapped to 1.0 (lively prosody)
     select:
-      alpha_quality: 0.50       # Whisper Quality-Weight
+      alpha_quality: 0.55       # Whisper Quality-Weight
       beta_prosody: 0.30        # Prosody-Weight
-      gamma_mos: 0.20           # additional MOS-direct weight
+      gamma_mos: 0.15           # additional MOS-direct weight
     thresholds:
       min_prosody_score: 0.5   # Prosody-Gate
 

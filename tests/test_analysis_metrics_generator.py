@@ -130,9 +130,11 @@ def _make_task_runtime() -> Dict[str, Any]:
 
 def _make_config() -> Dict[str, Any]:
     return {
-        "job": {"name": "test_job", "run-label": "unit-test"},
+        "job": {"name": "test_job", "run_label": "unit-test"},
         "generation": {
             "model_type": "qwen3",
+            "global_seed": 0,
+            "seed_fixed": False,
             "num_candidates": 2,
             "default_speaker": "spk_A",
             "speakers": [
@@ -267,10 +269,46 @@ def test_task_section_field_types(task_dir: Path) -> None:
     assert isinstance(task["run_label"], str)
     assert isinstance(task["timestamp"], str)
     assert isinstance(task["model_type"], str)
+    assert task["global_seed"] is None or isinstance(task["global_seed"], int)
+    assert isinstance(task["seed_fixed"], bool)
     assert isinstance(task["total_chunks"], int)
     assert isinstance(task["total_candidates_generated"], int)
     # task_runtime_seconds: int or None
     assert task["task_runtime_seconds"] is None or isinstance(task["task_runtime_seconds"], int)
+    assert task["global_seed"] == 0
+    assert task["seed_fixed"] is False
+
+
+def test_task_global_seed_and_seed_fixed_from_config(task_dir: Path) -> None:
+    """Task section reflects generation.global_seed and generation.seed_fixed."""
+    from src.utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+
+    cfg = _make_config()
+    cfg["generation"]["global_seed"] = 12345
+    cfg["generation"]["seed_fixed"] = True
+
+    TaskMetricsGenerator(task_dir, cfg).generate_analysis_metrics()
+    task = json.loads(
+        (task_dir / "analysis_metrics.json").read_text(encoding="utf-8")
+    )["task"]
+    assert task["global_seed"] == 12345
+    assert task["seed_fixed"] is True
+
+
+def test_candidate_torch_seed_from_metadata(task_dir: Path) -> None:
+    """Each analysis candidate carries the effective torch seed (not in generation_params)."""
+    from src.utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+
+    TaskMetricsGenerator(task_dir, _make_config()).generate_analysis_metrics()
+    chunks = json.loads(
+        (task_dir / "analysis_metrics.json").read_text(encoding="utf-8")
+    )["chunks"]
+
+    for chunk in chunks:
+        for ci, cand in enumerate(chunk["candidates"]):
+            assert "torch_seed" in cand
+            assert cand["torch_seed"] == 9584 + ci * 1000
+            assert "seed" not in cand["generation_params"]
 
 
 def test_speakers_section(task_dir: Path) -> None:
@@ -313,6 +351,53 @@ def test_ramp_spec_negative_subtalker_temperature(task_dir: Path) -> None:
     }
 
 
+def test_ramp_spec_qwen3_omits_inherited_chatterbox_axes(task_dir: Path) -> None:
+    """Qwen3 ramp_spec must not list exaggeration/cfg_weight (not used by the model)."""
+    from src.utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+
+    cfg = _make_config()
+    cfg["generation"]["speakers"][0]["tts_params"] = {
+        "temperature": 1.1,
+        "temperature_max_deviation": 0.2,
+        "exaggeration": 0.45,
+        "exaggeration_max_deviation": -0.1,
+        "cfg_weight": 0.15,
+        "cfg_weight_max_deviation": 0.2,
+    }
+
+    TaskMetricsGenerator(task_dir, cfg).generate_analysis_metrics()
+    spk = json.loads(
+        (task_dir / "analysis_metrics.json").read_text(encoding="utf-8")
+    )["speakers"]["spk_A"]
+
+    rs = spk["ramp_spec"]
+    assert "exaggeration" not in rs
+    assert "cfg_weight" not in rs
+    assert "temperature" in rs
+
+
+def test_ramp_spec_chatterbox_includes_exaggeration(task_dir: Path) -> None:
+    """Chatterbox family: exaggeration appears when it has a non-zero deviation."""
+    from src.utils.file_manager.task_metrics_generator import TaskMetricsGenerator
+
+    cfg = _make_config()
+    cfg["generation"]["model_type"] = "standard"
+    cfg["generation"]["speakers"][0]["tts_params"] = {
+        "exaggeration": 0.45,
+        "exaggeration_max_deviation": -0.1,
+        "temperature": 1.0,
+        "temperature_max_deviation": 0,
+    }
+
+    TaskMetricsGenerator(task_dir, cfg).generate_analysis_metrics()
+    spk = json.loads(
+        (task_dir / "analysis_metrics.json").read_text(encoding="utf-8")
+    )["speakers"]["spk_A"]
+
+    assert "exaggeration" in spk["ramp_spec"]
+    assert "temperature" not in spk["ramp_spec"]
+
+
 def test_ramp_spec_empty_when_all_max_deviation_zero(task_dir: Path) -> None:
     """A speaker with no ramp axes (all deviations 0) gets ramp_spec: {} not null."""
     from src.utils.file_manager.task_metrics_generator import TaskMetricsGenerator
@@ -350,6 +435,9 @@ def test_chunks_section_structure(task_dir: Path) -> None:
         assert isinstance(chunk["text_length"], int)
         assert isinstance(chunk["selected_candidate"], int)
         assert isinstance(chunk["candidates"], list)
+        for cand in chunk["candidates"]:
+            assert "torch_seed" in cand
+            assert cand["torch_seed"] is None or isinstance(cand["torch_seed"], int)
 
 
 def test_chunk_idx_is_1based_and_ascending(task_dir: Path) -> None:

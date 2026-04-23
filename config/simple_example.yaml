@@ -2,7 +2,7 @@ parent: defaults/chatterbox_std.yaml
 
 job:
   name: simple-example
-  run-label: 
+  run_label: 
 input:
   text_file: input-document.txt
 generation:

@@ -14,6 +14,8 @@ from pathlib import Path
 import re
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
+from utils.language_registry import get_supported_tts_params
+
 logger = logging.getLogger(__name__)
 
 # Marker field in task_metrics.json that lists chunk-keys (1-based, as strings)
@@ -25,9 +27,11 @@ USER_SELECTION_FIELD = "user_selected_chunks"
 
 # Schema version for analysis_metrics.json – bump when the structure changes
 # in a backward-incompatible way.
-ANALYSIS_METRICS_SCHEMA_VERSION = "1.1"
+ANALYSIS_METRICS_SCHEMA_VERSION = "1.2"
 
 # Allowlist of ramp axes exported in analysis_metrics "ramp_spec" (resolved tts_params).
+# Each row is filtered by _ramp_spec_keys_for_model() using get_supported_tts_params()
+# so Qwen3 jobs do not list Chatterbox-only axes, etc.
 # Maintenance: new model parameters (e.g. speaker_style_temperature) only appear in
 # analysis output after a row is added: (name in JSON, base key, *_max_deviation key).
 # The generator must also implement ramping for that axis in tts_generator.py for jobs
@@ -46,6 +50,26 @@ RAMPABLE_PARAMS: Tuple[Tuple[str, str, str], ...] = (
 
 # Subset of RAMPABLE_PARAMS keys (first element of each triple) that serialize as int.
 _RAMP_SPEC_INT_KEYS = frozenset({"top_k", "subtalker_top_k", "diffusion_steps"})
+
+
+def _ramp_spec_keys_for_model(model_type: str) -> Set[str]:
+    """
+    Which RAMPABLE_PARAMS spec keys belong in analysis ramp_spec for this TTS model.
+
+    Uses get_supported_tts_params (language_registry): inherited Chatterbox defaults
+    in a Qwen3 job do not appear here because exaggeration/cfg_weight are not
+    supported for qwen3. Unknown / empty model_type: all RAMPABLE keys (compat for
+    new model types until SUPPORTED_TTS_PARAMS is extended).
+    """
+    mt = str(model_type or "").strip().lower()
+    supported = get_supported_tts_params(mt)
+    if not supported:
+        return {row[0] for row in RAMPABLE_PARAMS}
+    return {
+        spec_key
+        for spec_key, base_key, _ in RAMPABLE_PARAMS
+        if base_key in supported
+    }
 
 
 class TaskMetricsGenerator:
@@ -724,7 +748,7 @@ class TaskMetricsGenerator:
             try:
                 if isinstance(config, dict):
                     run_label = (
-                        config.get("job", {}).get("run-label", "")
+                        config.get("job", {}).get("run_label", "")
                         if isinstance(config.get("job", {}), dict)
                         else ""
                     ) or ""
@@ -1111,15 +1135,22 @@ class TaskMetricsGenerator:
             return None
 
     @staticmethod
-    def _build_speaker_ramp_spec(tts_params: Any) -> Dict[str, Any]:
+    def _build_speaker_ramp_spec(
+        tts_params: Any,
+        model_type: str = "",
+    ) -> Dict[str, Any]:
         """
         Resolved ramp axes for analysis: base, signed max_deviation, and end = base + deviation.
         Only includes parameters with non-zero *_max_deviation. Empty dict if none.
+        Axes are filtered to those relevant for model_type (see _ramp_spec_keys_for_model).
         """
         if not isinstance(tts_params, dict):
             return {}
+        allowed = _ramp_spec_keys_for_model(model_type)
         out: Dict[str, Any] = {}
         for spec_key, base_key, dev_key in RAMPABLE_PARAMS:
+            if spec_key not in allowed:
+                continue
             raw_dev = tts_params.get(dev_key, 0)
             try:
                 dev = float(raw_dev)
@@ -1166,9 +1197,19 @@ class TaskMetricsGenerator:
         timestamp: str = ""
         model_type: str = ""
 
+        global_seed: Optional[int] = None
+        seed_fixed: bool = False
         if isinstance(config, dict):
-            run_label = (config.get("job") or {}).get("run-label", "") or ""
+            run_label = (config.get("job") or {}).get("run_label", "") or ""
             model_type = (config.get("generation") or {}).get("model_type", "") or ""
+            gen_cfg = config.get("generation") or {}
+            if isinstance(gen_cfg, dict):
+                try:
+                    raw_gs = gen_cfg.get("global_seed", 0)
+                    global_seed = int(raw_gs) if raw_gs is not None else 0
+                except (TypeError, ValueError):
+                    global_seed = None
+                seed_fixed = bool(gen_cfg.get("seed_fixed", False))
 
         try:
             m = re.search(r"_(\d{8}_\d{6})$", task_name)
@@ -1240,7 +1281,7 @@ class TaskMetricsGenerator:
                 "num_candidates_per_chunk": num_candidates_per_chunk,
                 "reference_audio": spk_cfg.get("reference_audio", ""),
                 "language": spk_cfg.get("language", ""),
-                "ramp_spec": self._build_speaker_ramp_spec(tts),
+                "ramp_spec": self._build_speaker_ramp_spec(tts, model_type),
             }
 
         # ── selected candidates ───────────────────────────────────────────────
@@ -1265,6 +1306,14 @@ class TaskMetricsGenerator:
             try:
                 return round(float(v), 1) if v is not None else None
             except Exception:
+                return None
+
+        def _as_int(v: Any) -> Optional[int]:
+            if v is None:
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
                 return None
 
         chunk_keys_sorted = sorted(whisper_chunks.keys(), key=lambda k: int(k))
@@ -1301,12 +1350,16 @@ class TaskMetricsGenerator:
                 if not isinstance(cand_data, dict):
                     continue
 
-                # Generation params (exclude internal-only keys)
+                # Generation params (exclude internal-only keys). Effective torch seed
+                # is taken from the same source but emitted separately (not in
+                # generation_params) for analysis traceability.
                 gen_params: Dict[str, Any] = {}
+                torch_seed: Optional[int] = None
                 if cand_meta_map is not None:
                     raw_params = (cand_meta_map.get(cand_idx_0) or {}).get(
                         "generation_params", {}
                     ) or {}
+                    torch_seed = _as_int(raw_params.get("seed"))
                     gen_params = {
                         k: v for k, v in raw_params.items()
                         if k not in _EXCLUDED_GEN_PARAMS
@@ -1363,6 +1416,7 @@ class TaskMetricsGenerator:
 
                 candidates_list.append({
                     "idx": cand_idx_1,
+                    "torch_seed": torch_seed,
                     "generation_params": gen_params,
                     "scores": scores,
                     "gates": gates,
@@ -1390,6 +1444,8 @@ class TaskMetricsGenerator:
                 "run_label": run_label,
                 "timestamp": timestamp,
                 "model_type": model_type,
+                "global_seed": global_seed,
+                "seed_fixed": seed_fixed,
                 "total_chunks": total_chunks,
                 "total_candidates_generated": total_candidates_generated,
                 "task_runtime_seconds": task_runtime_seconds,

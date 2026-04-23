@@ -2,7 +2,7 @@ parent: defaults/chatterbox_std.yaml
 
 job:
   name: voice_test
-  run-label: # empty by default, use it to organise the tasks/files/folders
+  run_label: # empty by default, use it to organise the tasks/files/folders
 
 input:
   text_file: voice_test_example.txt     # txt-file in data/input/texts folder

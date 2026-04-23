@@ -2,7 +2,7 @@ parent: defaults/qwen3.yaml
 
 job:
   name: test_qwen3
-  run-label: 
+  run_label: 
 
 input:
   text_file: input-document.txt

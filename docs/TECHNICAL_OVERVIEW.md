@@ -413,7 +413,7 @@ fields.
 - Prosody fields are always present; they are `null` when prosody scoring was disabled
   for a run (consistent schema over compact schema).
 - All float scores are rounded to 4 decimal places; `wpm` to 1; `audio_duration` to 2.
-- `schema_version` (currently `"1.1"`) is a module-level constant
+- `schema_version` (currently `"1.2"`) is a module-level constant
   (`ANALYSIS_METRICS_SCHEMA_VERSION` in `task_metrics_generator.py`) so breaking
   changes can be tracked.
 - Per speaker, `ramp_spec` records the **resolved** ramp axes from the speaker’s
@@ -422,9 +422,20 @@ fields.
   means ramp down), and `end` = `base + max_deviation`. Integer axes (`top_k`,
   `subtalker_top_k`, `diffusion_steps`) are integers. Non-ramped parameters
   (`top_p`, `repetition_penalty`, `min_p`, etc.) are omitted. If there are no
-  ramp axes, `ramp_spec` is the empty object `{}` (not `null`).
+  ramp axes, `ramp_spec` is the empty object `{}` (not `null`). Which axes are
+  considered is **model-dependent**: only parameters that `generation.model_type`
+  actually uses (`SUPPORTED_TTS_PARAMS` in `language_registry.py`, intersected
+  with the global `RAMPABLE_PARAMS` list in `task_metrics_generator.py`), so
+  e.g. inherited Chatterbox fields do not appear for Qwen3 jobs.
 - Chunk source metadata is read from `texts/chunks_metadata.json` via
   `TaskMetricsGenerator._load_chunks_metadata()` (not `texts/chunks.json`).
+- `task.global_seed` and `task.seed_fixed` come from `generation.global_seed` and
+  `generation.seed_fixed` in the resolved task config. Each entry under
+  `chunks[].candidates[]` includes `torch_seed`: the per-candidate effective
+  integer used for `torch.manual_seed` at generation (from `candidates_metadata`
+  `generation_params.seed`). This matches `docs/SEEDING.md` (including
+  `global_seed: 0` with base + offset + text-hash). `seed` is not duplicated
+  inside `generation_params` in this file.
 - The file is a pure addition; `task_metrics.json` and `whisper_metrics.json` are
   never modified by `generate_analysis_metrics()`.
 

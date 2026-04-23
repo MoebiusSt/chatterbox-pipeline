@@ -266,7 +266,7 @@ class TestMenuOrchestrator:
 
         display = self.orchestrator._format_task_display(mock_task)
 
-        # Should format as: "job-name - run-label - doc-name.txt - date - time"
+        # Should format as: "job-name - run_label - doc-name.txt - date - time"
         assert "test_job" in display
         assert "test_label" in display
         assert "test_document.txt" in display

@@ -2,7 +2,7 @@ parent: defaults/chatterbox_multi.yaml
 
 job:
   name: test_multilingual
-  run-label: multilingual-test
+  run_label: multilingual-test
 
 input:
   text_file: multilingual_example.txt     # small test file

@@ -61,7 +61,7 @@ class JobManager:
                         {
                             "job": {
                                 "name": job_yaml.get("job", {}).get("name", "job"),
-                                "run-label": job_yaml.get("job", {}).get("run-label", ""),
+                                "run_label": job_yaml.get("job", {}).get("run_label", ""),
                             },
                             "input": {"text_file": job_yaml.get("input", {}).get("text_file", "input.txt")},
                         }
@@ -106,7 +106,7 @@ class JobManager:
                     {
                         "job": {
                             "name": job_yaml.get("job", {}).get("name", "job"),
-                            "run-label": job_yaml.get("job", {}).get("run-label", ""),
+                            "run_label": job_yaml.get("job", {}).get("run_label", ""),
                         },
                         "input": {"text_file": job_yaml.get("input", {}).get("text_file", "input.txt")},
                     }

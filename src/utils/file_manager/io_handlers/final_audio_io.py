@@ -37,9 +37,9 @@ class FinalAudioIOHandler:
         """Save final assembled audio (no separate metadata JSON persists here)."""
         try:
             text_base = Path(self.config["input"]["text_file"]).stem
-            run_label = self.config["job"].get("run-label", "")
+            run_label = self.config["job"].get("run_label", "")
             filename = (
-                f"{run_label}_{text_base}_final.wav"
+                f"{run_label}__{text_base}_final.wav"
                 if run_label
                 else f"{text_base}_final.wav"
             )

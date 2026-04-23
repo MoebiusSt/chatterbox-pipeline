@@ -2,7 +2,7 @@ parent: defaults/turbo.yaml
 
 job:
   name: test_turbo
-  run-label:
+  run_label:
 
 input:
   text_file: test_TURBO.txt
