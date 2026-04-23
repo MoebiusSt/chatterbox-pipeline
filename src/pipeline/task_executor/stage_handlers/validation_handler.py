@@ -54,28 +54,48 @@ class ValidationHandler:
             provider_name = str(mos_cfg.get("provider", "combined")).lower()
             # enforce de/en gate per requirement, even if config wider
             enabled_langs = mos_cfg.get("enabled_languages", ["de", "en"]) or ["de", "en"]
+            use_mos_gpu = bool(mos_cfg.get("use_gpu", True))
+            utmosv2_reps = int(mos_cfg.get("utmosv2_num_repetitions", 1))
             if provider_name == "utmos":
                 mos_provider = UTMOSProvider(
                     enabled_languages=enabled_langs,
+                    use_gpu=use_mos_gpu,
                     prefer_utmosv2=bool(mos_cfg.get("prefer_utmosv2", False)),
+                    utmosv2_num_repetitions=utmosv2_reps,
                 )
             elif provider_name == "nisqa":
                 weights_path = mos_cfg.get("nisqa_weights_path")
-                mos_provider = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
+                mos_provider = NISQAProvider(
+                    enabled_languages=enabled_langs,
+                    weights_path=weights_path,
+                    use_gpu=use_mos_gpu,
+                )
             elif provider_name == "combined":
                 weights_path = mos_cfg.get("nisqa_weights_path")
-                nisqa = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
+                nisqa = NISQAProvider(
+                    enabled_languages=enabled_langs,
+                    weights_path=weights_path,
+                    use_gpu=use_mos_gpu,
+                )
                 utmos = UTMOSProvider(
                     enabled_languages=enabled_langs,
+                    use_gpu=use_mos_gpu,
                     prefer_utmosv2=bool(mos_cfg.get("prefer_utmosv2", False)),
+                    utmosv2_num_repetitions=utmosv2_reps,
                 )
                 mos_provider = CombinedMOSProvider([nisqa, utmos], enabled_languages=enabled_langs)
             else:
                 weights_path = mos_cfg.get("nisqa_weights_path")
-                nisqa = NISQAProvider(enabled_languages=enabled_langs, weights_path=weights_path)
+                nisqa = NISQAProvider(
+                    enabled_languages=enabled_langs,
+                    weights_path=weights_path,
+                    use_gpu=use_mos_gpu,
+                )
                 utmos = UTMOSProvider(
                     enabled_languages=enabled_langs,
+                    use_gpu=use_mos_gpu,
                     prefer_utmosv2=bool(mos_cfg.get("prefer_utmosv2", False)),
+                    utmosv2_num_repetitions=utmosv2_reps,
                 )
                 mos_provider = CombinedMOSProvider([nisqa, utmos], enabled_languages=enabled_langs)
         except Exception:

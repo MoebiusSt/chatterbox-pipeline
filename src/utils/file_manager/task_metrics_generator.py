@@ -1071,8 +1071,7 @@ class TaskMetricsGenerator:
 
             output_path = self.task_directory / "analysis_metrics.json"
             with open(output_path, "w", encoding="utf-8") as f:
-                # Use compact separators to keep file size small (no indentation).
-                json.dump(analysis_metrics, f, separators=(",", ":"), ensure_ascii=False)
+                json.dump(analysis_metrics, f, indent=2, ensure_ascii=False)
 
             logger.debug(f"✅ Analysis metrics saved to: {output_path}")
             return True

@@ -233,15 +233,17 @@ validation:
       semantic_alignment: 0.0   #No deliverer yet
       flow: 0.25                # Derived from wpm_min and wpm_max
       liveliness: 0.35
-      intelligibility: 0.0      #No deliverer yet
-      mos: 0.40                 # MOS-Weight, note: MOS will score double as per gamma_mos
+      intelligibility: 0.1      #No deliverer yet
+      mos: 0.30                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
-      wpm_min: 120              # halfwidth (150-120)/2= 15 -> target wpm 135  
-      wpm_max: 150
+      wpm_min: 115              # halfwidth (155-115)/2= 20 -> target wpm 135  
+      wpm_max: 155
       liveliness_target: 0.44
       liveliness_halfwidth: 0.15        # half-width of the triangular liveliness window (smaller -> more discriminative)
-      f0_std_low_hz: 12.0               # f0 std (Hz) mapped to 0.0 (monotone speech)
-      f0_std_high_hz: 37.0              # f0 std (Hz) mapped to 1.0 (lively prosody)
+      f0_std_low_hz: 15.0               # f0 std (Hz) mapped to 0.0 (monotone speech)
+      f0_std_high_hz: 40.0              # f0 std (Hz) mapped to 1.0 (lively prosody)
+      # f0_std_low_hz – anything below this is classified as “too flat/monotonous” and is given the lowest score (0) for this section. Set it higher = you’re telling the pipeline: “Only when there’s this much pitch variation do I even call it a speech melody; anything less is just a muddle to me.”
+      # f0_std_high_hz – anything above this is considered ‘fully utilised / maximum movement’ (1). Set it higher = you need more fluctuation before the score is ‘full’. Set it lower = even moderate movement counts as ‘at the top’.
     select:
       alpha_quality: 0.55       # Whisper Quality-Weight
       beta_prosody: 0.30        # Prosody-Weight
@@ -251,13 +253,15 @@ validation:
 
   mos:
     provider: combined         # combined|nisqa|utmos
-    enabled_languages: [de, en] # Language-Gate: MOS only für de/en
-    min_mos: 2.5               # MOS-Threshold (1..5); ~>3.5 is good. Also acts as scale floor for mos_unit.
-    scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
-    nisqa_weights_path: "NISQA/weights/nisqa_tts.tar"  # NISQA-TTS v1 Naturalness
-    prefer_utmosv2: false      # prefer utmosv2 predictor via VERSA if available; fallback to utmos
+    prefer_utmosv2: false      # if true: native utmosv2 (pip install from GitHub, see requirements.txt); else UTMOS v1 via VERSA
+    use_gpu: true              # NISQA + UTMOS/UTMOSv2: use CUDA when available (e.g. RTX 4080); set false for CPU-only
+    utmosv2_num_repetitions: 1  # UTMOSv2 only: 1 = fast, matches utmosv2 default; 3–5 = smoother scores, more compute
     # MOS models are trained on short utterances. For long VibeVoice chunks we
     # window the audio and aggregate window-level MOS to stay in-distribution.
+    enabled_languages: [de, en] # Language-Gate: MOS only für de/en
+    min_mos: 2.2               # MOS-Threshold (1..5); ~>3.5 is good. Also acts as scale floor for mos_unit.
+    scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
+    nisqa_weights_path: "NISQA/weights/nisqa_tts.tar"  # NISQA-TTS v1 Naturalness
     segmentation:
       max_unsegmented_seconds: 20.0  # score() is used for audio shorter than this
       window_s: 12.0                 # sliding window length
