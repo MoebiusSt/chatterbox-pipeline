@@ -230,11 +230,11 @@ validation:
   prosody:
     enabled: true
     weights:
-      semantic_alignment: 0.0   #No deliverer yet
-      flow: 0.25                # Derived from wpm_min and wpm_max
-      liveliness: 0.35
-      intelligibility: 0.1      #No deliverer yet
-      mos: 0.30                 # MOS-Weight, note: MOS will score double as per gamma_mos
+      semantic_alignment: 0.08  
+      flow: 0.23                # Derived from wpm_min and wpm_max
+      liveliness: 0.29
+      intelligibility: 0.08     
+      mos: 0.32                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
       wpm_min: 115              # halfwidth (155-115)/2= 20 -> target wpm 135  
       wpm_max: 155
@@ -249,17 +249,17 @@ validation:
       beta_prosody: 0.30        # Prosody-Weight
       gamma_mos: 0.15           # additional MOS-direct weight
     thresholds:
-      min_prosody_score: 0.5   # Prosody-Gate
+      min_prosody_score: 0.45   # Prosody-Gate
 
   mos:
-    provider: combined         # combined|nisqa|utmos
-    prefer_utmosv2: false      # if true: native utmosv2 (pip install from GitHub, see requirements.txt); else UTMOS v1 via VERSA
+    provider: utmos         # combined|nisqa|utmos
+    prefer_utmosv2: true      # if true: native utmosv2 (pip install from GitHub, see requirements.txt); else UTMOS v1 via VERSA
     use_gpu: true              # NISQA + UTMOS/UTMOSv2: use CUDA when available (e.g. RTX 4080); set false for CPU-only
     utmosv2_num_repetitions: 1  # UTMOSv2 only: 1 = fast, matches utmosv2 default; 3–5 = smoother scores, more compute
     # MOS models are trained on short utterances. For long VibeVoice chunks we
     # window the audio and aggregate window-level MOS to stay in-distribution.
     enabled_languages: [de, en] # Language-Gate: MOS only für de/en
-    min_mos: 2.2               # MOS-Threshold (1..5); ~>3.5 is good. Also acts as scale floor for mos_unit.
+    min_mos: 1.5               # MOS-Threshold (1..5); ~>3.5 is good. Also acts as scale floor for mos_unit. Make 2.4 for NISQA and 1.5 for UTMOS
     scale: raw_1_5             # mos_score = clip((mos-min_mos)/(5-min_mos),0,1)
     nisqa_weights_path: "NISQA/weights/nisqa_tts.tar"  # NISQA-TTS v1 Naturalness
     segmentation:

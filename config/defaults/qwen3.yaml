@@ -390,18 +390,18 @@ generation:
     - id: erik_prochnow_DE_15s
       reference_audio: erik_prochnow_DE_15s.wav
       language: de
-      ttts_params:
-        temperature: 1.19 # start; positive *temperature_max_deviation* → ramp UP
-        temperature_max_deviation: 0.36
-        top_k: 130 # start; positive *top_k_max_deviation* → ramp UP
-        top_k_max_deviation: 40
+      tts_params:
+        temperature: 1.20 # start; positive *temperature_max_deviation* → ramp UP
+        temperature_max_deviation: 0.30
+        top_k: 126 # start; positive *top_k_max_deviation* → ramp UP
+        top_k_max_deviation: 30
         top_p: 0.99
         repetition_penalty: 1.07
-        subtalker_temperature: 1.40 # start; sign of *subtalker_temperature_max_deviation* sets direction
-        subtalker_temperature_max_deviation: -0.24
-        subtalker_top_k: 186 # start; positive *subtalker_top_k_max_deviation* → ramp UP
-        subtalker_top_k_max_deviation: 24
-        subtalker_top_p: 0.97
+        subtalker_temperature: 1.45 # start; sign of *subtalker_temperature_max_deviation* sets direction
+        subtalker_temperature_max_deviation: -0.16
+        subtalker_top_k: 174 # start; positive *subtalker_top_k_max_deviation* → ramp UP
+        subtalker_top_k_max_deviation: 20
+        subtalker_top_p: 0.98
       conservative_candidate:
         enabled: false
     - id: martina-zimmermann_DE_15s

@@ -109,41 +109,73 @@ class ExecutionPlanner:
 
         elif config_files:
             # Config-files execution path
-            # Extract job_name and run_label from first config file to check for existing tasks
+            # Load existing tasks for every passed YAML (same idea as
+            # _create_tasks_for_distinct_configs for --mode new). Previously only
+            # the first file was used, so glob batches missed other jobs.
             try:
-                first_config = self.config_manager.load_cascading_config(
-                    config_files[0]
-                )
-                job_name = first_config.get("job", {}).get("name", "")
-                run_label = first_config.get("job", {}).get("run_label", "")
+                existing_tasks: List[TaskConfig] = []
+                seen_task_config_paths: set[str] = set()
+                primary_job_name = ""
+                distinct_job_names: List[str] = []
 
-                # OPTIMIZATION: Skip loading existing tasks if --mode new is explicitly specified
-                existing_tasks = []
-                if job_name and hasattr(args, "mode") and args.mode != "new":
-                    # Pass run_label for proper filtering based on mode
+                for config_path in config_files:
+                    try:
+                        cfg = self.config_manager.load_cascading_config(config_path)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to load config file {config_path}: {e}"
+                        )
+                        continue
+
+                    job_name = cfg.get("job", {}).get("name", "")
+                    if not job_name:
+                        continue
+                    if job_name not in distinct_job_names:
+                        distinct_job_names.append(job_name)
+                    if not primary_job_name:
+                        primary_job_name = job_name
+
+                    # OPTIMIZATION: Skip loading existing tasks if --mode new
+                    if not hasattr(args, "mode") or args.mode == "new":
+                        continue
+
+                    run_label = cfg.get("job", {}).get("run_label", "")
                     filter_by_run_label = None
                     if args.mode in ["all", "last", "all-new"] and run_label:
                         filter_by_run_label = run_label
                         logger.debug(
-                            f"Filtering existing tasks by run_label: '{run_label}' for mode: {args.mode}"
+                            f"Filtering existing tasks by run_label: '{run_label}' "
+                            f"for job '{job_name}', mode: {args.mode}"
                         )
 
-                    existing_tasks = self.job_manager.find_existing_tasks(
+                    tasks_for_job = self.job_manager.find_existing_tasks(
                         job_name, filter_by_run_label
                     )
+                    for t in tasks_for_job:
+                        key = str(t.config_path.resolve())
+                        if key in seen_task_config_paths:
+                            continue
+                        seen_task_config_paths.add(key)
+                        existing_tasks.append(t)
+
+                # Single job: keep primary_job_name for logs / strategy edge cases.
+                # Multiple jobs: empty job_name so per-job CLI strategies are not
+                # accidentally keyed to only the first YAML's job.
+                context_job_name = (
+                    primary_job_name if len(distinct_job_names) <= 1 else ""
+                )
 
                 return ExecutionContext(
                     existing_tasks=existing_tasks,
                     job_configs=config_files,
                     execution_path="config-files",
-                    job_name=job_name,
+                    job_name=context_job_name,
                     available_strategies=self._get_available_strategies(),
                 )
             except Exception as e:
                 logger.warning(
-                    f"Failed to extract job_name from config file {config_files[0]}: {e}"
+                    f"Failed to build execution context from config files: {e}"
                 )
-                # Fallback to original behavior
                 return ExecutionContext(
                     existing_tasks=[],
                     job_configs=config_files,
