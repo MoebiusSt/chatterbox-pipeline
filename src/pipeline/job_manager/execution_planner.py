@@ -113,10 +113,14 @@ class ExecutionPlanner:
             # _create_tasks_for_distinct_configs for --mode new). Previously only
             # the first file was used, so glob batches missed other jobs.
             try:
-                existing_tasks: List[TaskConfig] = []
+                merged_existing: List[TaskConfig] = []
                 seen_task_config_paths: set[str] = set()
                 primary_job_name = ""
                 distinct_job_names: List[str] = []
+                # Modes that scope existing tasks to this yaml's run_label (speaker-bench, etc.)
+                modes_filter_by_run_label = frozenset(
+                    ("all", "last", "all-new", "last-new", "latest-new")
+                )
 
                 for config_path in config_files:
                     try:
@@ -141,7 +145,7 @@ class ExecutionPlanner:
 
                     run_label = cfg.get("job", {}).get("run_label", "")
                     filter_by_run_label = None
-                    if args.mode in ["all", "last", "all-new"] and run_label:
+                    if args.mode in modes_filter_by_run_label and run_label:
                         filter_by_run_label = run_label
                         logger.debug(
                             f"Filtering existing tasks by run_label: '{run_label}' "
@@ -156,7 +160,7 @@ class ExecutionPlanner:
                         if key in seen_task_config_paths:
                             continue
                         seen_task_config_paths.add(key)
-                        existing_tasks.append(t)
+                        merged_existing.append(t)
 
                 # Single job: keep primary_job_name for logs / strategy edge cases.
                 # Multiple jobs: empty job_name so per-job CLI strategies are not
@@ -166,7 +170,7 @@ class ExecutionPlanner:
                 )
 
                 return ExecutionContext(
-                    existing_tasks=existing_tasks,
+                    existing_tasks=merged_existing,
                     job_configs=config_files,
                     execution_path="config-files",
                     job_name=context_job_name,
