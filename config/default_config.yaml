@@ -267,13 +267,21 @@ validation:
       window_s: 12.0                 # sliding window length
       hop_s: 10.0                    # hop between windows
       aggregator: median             # median | mean | min
+      diagnostic_percentile: 10      # low-percentile MOS diagnostic for local failures
+      export_window_scores: false    # true stores per-window MOS scores in prosody details
 
   # alignment: (removed; alignment language gating handled via preprocessing.tail_trim.smart_match.language_gate)
 
   selection:
     gating:
-      require_mos: false        # candidates < min_mos will be rejected
-      require_similarity: true # existing Whisper-Gate remains active
+      require_mos: false        # false = MOS threshold is diagnostic only; true = reject raw_mos < min_mos
+      require_similarity: true  # ASR/Whisper threshold participates in final is_valid
+      duration:
+        enabled: true           # rejects token-cap loops that stay lexically similar
+        min_word_count: 12      # avoid over-gating tiny fragments
+        max_duration_ratio: 2.0 # fail if audio is >2x the target-WPM duration
+        max_audio_duration_s: 0 # 0 disables absolute duration cap
+        min_wpm: 0              # 0 disables absolute WPM floor
 
 audio:
   silence_duration:

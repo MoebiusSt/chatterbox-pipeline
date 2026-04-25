@@ -57,84 +57,49 @@ def parse_arguments() -> argparse.Namespace:
     Parse command line arguments for the new task-based system.
 
     Supported usage patterns:
-    - python cbpipe.py                           -> default job
-    - python cbpipe.py config1.yaml config2.yaml -> specific configs
-    - python cbpipe.py --job "jobname"           -> find job by name
-    - python cbpipe.py --parallel               -> enable parallel execution
+    - python cbpipe.py                           -> interactive menu
+    - python cbpipe.py create config1.yaml       -> create new task(s)
+    - python cbpipe.py resume config1.yaml       -> fill gaps in latest task(s)
+    - python cbpipe.py reassemble config1.yaml   -> regenerate final audio
+    - python cbpipe.py rebuild config1.yaml      -> rerender candidates and final audio
     """
-    parser = argparse.ArgumentParser(
-        description="TTS Pipeline - Task-Based Execution System",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Usage Examples:
-  %(prog)s                           # Run default job
-  %(prog)s job1.yaml                 # Run specific config files
-  %(prog)s --job "my_job"            # Run job by name
-  %(prog)s --job "testjob*"          # Run all jobs starting with "testjob"
-  %(prog)s --job "test?job"          # Run jobs like "test1job", "test2job" etc.
-
-  %(prog)s --mode new                # Global:Create new tasks for all given jobs
-  %(prog)s --mode all                # Global: Run all exisiting tasks of all given jobs
-  %(prog)s --mode latest             # Global: Run latest task of all given jobs
-  %(prog)s --mode "job1:new,job2:all"  # Specify different strategies per job
-        """,
-    )
-
-    # Job selection arguments
-    parser.add_argument(
-        "--job",
-        "-j",
-        type=str,
-        help="Job name or pattern to execute (supports wildcards: testjob*, test?job, testjob[12])",
-    )
-    parser.add_argument(
-        "config_files", nargs="*", type=Path, help="Configuration file(s) to process"
-    )
-
-    # Execution strategy arguments
-    parser.add_argument(
-        "--mode",
-        "-m",
-        type=str,
-        help="Execution strategy: global (last/all/new) or job-specific (job1:new,job2:all). Examples: --mode all, --mode 'job1:new,job2:last'",
-    )
-    parser.add_argument(
-        "--force-final-generation",
-        "-f",
-        action="store_true",
-        help="Force regeneration of final audio from existing candidates, even if final audio exists",
-    )
-    parser.add_argument(
-        "--rerender-all",
-        "-r",
-        action="store_true",
-        help="Delete all existing candidates and re-render everything from scratch",
-    )
-
-    # Execution options
-
-    parser.add_argument(
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
-
-    parser.add_argument(
+    common_parser.add_argument(
         "--device",
         choices=["auto", "cpu", "cuda", "mps"],
         default="auto",
         help="Device to use for processing (default: auto)",
     )
-
-    # Feature toggles
-    parser.add_argument(
+    common_parser.add_argument(
         "--enable-prosody",
         action="store_true",
         help="Enable prosody scoring and MOS selection (overrides config)",
     )
-    parser.add_argument(
+    common_parser.add_argument(
         "--enable-tail-trim",
         action="store_true",
         help="Enable tail-end trim preprocessor before validation (overrides config)",
     )
+
+    parser = argparse.ArgumentParser(
+        description="TTS Pipeline - Task-Based Execution System",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Usage Examples:
+  %(prog)s                              # Interactive menu
+  %(prog)s create job1.yaml             # Create new task(s)
+  %(prog)s resume job1.yaml             # Fill gaps in latest task(s)
+  %(prog)s resume config/*.yaml --all   # Fill gaps in all tasks for all jobs
+  %(prog)s reassemble job1.yaml         # Regenerate final audio for latest task(s)
+  %(prog)s rebuild job1.yaml            # Rerender candidates and final audio
+  %(prog)s edit job1.yaml               # Open candidate editor for latest task
+        """,
+        parents=[common_parser],
+    )
+    parser.set_defaults(command=None, config_files=[], job=None, all=False)
 
     parser.add_argument(
         "--explain-cache",
@@ -142,11 +107,40 @@ Usage Examples:
         help="Explain model cache behavior and exit",
     )
 
-    parser.add_argument(
-        "--cli-menu-help",
-        action="store_true",
-        help="Show CLI-Menu equivalents and advanced usage information",
-    )
+    def add_job_scope_arguments(subparser: argparse.ArgumentParser, *, allow_all: bool) -> None:
+        subparser.add_argument(
+            "--job",
+            "-j",
+            type=str,
+            help="Job name or pattern to execute (supports wildcards: testjob*, test?job, testjob[12])",
+        )
+        if allow_all:
+            subparser.add_argument(
+                "--all",
+                action="store_true",
+                help="Process all existing tasks for the selected job scope",
+            )
+        subparser.add_argument(
+            "config_files", nargs="*", type=Path, help="Configuration file(s) to process"
+        )
+
+    subparsers = parser.add_subparsers(dest="command")
+    for command in ["create", "resume", "reassemble", "rebuild", "edit"]:
+        subparser = subparsers.add_parser(
+            command,
+            parents=[common_parser],
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            help={
+                "create": "Create new task(s) from job YAML",
+                "resume": "Fill gaps in existing task(s)",
+                "reassemble": "Regenerate final audio from existing candidates",
+                "rebuild": "Delete candidates and rerender everything",
+                "edit": "Open candidate editor for the latest task",
+            }[command],
+        )
+        add_job_scope_arguments(
+            subparser, allow_all=command in {"resume", "reassemble", "rebuild"}
+        )
 
     return parser.parse_args()
 
@@ -214,7 +208,7 @@ def resolve_config_files(args: argparse.Namespace, project_root: Path) -> List[P
 
 def confirm_cli_rerender_action(task_configs: List[TaskConfig]) -> bool:
     """
-    CLI safety confirmation for --rerender-all flag.
+    CLI safety confirmation for the rebuild command.
     Shows affected task directories and asks for user confirmation.
 
     Args:
@@ -265,14 +259,6 @@ def main() -> int:
         # Parse arguments
         args = parse_arguments()
 
-        # Handle CLI-Menu help request
-        if hasattr(args, "cli_menu_help") and args.cli_menu_help:
-            from pipeline.job_manager.cli_mapper import CLIMapper
-
-            cli_mapper = CLIMapper()
-            print(cli_mapper.get_cli_help_text())
-            return 0
-
         # Handle cache explanation request
         if hasattr(args, "explain_cache") and args.explain_cache:
             ChatterboxModelCache.explain_cache_behavior()
@@ -285,12 +271,16 @@ def main() -> int:
             )
             logger.info(" Use EITHER:")
             logger.info(
-                f"   python {sys.argv[0]} --job  \"{args.job}\" --mode {args.mode or 'new'}"
+                f"   python {sys.argv[0]} {args.command or 'resume'} --job \"{args.job}\""
             )
             logger.info(" OR:")
             logger.info(
-                f"   python {sys.argv[0]} {' '.join(str(f) for f in args.config_files)} --mode {args.mode or 'new'}"
+                f"   python {sys.argv[0]} {args.command or 'resume'} {' '.join(str(f) for f in args.config_files)}"
             )
+            return 1
+
+        if args.command == "edit" and (args.all or len(args.config_files) > 1):
+            logger.error("❌ edit requires exactly one job scope and does not support --all")
             return 1
 
         # Update verbose mode based on arguments
@@ -338,8 +328,8 @@ def main() -> int:
         # Print execution summary
         job_manager.print_execution_summary(execution_plan)
 
-        # CLI Safety check for --rerender-all flag
-        if args.rerender_all and execution_plan.task_configs:
+        # CLI Safety check for rebuild.
+        if args.command == "rebuild" and execution_plan.task_configs:
             if not confirm_cli_rerender_action(execution_plan.task_configs):
                 logger.info("❌ Operation cancelled by user")
                 return 0

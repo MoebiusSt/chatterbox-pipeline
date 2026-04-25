@@ -481,21 +481,21 @@ audio:
 ### Execution Patterns
 ```bash
 # Basic Usage
-python src/cbpipe.py                                    # Run default job
-python src/cbpipe.py my_job.yaml                       # Run specific job config
-python src/cbpipe.py --job "pattern*"                  # Pattern matching jobs
+python src/cbpipe.py                                    # Open interactive menu
+python src/cbpipe.py create my_job.yaml                 # Create new task from job config
+python src/cbpipe.py resume my_job.yaml                 # Fill gaps in latest task
+python src/cbpipe.py resume --job "pattern*"            # Pattern matching jobs
 
-# Execution Strategies
-python src/cbpipe.py --mode new                        # Create new task
-python src/cbpipe.py --mode last                       # Resume latest task
-python src/cbpipe.py --mode last-new                   # Resume + regenerate final audio
-python src/cbpipe.py --mode all                        # Process all tasks
-python src/cbpipe.py --mode "job1:last,job2:new"      # Per-job strategies
+# Execution Verbs
+python src/cbpipe.py create my_job.yaml                 # Create new task
+python src/cbpipe.py resume my_job.yaml                 # Resume latest task
+python src/cbpipe.py reassemble my_job.yaml             # Regenerate final audio
+python src/cbpipe.py resume my_job.yaml --all           # Process all tasks
+python src/cbpipe.py rebuild my_job.yaml                # Rerender candidates and final audio
 
 # Options
 python src/cbpipe.py --verbose                         # Debug output
 python src/cbpipe.py --device cuda                     # Force GPU
-python src/cbpipe.py --force-final-generation          # Regenerate final audio
 ```
 More command line argument details in `basic-usage_CLI-arguments.md`
 

@@ -101,7 +101,7 @@ if __name__ == "__main__":
         print("=" * 60)
         print("1. Run this script again to see cache miss behavior")
         print("2. Use 'python src/cbpipe.py --explain-cache' for explanation")
-        print("3. Use 'python src/cbpipe.py --mode all' to process multiple tasks in one session")
+        print("3. Use 'python src/cbpipe.py resume --all' to process multiple tasks in one session")
         print("4. Run 'python scripts/test_model_cache.py' to test cache again")
         print("=" * 60)
         

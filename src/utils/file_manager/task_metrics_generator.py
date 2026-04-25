@@ -423,7 +423,10 @@ class TaskMetricsGenerator:
             "prosody": sel_data.get("prosody"),
             "final_selection_score": sel_data.get("final_selection_score"),
             "passes_mos_gate": sel_data.get("passes_mos_gate"),
+            "passes_mos_threshold": sel_data.get("passes_mos_threshold"),
             "passes_similarity_gate": sel_data.get("passes_similarity_gate"),
+            "passes_duration_gate": sel_data.get("passes_duration_gate"),
+            "duration_gate": sel_data.get("duration_gate"),
         }
 
     def _load_whisper_metrics(self) -> Dict[str, Any]:
@@ -708,7 +711,10 @@ class TaskMetricsGenerator:
                         "prosody": selected_candidate_data.get("prosody"),
                         "final_selection_score": selected_candidate_data.get("final_selection_score"),
                         "passes_mos_gate": selected_candidate_data.get("passes_mos_gate"),
+                        "passes_mos_threshold": selected_candidate_data.get("passes_mos_threshold"),
                         "passes_similarity_gate": selected_candidate_data.get("passes_similarity_gate"),
+                        "passes_duration_gate": selected_candidate_data.get("passes_duration_gate"),
+                        "duration_gate": selected_candidate_data.get("duration_gate"),
                     },
                 },
             }
@@ -1383,6 +1389,11 @@ class TaskMetricsGenerator:
                 prosody = cand_data.get("prosody") or {}
                 prosody_enabled = bool(prosody.get("enabled", False)) if prosody else False
                 prosody_sub = (prosody.get("subscores") or {}) if prosody_enabled else {}
+                mos_window_stats = (
+                    prosody.get("mos_window_stats")
+                    if prosody_enabled and isinstance(prosody.get("mos_window_stats"), dict)
+                    else {}
+                )
 
                 scores: Dict[str, Any] = {
                     "final_selection_score": _r4(cand_data.get("final_selection_score")),
@@ -1404,13 +1415,25 @@ class TaskMetricsGenerator:
                     "prosody_intelligibility": _r4(prosody_sub.get("intelligibility")) if prosody_enabled else None,
                     "prosody_mos": _r4(prosody_sub.get("mos")) if prosody_enabled else None,
                     "raw_mos": _r4(prosody.get("raw_mos")) if prosody_enabled else None,
+                    "mos_window_min": _r4(mos_window_stats.get("min")) if prosody_enabled else None,
+                    "mos_window_p10": _r4(mos_window_stats.get("low_percentile")) if prosody_enabled else None,
+                    "mos_window_median": _r4(mos_window_stats.get("median")) if prosody_enabled else None,
+                    "mos_window_mean": _r4(mos_window_stats.get("mean")) if prosody_enabled else None,
+                    "mos_window_count": (
+                        int(mos_window_stats.get("num_segments"))
+                        if prosody_enabled and mos_window_stats.get("num_segments") is not None
+                        else None
+                    ),
                     "wpm": _r1(prosody.get("wpm")) if prosody_enabled else None,
                 }
 
                 gates: Dict[str, Any] = {
+                    "asr_valid": cand_data.get("asr_valid"),
                     "is_valid": cand_data.get("is_valid"),
                     "passes_mos_gate": cand_data.get("passes_mos_gate"),
+                    "passes_mos_threshold": cand_data.get("passes_mos_threshold"),
                     "passes_similarity_gate": cand_data.get("passes_similarity_gate"),
+                    "passes_duration_gate": cand_data.get("passes_duration_gate"),
                 }
 
                 candidates_list.append({
@@ -1477,7 +1500,7 @@ class TaskMetricsGenerator:
                 "penalty_score": individual_scores.get("penalty_score", 0.0),
                 "overall_quality_score": individual_scores.get("overall_score", candidate_data.get("final_score", 0.0)),
                 "whisper_language_id": validation_metrics.get("whisper_language_id", ""),
-                "passed_threshold": candidate_data.get("is_valid", False),
+                "passed_threshold": candidate_data.get("asr_valid", candidate_data.get("is_valid", False)),
             }
             
             return validation_data

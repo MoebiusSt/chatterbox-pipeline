@@ -4,25 +4,16 @@ JobManager wrapper for backward compatibility.
 Combines all job management modules into a single interface.
 """
 
-import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .job_manager.execution_planner import ExecutionPlanner
 from .job_manager.job_manager import JobManager as CoreJobManager
-from .job_manager.types import (
-    ExecutionPlan,
-    ExecutionStrategy,
-    UserChoice,
-)
+from .job_manager.types import ExecutionPlan, Verb
 from utils.config_manager import TaskConfig
 
-logger = logging.getLogger(__name__)
-
-# Re-export enums and dataclasses for backward compatibility
-UserChoice = UserChoice
-ExecutionStrategy = ExecutionStrategy
 ExecutionPlan = ExecutionPlan
+Verb = Verb
 
 class JobManager:
     """Wraps job management functionality with ExecutionPlanner."""
@@ -51,11 +42,6 @@ class JobManager:
     def is_task_config(self, config_path: Path) -> bool:
         """Check if a config file is a task config."""
         return self.config_manager.is_task_config(config_path)
-
-    def parse_mode_argument(
-        self, mode_arg: Optional[str]
-    ) -> tuple[Dict[str, ExecutionStrategy], Optional[ExecutionStrategy]]:
-        return self.core_manager.parse_mode_argument(mode_arg)
 
     # Delegate to execution planner
     def resolve_execution_plan(

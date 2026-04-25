@@ -528,7 +528,7 @@ class ChatterboxModelCache:
         
         print("\n🚀 OPTIMIZATION TIPS:")
         print("  • Process multiple tasks in one run (use job system)")
-        print("  • Use --mode all to process all tasks in one session")
+        print("  • Use 'resume --all' to process all tasks in one session")
         print("  • Consider the cache miss as normal startup time")
         
         print("\n" + "=" * 60)

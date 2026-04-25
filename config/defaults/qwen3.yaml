@@ -31,363 +31,227 @@ generation:
   max_retries: 1
   global_seed: 0  # Base Seed + Candidate-Offset + Text-Hash keeps Tasks reproducible but Chunks discerned
   seed_fixed: false # true = one torch seed everywhere (docs/SEEDING.md); needs global_seed > 0 or speaker seed > 0
-  default_speaker: stephan_moebius_1
+  default_speaker: default_speaker_template
 
   speakers:
-    - id: stephan_moebius_1
-      reference_audio: stephan_moebius_4_15s.wav
-      language: en
-      # reference_text must be provided per-job (speaker-specific .txt sidecar)
+    - id: default_speaker_template
+# =============================================================================
+# UNIVERSAL DEFAULT for unknown new speakers
+# =============================================================================
+# Stays below the lowest observed safety ceiling of fragile-but-usable speakers.
+# After 1 production run, listen to a candidate and adjust based on perception.
+# =============================================================================
+      reference_audio: stephan_moebius_7_DE_15s.wav
+      language: de
       tts_params:
         do_sample: true
-        max_new_tokens: 4096           # raised for longform chunks (target=1200, max=2000 chars)
+        max_new_tokens: 4096 # raised for longform chunks (target=1200, max=2000 chars)
         # Qwen3 parameters – see readme_agent.md (unified ramp: param = base + dev*ramp_pos).
-        # Chatterbox-only params (exaggeration, cfg_weight, min_p) are silently skipped.
-        temperature: 0.85             # start; positive *temperature_max_deviation* → ramp UP
-        temperature_max_deviation: 0.30
-        top_k: 50                     # start; positive *top_k_max_deviation* → ramp UP
-        top_k_max_deviation: 100
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.8   # start; sign of *subtalker_temperature_max_deviation* sets direction
-        subtalker_temperature_max_deviation: -0.6
-        subtalker_top_k: 200          # start; positive *subtalker_top_k_max_deviation* → ramp UP
-        subtalker_top_k_max_deviation: 50
-        subtalker_top_p: 1.0
-        subtalker_dosample: true
-      conservative_candidate:
-        enabled: false
-        temperature: 1.10       
-        top_k: 100            
+        temperature: 1.089 # start; positive temperature_max_deviation → ramp UP
+        temperature_max_deviation: +0.378
+        top_k: 114 # start; positive top_k_max_deviation → ramp UP
+        top_k_max_deviation: +49
         top_p: 0.99
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.30
-        subtalker_top_k: 110    
-        subtalker_top_p: 1.0
-    - id: annie_coleman_rothenberg_2_15s
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456 # start; negative sign of subtalker_temperature_max_deviation sets direction RAMP DOWN
+        subtalker_temperature_max_deviation: -0.289
+        subtalker_top_k: 206 # start; negative subtalker_top_k_max_deviation → ramp DOWN
+        subtalker_top_k_max_deviation: -49
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: true
+        tts_params:
+          temperature: 1.089
+          top_k: 114
+          top_p: 0.98
+          repetition_penalty: 1.07
+          subtalker_temperature: 1.456
+          subtalker_top_k: 181
+          subtalker_top_p: 0.98
+
+    
+# =============================================================================
+# PER-SPEAKER PRODUCTION RAMPING — final recommendations
+# =============================================================================
+#
+# Based on 26-speaker bench run (April 2026), re-scored with refined gating
+# (asr_valid + duration_gate + mos_threshold). Hallucination detection:
+# all 12 known collapses correctly caught by passes_duration_gate=False.
+#
+# METHODOLOGY
+# Score margins between top-1 and top-3 positions are typically 0.005-0.02,
+# which is within re-scoring noise. So instead of single-peak recommendations,
+# we use the TOP-3 ENVELOPE: the range covering the three best-scoring
+# positions, clamped at the safety ceiling (first hallucinating position - 1).
+#
+# This gives a robust 4-position production ramp that brackets the actual
+# sweet spot, regardless of which exact position scores highest on any given
+# re-evaluation.
+# =============================================================================
+
+speakers:
+
+    - id: annie_coleman_rothenberg_2
       reference_audio: annie_coleman_rothenberg_2_15s.wav
       language: en
       tts_params:
-        temperature: 1.2
-        temperature_max_deviation: 0.0
-        top_k: 178
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 220
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [7, 9, 10] (margin +0.0144); ceiling pos 10.
+        # Recommended ramp: pos 7 -> pos 10.
+        temperature: 1.467
+        temperature_max_deviation: +0.283        # -> 1.750
+        top_k: 163
+        top_k_max_deviation: +37                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.167
+        subtalker_temperature_max_deviation: -0.217    # -> 0.950
+        subtalker_top_k: 157
+        subtalker_top_k_max_deviation: -37        # -> 120
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: cori_samuel_1_15s
+
+    - id: cori_samuel_1
       reference_audio: cori_samuel_1_15s.wav
       language: en
       tts_params:
-        temperature: 1.2
-        temperature_max_deviation: 0.0
-        top_k: 178
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 220
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [7, 8, 9] (margin +0.0099); ceiling pos 10.
+        # Recommended ramp: pos 7 -> pos 10.
+        temperature: 1.467
+        temperature_max_deviation: +0.283        # -> 1.750
+        top_k: 163
+        top_k_max_deviation: +37                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.167
+        subtalker_temperature_max_deviation: -0.217    # -> 0.950
+        subtalker_top_k: 157
+        subtalker_top_k_max_deviation: -37        # -> 120
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: cori_samuel_2_15s
+
+    - id: cori_samuel_2
       reference_audio: cori_samuel_2_15s.wav
       language: en
       tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [6, 8, 10] (margin +0.0044); ceiling pos 10.
+        # Recommended ramp: pos 6 -> pos 10.
+        temperature: 1.372
+        temperature_max_deviation: +0.378        # -> 1.750
+        top_k: 151
+        top_k_max_deviation: +49                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.239
+        subtalker_temperature_max_deviation: -0.289    # -> 0.950
+        subtalker_top_k: 169
+        subtalker_top_k_max_deviation: -49        # -> 120
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: cori_samuel_3_15s
-      reference_audio: cori_samuel_3_15s.wav
+
+    - id: cori_samuel_3-2
+      reference_audio: cori_samuel_3-2_15s.wav
       language: en
       tts_params:
-        temperature: 1.2
-        temperature_max_deviation: 0.0
-        top_k: 178
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 220
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [3, 7, 8] (margin +0.0102); ceiling pos 8.
+        # Recommended ramp: pos 3 -> pos 8.
+        temperature: 1.089
+        temperature_max_deviation: +0.472        # -> 1.561
+        top_k: 114
+        top_k_max_deviation: +62                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.362    # -> 1.094
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -62        # -> 144
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: david_barnes_1_15s
-      reference_audio: david_barnes_1_15s.wav
-      language: en
-      tts_params:
-        temperature: 1.2
-        temperature_max_deviation: 0.0
-        top_k: 178
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 220
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: david_barnes_2_15s
-      reference_audio: david_barnes_2_15s.wav
-      language: en
-      tts_params:
-        temperature: 1.04
-        temperature_max_deviation: 0.0
-        top_k: 131
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.188333
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 187
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: david-barnes_2_DE-fake_15s
+
+    - id: david-barnes_2_DE-fake
       reference_audio: david-barnes_2_DE-fake_15s.wav
       language: de
       tts_params:
-        temperature: 1.04
-        temperature_max_deviation: 0.0
-        top_k: 131
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.188333
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 187
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [4, 7, 8] (margin +0.0099); ceiling pos 10.
+        # Recommended ramp: pos 4 -> pos 8.
+        temperature: 1.183
+        temperature_max_deviation: +0.378        # -> 1.561
+        top_k: 127
+        top_k_max_deviation: +49                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.383
+        subtalker_temperature_max_deviation: -0.289    # -> 1.094
+        subtalker_top_k: 193
+        subtalker_top_k_max_deviation: -49        # -> 144
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: gesine_1_15s
-      reference_audio: gesine_1_15s.wav
+
+    - id: david_barnes_1
+      reference_audio: david_barnes_1_15s.wav
       language: en
       tts_params:
-        temperature: 1.04
-        temperature_max_deviation: 0.0
-        top_k: 131
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.188333
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 187
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [7, 9, 10] (margin +0.0097); ceiling pos 10.
+        # Recommended ramp: pos 7 -> pos 10.
+        temperature: 1.467
+        temperature_max_deviation: +0.283        # -> 1.750
+        top_k: 163
+        top_k_max_deviation: +37                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.167
+        subtalker_temperature_max_deviation: -0.217    # -> 0.950
+        subtalker_top_k: 157
+        subtalker_top_k_max_deviation: -37        # -> 120
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: gesine_2_15s
-      reference_audio: gesine_2_15s.wav
+
+    - id: david_barnes_2
+      reference_audio: david_barnes_2_15s.wav
       language: en
       tts_params:
-        temperature: 0.88
-        temperature_max_deviation: 0.0
-        top_k: 85
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 153
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [7, 9, 10] (margin +0.0071); ceiling pos 10.
+        # Recommended ramp: pos 7 -> pos 10.
+        temperature: 1.467
+        temperature_max_deviation: +0.283        # -> 1.750
+        top_k: 163
+        top_k_max_deviation: +37                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.167
+        subtalker_temperature_max_deviation: -0.217    # -> 0.950
+        subtalker_top_k: 157
+        subtalker_top_k_max_deviation: -37        # -> 120
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: gesine_3_15s
-      reference_audio: gesine_3_15s.wav
-      language: en
+
+    - id: erik_prochnow_DE
+      reference_audio: erik_prochnow_DE_15s.wav
+      language: de
       tts_params:
-        temperature: 1.2
-        temperature_max_deviation: 0.0
-        top_k: 178
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 220
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [5, 9, 10] (margin +0.0100); ceiling pos 10.
+        # Recommended ramp: pos 5 -> pos 10.
+        temperature: 1.278
+        temperature_max_deviation: +0.472        # -> 1.750
+        top_k: 139
+        top_k_max_deviation: +61                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.311
+        subtalker_temperature_max_deviation: -0.361    # -> 0.950
+        subtalker_top_k: 181
+        subtalker_top_k_max_deviation: -61        # -> 120
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: glen_hallstrom_1_15s
-      reference_audio: glen_hallstrom_1_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.88
-        temperature_max_deviation: 0.0
-        top_k: 85
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 153
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: glen_hallstrom_2_15s
-      reference_audio: glen_hallstrom_2_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: glen_hallstrom_3_15s
-      reference_audio: glen_hallstrom_3_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: maryjohn_15s
-      reference_audio: maryjohn_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.88
-        temperature_max_deviation: 0.0
-        top_k: 85
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 153
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: mike_kamp_1_15s
-      reference_audio: mike_kamp_1_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.88
-        temperature_max_deviation: 0.0
-        top_k: 85
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 153
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: peter_yearsley_1_15s
-      reference_audio: peter_yearsley_1_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.88
-        temperature_max_deviation: 0.0
-        top_k: 85
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 153
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: stephan_moebius_2_15s
-      reference_audio: stephan_moebius_2_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: stephan_moebius_3_15s
-      reference_audio: stephan_moebius_3_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.88
-        temperature_max_deviation: 0.0
-        top_k: 85
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.371667
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 153
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: stephan_moebius_4_15s
-      reference_audio: stephan_moebius_4_15s.wav
-      language: en
-      tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
-      conservative_candidate:
-        enabled: false
-    - id: erik_prochnow_DE_15s
+
+    - id: erik_prochnow_DE_15s_OLD_GOOD_VALUES
       reference_audio: erik_prochnow_DE_15s.wav
       language: de
       tts_params:
@@ -404,108 +268,367 @@ generation:
         subtalker_top_p: 0.98
       conservative_candidate:
         enabled: false
-    - id: martina-zimmermann_DE_15s
+
+    - id: gesine_1
+      reference_audio: gesine_1_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [5, 8, 9] (margin +0.0061); ceiling pos 10.
+        # Recommended ramp: pos 5 -> pos 9.
+        temperature: 1.278
+        temperature_max_deviation: +0.378        # -> 1.656
+        top_k: 139
+        top_k_max_deviation: +49                  # -> 188
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.311
+        subtalker_temperature_max_deviation: -0.289    # -> 1.022
+        subtalker_top_k: 181
+        subtalker_top_k_max_deviation: -49        # -> 132
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: gesine_2
+      reference_audio: gesine_2_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [7, 8, 10] (margin +0.0147); ceiling pos 10.
+        # Recommended ramp: pos 7 -> pos 10.
+        temperature: 1.467
+        temperature_max_deviation: +0.283        # -> 1.750
+        top_k: 163
+        top_k_max_deviation: +37                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.167
+        subtalker_temperature_max_deviation: -0.217    # -> 0.950
+        subtalker_top_k: 157
+        subtalker_top_k_max_deviation: -37        # -> 120
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: gesine_3
+      reference_audio: gesine_3_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [6, 9, 10] (margin +0.0049); ceiling pos 10.
+        # Recommended ramp: pos 6 -> pos 10.
+        temperature: 1.372
+        temperature_max_deviation: +0.378        # -> 1.750
+        top_k: 151
+        top_k_max_deviation: +49                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.239
+        subtalker_temperature_max_deviation: -0.289    # -> 0.950
+        subtalker_top_k: 169
+        subtalker_top_k_max_deviation: -49        # -> 120
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: glen_hallstrom_1
+      reference_audio: glen_hallstrom_1_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [5, 6, 9] (margin +0.0142); ceiling pos 9.
+        # Recommended ramp: pos 5 -> pos 9.
+        temperature: 1.278
+        temperature_max_deviation: +0.378        # -> 1.656
+        top_k: 139
+        top_k_max_deviation: +49                  # -> 188
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.311
+        subtalker_temperature_max_deviation: -0.289    # -> 1.022
+        subtalker_top_k: 181
+        subtalker_top_k_max_deviation: -49        # -> 132
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: glen_hallstrom_2
+      reference_audio: glen_hallstrom_2_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [3, 4, 6] (margin +0.0040); ceiling pos 6.
+        # Recommended ramp: pos 3 -> pos 6.
+        temperature: 1.089
+        temperature_max_deviation: +0.283        # -> 1.372
+        top_k: 114
+        top_k_max_deviation: +37                  # -> 151
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.217    # -> 1.239
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -37        # -> 169
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: glen_hallstrom_3
+      reference_audio: glen_hallstrom_3_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [8, 9, 10] (margin +0.0065); ceiling pos 10.
+        # Recommended ramp: pos 7 -> pos 10.
+        temperature: 1.467
+        temperature_max_deviation: +0.283        # -> 1.750
+        top_k: 163
+        top_k_max_deviation: +37                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.167
+        subtalker_temperature_max_deviation: -0.217    # -> 0.950
+        subtalker_top_k: 157
+        subtalker_top_k_max_deviation: -37        # -> 120
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: martina-zimmermann_DE
       reference_audio: martina-zimmermann_DE_15s.wav
       language: de
       tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [3, 4, 5] (margin +0.0010); ceiling pos 8.
+        # Recommended ramp: pos 3 -> pos 6.
+        temperature: 1.089
+        temperature_max_deviation: +0.283        # -> 1.372
+        top_k: 114
+        top_k_max_deviation: +37                  # -> 151
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.217    # -> 1.239
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -37        # -> 169
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: mike_kamp_2_DE_15s
+
+    - id: maryjohn
+      reference_audio: maryjohn_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [4, 9, 10] (margin +0.0333); ceiling pos 10.
+        # Recommended ramp: pos 4 -> pos 10.
+        temperature: 1.183
+        temperature_max_deviation: +0.567        # -> 1.750
+        top_k: 127
+        top_k_max_deviation: +73                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.383
+        subtalker_temperature_max_deviation: -0.433    # -> 0.950
+        subtalker_top_k: 193
+        subtalker_top_k_max_deviation: -73        # -> 120
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: mike_kamp_1
+      reference_audio: mike_kamp_1_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [4, 7, 10] (margin +0.0079); ceiling pos 10.
+        # Recommended ramp: pos 4 -> pos 10.
+        temperature: 1.183
+        temperature_max_deviation: +0.567        # -> 1.750
+        top_k: 127
+        top_k_max_deviation: +73                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.383
+        subtalker_temperature_max_deviation: -0.433    # -> 0.950
+        subtalker_top_k: 193
+        subtalker_top_k_max_deviation: -73        # -> 120
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: mike_kamp_2_DE
       reference_audio: mike_kamp_2_DE_15s.wav
       language: de
       tts_params:
-        temperature: 1.2
-        temperature_max_deviation: 0.0
-        top_k: 178
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
+        # Top-3 positions: [1, 3, 4] (margin +0.0512); ceiling pos 5.
+        # Recommended ramp: pos 1 -> pos 4.
+        temperature: 0.900
+        temperature_max_deviation: +0.189        # -> 1.183
+        top_k: 90
+        top_k_max_deviation: +24                 # -> 127
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.600
+        subtalker_temperature_max_deviation: -0.144    # -> 1.383
         subtalker_top_k: 220
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        subtalker_top_k_max_deviation: -24        # -> 193
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: stefan_backes_DE_15s
+
+    - id: peter_yearsley_1
+      reference_audio: peter_yearsley_1_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [3, 5, 8] (margin +0.0312); ceiling pos 8.
+        # Recommended ramp: pos 3 -> pos 8.
+        temperature: 1.089
+        temperature_max_deviation: +0.472        # -> 1.561
+        top_k: 114
+        top_k_max_deviation: +62                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.362    # -> 1.094
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -62        # -> 144
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: stefan_backes_DE
       reference_audio: stefan_backes_DE_15s.wav
       language: de
       tts_params:
-        temperature: 1.2
-        temperature_max_deviation: 0.0
-        top_k: 178
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.0
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 220
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [3, 4, 8] (margin +0.0082); ceiling pos 10.
+        # Recommended ramp: pos 3 -> pos 8.
+        temperature: 1.089
+        temperature_max_deviation: +0.472        # -> 1.561
+        top_k: 114
+        top_k_max_deviation: +62                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.362    # -> 1.094
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -62        # -> 144
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: stephan_moebius_7_DE_15s
+
+    - id: stephan_moebius_2
+      reference_audio: stephan_moebius_2_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [3, 6, 7] (margin +0.0035); ceiling pos 7.
+        # Recommended ramp: pos 3 -> pos 7.
+        temperature: 1.089
+        temperature_max_deviation: +0.378        # -> 1.467
+        top_k: 114
+        top_k_max_deviation: +49                  # -> 163
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.289    # -> 1.167
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -49        # -> 157
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: stephan_moebius_3
+      reference_audio: stephan_moebius_3_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [5, 7, 8] (margin +0.0130); ceiling pos 8.
+        # Recommended ramp: pos 5 -> pos 8.
+        temperature: 1.278
+        temperature_max_deviation: +0.283        # -> 1.561
+        top_k: 139
+        top_k_max_deviation: +37                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.311
+        subtalker_temperature_max_deviation: -0.217    # -> 1.094
+        subtalker_top_k: 181
+        subtalker_top_k_max_deviation: -37        # -> 144
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: stephan_moebius_4
+      reference_audio: stephan_moebius_4_15s.wav
+      language: en
+      tts_params:
+        # Top-3 positions: [3, 6, 8] (margin +0.0096); ceiling pos 10.
+        # Recommended ramp: pos 3 -> pos 8.
+        temperature: 1.089
+        temperature_max_deviation: +0.472        # -> 1.561
+        top_k: 114
+        top_k_max_deviation: +62                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.362    # -> 1.094
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -62        # -> 144
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+    - id: stephan_moebius_7_DE
       reference_audio: stephan_moebius_7_DE_15s.wav
       language: de
       tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [1, 5, 7] (margin +0.0198); ceiling pos 7.
+        # Recommended ramp: pos 1 -> pos 7.
+        temperature: 0.900
+        temperature_max_deviation: +0.567        # -> 1.467
+        top_k: 90
+        top_k_max_deviation: +73                  # -> 163
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.600
+        subtalker_temperature_max_deviation: -0.433    # -> 1.167
+        subtalker_top_k: 230
+        subtalker_top_k_max_deviation: -73        # -> 157
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: ulrich_joosten_1_DE_15s
+
+    - id: ulrich_joosten_1_DE
       reference_audio: ulrich_joosten_1_DE_15s.wav
       language: de
       tts_params:
-        temperature: 0.72
-        temperature_max_deviation: 0.0
-        top_k: 38
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.555
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 120
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [4, 7, 10] (margin +0.0154); ceiling pos 10.
+        # Recommended ramp: pos 4 -> pos 10.
+        temperature: 1.183
+        temperature_max_deviation: +0.567        # -> 1.750
+        top_k: 127
+        top_k_max_deviation: +73                  # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.383
+        subtalker_temperature_max_deviation: -0.433    # -> 0.950
+        subtalker_top_k: 193
+        subtalker_top_k_max_deviation: -73        # -> 120
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
-    - id: ulrich_joosten_2_DE_15s
+
+    - id: ulrich_joosten_2_DE
       reference_audio: ulrich_joosten_2_DE_15s.wav
       language: de
       tts_params:
-        temperature: 1.04
-        temperature_max_deviation: 0.0
-        top_k: 131
-        top_k_max_deviation: 0
-        top_p: 1.0
-        repetition_penalty: 1.05
-        subtalker_temperature: 1.188333
-        subtalker_temperature_max_deviation: 0.0
-        subtalker_top_k: 187
-        subtalker_top_k_max_deviation: 0
-        subtalker_top_p: 1.0
+        # Top-3 positions: [2, 3, 6] (margin +0.0166); ceiling pos 6.
+        # Recommended ramp: pos 2 -> pos 6.
+        temperature: 0.994
+        temperature_max_deviation: +0.378        # -> 1.372
+        top_k: 102
+        top_k_max_deviation: +49                  # -> 151
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.528
+        subtalker_temperature_max_deviation: -0.289    # -> 1.239
+        subtalker_top_k: 218
+        subtalker_top_k_max_deviation: -49        # -> 169
+        subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
+
 audio:
   sample_rate: 24000  # Qwen3 native sample rate
 

@@ -32,6 +32,13 @@ def _make_candidate(idx_0: int, include_prosody: bool = True) -> Dict[str, Any]:
         },
         "prosody_score": 0.55,
         "raw_mos": 3.5,
+        "mos_window_stats": {
+            "min": 2.8,
+            "low_percentile": 2.9,
+            "median": 3.5,
+            "mean": 3.4,
+            "num_segments": 4,
+        },
         "liveliness_raw": 0.45,
         "wpm": 130.0,
     } if include_prosody else {"enabled": False}
@@ -65,9 +72,12 @@ def _make_candidate(idx_0: int, include_prosody: bool = True) -> Dict[str, Any]:
         "overall_quality_score": 0.88,
         "final_selection_score": 0.75,
         "prosody": prosody,
+        "asr_valid": True,
         "is_valid": True,
         "passes_mos_gate": True,
+        "passes_mos_threshold": True,
         "passes_similarity_gate": True,
+        "passes_duration_gate": True,
     }
 
 
@@ -491,6 +501,11 @@ def test_candidate_scores_field_types(task_dir: Path) -> None:
         "prosody_intelligibility",
         "prosody_mos",
         "raw_mos",
+        "mos_window_min",
+        "mos_window_p10",
+        "mos_window_median",
+        "mos_window_mean",
+        "mos_window_count",
         "wpm",
     ]
     for chunk in chunks:
@@ -513,7 +528,14 @@ def test_candidate_gates_field_types(task_dir: Path) -> None:
         (task_dir / "analysis_metrics.json").read_text(encoding="utf-8")
     )["chunks"]
 
-    gate_keys = ["is_valid", "passes_mos_gate", "passes_similarity_gate"]
+    gate_keys = [
+        "asr_valid",
+        "is_valid",
+        "passes_mos_gate",
+        "passes_mos_threshold",
+        "passes_similarity_gate",
+        "passes_duration_gate",
+    ]
     for chunk in chunks:
         for cand in chunk["candidates"]:
             gates = cand["gates"]
@@ -565,7 +587,9 @@ def test_prosody_fields_are_null_when_disabled(task_dir: Path) -> None:
 
     prosody_keys = [
         "prosody_score", "prosody_flow", "prosody_liveliness",
-        "prosody_intelligibility", "prosody_mos", "raw_mos", "wpm",
+        "prosody_intelligibility", "prosody_mos", "raw_mos",
+        "mos_window_min", "mos_window_p10", "mos_window_median",
+        "mos_window_mean", "mos_window_count", "wpm",
     ]
     for chunk in chunks:
         for cand in chunk["candidates"]:

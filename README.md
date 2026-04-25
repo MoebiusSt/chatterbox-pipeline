@@ -193,44 +193,31 @@ c       - Cancel
 ```
 
 #### Non-interactive mode
-If you want to work non-interactivly, you can use cli arguments to specify your **execution strategy**, resembling most of the menu options.
+Use verb subcommands to state the task operation directly.
 
-- **last/latest**: Uses the latest task (Checks task – final audio is present? If not resumes task, if yes skips)
-- **all**: Uses all tasks (Checks all tasks – final audio are present? If not resumes tasks, if yes skips)
-- **new**: Creates a new task
-- **last-new/new-last**: Checks latest task, resumes it, fills gaps, re-assembles new final audio
-- **all-new/new-all**: Checks all tasks, resumes tasks, fills gaps, re-assembles new final audio
-
-```bash
-# Execution strategies (global):
-python src/cbpipe.py --mode last or latest		# Execute latest task (again) for all given jobs.
-python src/cbpipe.py --mode all					# Execute all found tasks (again) for all given jobs.
-python src/cbpipe.py --mode new					# Create new task for all given jobs.
-python src/cbpipe.py --mode "job1:last-new,job2:all-new,job3:latest"  # Different strategies per job
-Shortform: -m
-
-# Execution strategies with force-overwriting final audio:
-python src/cbpipe.py --mode last-new or new-last   # Execute latest task + create new final audio for all given jobs. 
-python src/cbpipe.py --mode all-new or new-all     # Execute all tasks + new final audios for all given jobs.
-# Note that for mode all-new or new-last, that the task-directory already has to exist. 
-```
+- **create**: Create new task(s) from the supplied job YAML scope.
+- **resume**: Fill gaps in the latest existing task per job. Add `--all` to process all tasks.
+- **reassemble**: Rebuild final audio from existing candidates. Add `--all` to process all tasks.
+- **rebuild**: Delete candidates and final audio, then rerender from scratch. Add `--all` to process all tasks.
+- **edit**: Open the candidate editor for one latest task.
 
 ```bash
-# Another way of globally forcing the regeneration of final audio from existing candidates, same as --mode new|last-new|all-new
-python src/cbpipe.py --force-final-generation      
-Shortform: -f
+python src/cbpipe.py create myjob1.yaml
+python src/cbpipe.py resume myjob1.yaml
+python src/cbpipe.py resume config/generated/*.yaml --all
+python src/cbpipe.py reassemble myjob1.yaml
+python src/cbpipe.py rebuild myjob1.yaml
+python src/cbpipe.py edit myjob1.yaml
 ```
-If you want to create a completly new rendering with all new audio, don't rerun a task, but use the create new task option "--mode new" instead. If you want to partially re-render an already completed task, delete some (bad) audio-chunks, and re-run the task with the "--mode last-new" or "--mode last --force-final-generation" option. This will re-render the missing files, fill in the gaps, and re-assemble the final audio.
 
-```bash
-# Gap-Filling resume of the latest task
-python src/cbpipe.py myjob1.yaml --mode last --force-final-generation
-or
-python src/cbpipe.py myjob1.yaml --mode last-new
-```
+If you want a completely new rendering in a new task directory, use `create`.
+If you want to fill missing files in an existing task, use `resume`.
+If candidates are already correct and only the final WAV should be regenerated, use `reassemble`.
+If all candidates should be regenerated, use `rebuild`.
+
 ##### Combined example
 ```bash
-python src/cbpipe.py --job "testjob*" --mode all-new --v # Create new tasks for all jobs matching "testjob*" pattern, in verbose mode
+python src/cbpipe.py reassemble --job "testjob*" --all -v
 ```
 
 #####  Additional options

@@ -9,8 +9,6 @@ from typing import Any, Dict, List, Optional
 
 from utils.config_manager import ConfigManager, TaskConfig
 
-from .types import ExecutionStrategy
-
 logger = logging.getLogger(__name__)
 
 
@@ -153,61 +151,3 @@ class JobManager:
         self.config_manager.save_task_config(task_config, job_config)
 
         return task_config
-
-    def parse_mode_argument(
-        self, mode_arg: Optional[str]
-    ) -> tuple[Dict[str, Any], Optional[Any]]:
-        """
-        Parse the unified --mode argument that can be either:
-        - Global strategy: "all", "new", "last"
-        - Job-specific strategies: "job1:new,job2:all,job3:last"
-
-
-        Returns:
-            Tuple of (job_strategies_dict, global_strategy)
-        """
-        # ExecutionStrategy is now imported from types module
-
-        if not mode_arg:
-            return {}, None
-
-        def normalize_strategy(strategy: str) -> str:
-            """Normalize strategy aliases to canonical form."""
-            strategy = strategy.strip()
-            # Handle aliases - normalize to primary forms
-            if strategy == "new-last":
-                return "latest-new"
-            elif strategy == "last":
-                return "latest"
-            elif strategy == "last-new":
-                return "latest-new"
-            elif strategy == "new-all":
-                return "all-new"
-            return strategy
-
-        # Check if it contains job-specific format (contains colon)
-        if ":" in mode_arg:
-            # Job-specific strategies: "job1:new,job2:all"
-            job_strategies = {}
-            try:
-                for pair in mode_arg.split(","):
-                    job_name, strategy = pair.split(":")
-                    normalized_strategy = normalize_strategy(strategy)
-                    job_strategies[job_name.strip()] = ExecutionStrategy(
-                        normalized_strategy
-                    )
-                return job_strategies, None
-            except ValueError:
-                raise ValueError(
-                    "Invalid --mode format for job-specific strategies. Use 'job1:strategy,job2:strategy'"
-                )
-        else:
-            # Global strategy: "all", "new", "last"
-            try:
-                normalized_strategy = normalize_strategy(mode_arg)
-                global_strategy = ExecutionStrategy(normalized_strategy)
-                return {}, global_strategy
-            except ValueError:
-                raise ValueError(
-                    f"Invalid --mode strategy '{mode_arg}'. Use: latest/last, all, new, latest-new/last-new/new-last, all-new/new-all, or job-specific format 'job1:strategy,job2:strategy'"
-                )

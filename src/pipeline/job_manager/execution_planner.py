@@ -16,7 +16,7 @@ from utils.config_manager import ConfigManager, TaskConfig
 from .cli_mapper import CLIMapper, StrategyResolver
 from .execution_types import ExecutionContext, ExecutionIntent
 from .menu_orchestrator import MenuOrchestrator
-from .types import ExecutionPlan
+from .types import ExecutionPlan, Verb
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ class ExecutionPlanner:
 
             # Apply similar optimization as for config-files path
             existing_tasks = []
-            if hasattr(args, "mode") and args.mode != "new":
+            if getattr(args, "command", None) != Verb.CREATE.value:
                 existing_tasks = self.job_manager.find_existing_tasks(job_name)
 
             # For job-name execution, we need to find config files, not existing tasks
@@ -104,24 +104,18 @@ class ExecutionPlanner:
                 job_configs=job_configs,
                 execution_path="job-name",
                 job_name=job_name,
-                available_strategies=self._get_available_strategies(),
             )
 
         elif config_files:
             # Config-files execution path
             # Load existing tasks for every passed YAML (same idea as
-            # _create_tasks_for_distinct_configs for --mode new). Previously only
+            # _create_tasks_for_distinct_configs for create). Previously only
             # the first file was used, so glob batches missed other jobs.
             try:
                 merged_existing: List[TaskConfig] = []
                 seen_task_config_paths: set[str] = set()
                 primary_job_name = ""
                 distinct_job_names: List[str] = []
-                # Modes that scope existing tasks to this yaml's run_label (speaker-bench, etc.)
-                modes_filter_by_run_label = frozenset(
-                    ("all", "last", "all-new", "last-new", "latest-new")
-                )
-
                 for config_path in config_files:
                     try:
                         cfg = self.config_manager.load_cascading_config(config_path)
@@ -139,17 +133,21 @@ class ExecutionPlanner:
                     if not primary_job_name:
                         primary_job_name = job_name
 
-                    # OPTIMIZATION: Skip loading existing tasks if --mode new
-                    if not hasattr(args, "mode") or args.mode == "new":
+                    # OPTIMIZATION: Skip loading existing tasks for create.
+                    if getattr(args, "command", None) == Verb.CREATE.value:
                         continue
 
                     run_label = cfg.get("job", {}).get("run_label", "")
                     filter_by_run_label = None
-                    if args.mode in modes_filter_by_run_label and run_label:
+                    if (
+                        getattr(args, "command", None)
+                        in {Verb.RESUME.value, Verb.REASSEMBLE.value, Verb.REBUILD.value, Verb.EDIT.value}
+                        and run_label
+                    ):
                         filter_by_run_label = run_label
                         logger.debug(
                             f"Filtering existing tasks by run_label: '{run_label}' "
-                            f"for job '{job_name}', mode: {args.mode}"
+                            f"for job '{job_name}', command: {args.command}"
                         )
 
                     tasks_for_job = self.job_manager.find_existing_tasks(
@@ -174,7 +172,6 @@ class ExecutionPlanner:
                     job_configs=config_files,
                     execution_path="config-files",
                     job_name=context_job_name,
-                    available_strategies=self._get_available_strategies(),
                 )
             except Exception as e:
                 logger.warning(
@@ -185,7 +182,6 @@ class ExecutionPlanner:
                     job_configs=config_files,
                     execution_path="config-files",
                     job_name="",
-                    available_strategies=self._get_available_strategies(),
                 )
 
         else:
@@ -195,7 +191,7 @@ class ExecutionPlanner:
 
             # Apply similar optimization as for other paths
             existing_tasks = []
-            if hasattr(args, "mode") and args.mode != "new":
+            if getattr(args, "command", None) != Verb.CREATE.value:
                 existing_tasks = self.job_manager.find_existing_tasks(job_name)
 
             # For default execution, use the default_config.yaml directly
@@ -208,7 +204,6 @@ class ExecutionPlanner:
                 job_configs=[default_config_path],
                 execution_path="default",
                 job_name=job_name,
-                available_strategies=self._get_available_strategies(),
             )
 
     def _resolve_execution_intent(
@@ -246,9 +241,9 @@ class ExecutionPlanner:
         if intent.execution_mode == "cancelled":
             return ExecutionPlan([], "cancelled")
 
-        # Handle new task creation - if tasks is empty and mode is single, create new task
+        # Handle new task creation.
         tasks_to_process = intent.tasks
-        if not tasks_to_process and intent.execution_mode == "single":
+        if intent.verb == Verb.CREATE:
             # Create new task from context - handle both job-name and config-files execution paths
             job_configs = None
 
@@ -320,9 +315,6 @@ class ExecutionPlanner:
                 task.force_final_generation = True
             if intent.execution_options.rerender_all:
                 task.rerender_all = True
-            if intent.execution_options.gap_filling_mode:
-                task.gap_filling_mode = True
-
             task_configs.append(task)
 
         # Set execution mode
@@ -396,10 +388,6 @@ class ExecutionPlanner:
                 continue
 
         return distinct_tasks
-
-    def _get_available_strategies(self) -> dict:
-        """Get available execution strategies for context."""
-        return self.cli_mapper.strategy_to_options
 
     def print_execution_summary(self, plan: ExecutionPlan) -> None:
         """Print execution summary - unchanged interface for compatibility."""

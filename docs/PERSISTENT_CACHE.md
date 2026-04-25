@@ -44,16 +44,16 @@ python src/cbpipe.py task2.yaml
 python src/cbpipe.py task3.yaml
 
 # Better: All tasks in one run
-python src/cbpipe.py task1.yaml task2.yaml task3.yaml
+python src/cbpipe.py resume task1.yaml task2.yaml task3.yaml
 ```
 
 ### 2. **Use Job System**
 ```bash
 # All tasks of a job in one run
-python src/cbpipe.py --mode all
+python src/cbpipe.py resume --all
 
 # Process all existing tasks
-python src/cbpipe.py --job "myjob*" --mode all
+python src/cbpipe.py resume --job "myjob*" --all
 ```
 
 ### 3. **Accept Loading Time**

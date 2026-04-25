@@ -4,7 +4,7 @@
 Adds a multilingual prosody and MOS-based selection layer to candidate validation:
 - Tail-end speech-aware trimming (Smart/WhisperX → VAD → Energy) before any validation
 - Prosody scoring (flow, liveliness, intelligibility, semantic proxy)
-- MOS via UTMOS (VERSA), fallback NISQA (optional)
+- MOS via UTMOS (VERSA V1 or V2), fallback NISQA (optional)
 - Final selection score combines quality, prosody, and MOS
 
 ## Configuration

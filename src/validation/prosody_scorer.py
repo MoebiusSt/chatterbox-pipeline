@@ -367,6 +367,7 @@ class ProsodyScorer:
         # MOS - segment long audio so short-utterance MOS models stay reliable
         mos_unit = 0.0
         raw_mos = None
+        mos_window_stats = None
         if self.mos_provider and self.mos_provider.is_language_supported(language):
             try:
                 seg_cfg = (
@@ -379,6 +380,8 @@ class ProsodyScorer:
                 window_s = float(seg_cfg.get("window_s", 12.0))
                 hop_s = float(seg_cfg.get("hop_s", 10.0))
                 aggregator = str(seg_cfg.get("aggregator", "median"))
+                diagnostic_percentile = float(seg_cfg.get("diagnostic_percentile", 10.0))
+                export_window_scores = bool(seg_cfg.get("export_window_scores", False))
                 duration_s = float(audio.shape[-1]) / float(self.sample_rate) if audio.numel() > 0 else 0.0
                 if duration_s > max_unseg_s and hasattr(self.mos_provider, "score_segmented"):
                     raw_mos = self.mos_provider.score_segmented(
@@ -388,9 +391,16 @@ class ProsodyScorer:
                         window_s=window_s,
                         hop_s=hop_s,
                         aggregator=aggregator,
+                        diagnostic_percentile=diagnostic_percentile,
+                        export_window_scores=export_window_scores,
                     )
                 else:
                     raw_mos = self.mos_provider.score(audio, self.sample_rate, language)
+                mos_details = getattr(self.mos_provider, "_last_details", None)
+                if isinstance(mos_details, dict):
+                    stats = mos_details.get("window_stats")
+                    if isinstance(stats, dict):
+                        mos_window_stats = stats
                 mos_unit = self.mos_provider.to_unit_score(raw_mos, min_mos=self.min_mos) or 0.0
             except Exception as e:
                 logger.debug(f"MOS provider failed: {e}")
@@ -412,6 +422,7 @@ class ProsodyScorer:
 
         result["prosody_score"] = float(max(0.0, min(1.0, prosody_score)))
         result["raw_mos"] = raw_mos
+        result["mos_window_stats"] = mos_window_stats
         result["liveliness_raw"] = float(liveliness_raw)
         result["wpm"] = wpm
         return result

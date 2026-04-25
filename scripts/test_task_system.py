@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from pipeline.job_manager import JobManager
-from pipeline.job_manager.types import ExecutionStrategy, UserChoice
+from pipeline.job_manager.types import Verb
 from utils.config_manager import ConfigManager
 
 # Path correction for imports
@@ -88,27 +88,13 @@ def test_task_system():
         return False
 
 
-def test_user_choice_enum():
-    """Test UserChoice enum values."""
-    assert UserChoice.LATEST.value == "latest"
-    assert UserChoice.ALL.value == "all"
-    assert UserChoice.NEW.value == "new"
-    assert UserChoice.LATEST_NEW.value == "latest-new"
-    assert UserChoice.ALL_NEW.value == "all-new"
-    assert UserChoice.SPECIFIC.value == "specific"
-    assert UserChoice.SPECIFIC_NEW.value == "specific-new"
-    assert UserChoice.CANCEL.value == "cancel"
-
-
-def test_execution_strategy_enum():
-    """Test ExecutionStrategy enum values."""
-    assert ExecutionStrategy.LATEST.value == "latest"
-    assert ExecutionStrategy.LAST.value == "latest"  # Alias
-    assert ExecutionStrategy.ALL.value == "all"
-    assert ExecutionStrategy.NEW.value == "new"
-    assert ExecutionStrategy.LATEST_NEW.value == "latest-new"
-    assert ExecutionStrategy.LAST_NEW.value == "latest-new"  # Alias
-    assert ExecutionStrategy.ALL_NEW.value == "all-new"
+def test_verb_enum():
+    """Test verb enum values."""
+    assert Verb.CREATE.value == "create"
+    assert Verb.RESUME.value == "resume"
+    assert Verb.REASSEMBLE.value == "reassemble"
+    assert Verb.REBUILD.value == "rebuild"
+    assert Verb.EDIT.value == "edit"
 
 
 def test_job_manager_initialization():
@@ -119,63 +105,17 @@ def test_job_manager_initialization():
 
 
 def test_resolve_execution_plan():
-    """Test execution plan resolution with different strategies."""
+    """Test execution plan resolution with a create command."""
     config_manager = ConfigManager(PROJECT_ROOT)
     job_manager = JobManager(config_manager)
 
     # Create mock args object
     args = type(
-        "Args", (), {"mode": "last-new", "job": None, "force_final_generation": False}
+        "Args", (), {"command": "create", "job": None, "all": False}
     )()
 
-    # Test global strategy
     plan = job_manager.resolve_execution_plan(args)
     assert plan is not None
-
-    # Test job-specific strategy
-    args = type(
-        "Args",
-        (),
-        {
-            "mode": "job1:last-new,job2:all-new",
-            "job": None,
-            "force_final_generation": False,
-        },
-    )()
-    plan = job_manager.resolve_execution_plan(args)
-    assert plan is not None
-
-
-def test_mode_argument_aliases():
-    """Test that mode argument aliases work correctly."""
-    config_manager = ConfigManager(PROJECT_ROOT)
-    job_manager = JobManager(config_manager)
-
-    # Test 'last' alias for 'latest'
-    job_strat, global_strat = job_manager.parse_mode_argument("last")
-    assert global_strat == ExecutionStrategy.LATEST
-    assert job_strat == {}
-
-    # Test 'last-new' alias for 'latest-new'
-    job_strat, global_strat = job_manager.parse_mode_argument("last-new")
-    assert global_strat == ExecutionStrategy.LATEST_NEW
-    assert job_strat == {}
-
-    # Test 'new-last' alias for 'latest-new'
-    job_strat, global_strat = job_manager.parse_mode_argument("new-last")
-    assert global_strat == ExecutionStrategy.LATEST_NEW
-    assert job_strat == {}
-
-    # Test 'new-all' alias for 'all-new'
-    job_strat, global_strat = job_manager.parse_mode_argument("new-all")
-    assert global_strat == ExecutionStrategy.ALL_NEW
-    assert job_strat == {}
-
-    # Test job-specific aliases
-    job_strat, global_strat = job_manager.parse_mode_argument("job1:last,job2:last-new")
-    assert global_strat is None
-    assert job_strat["job1"] == ExecutionStrategy.LATEST
-    assert job_strat["job2"] == ExecutionStrategy.LATEST_NEW
 
 
 def test_prompt_user_selection():
@@ -194,13 +134,12 @@ def test_prompt_user_selection():
         job_configs=None,
         execution_path="test",
         job_name="test_job",
-        available_strategies={}
     )
     
-    intent = menu_orchestrator._create_new_task_intent(context_empty)
+    intent = menu_orchestrator._create_new_task_intent()
     assert intent.execution_mode == "single"
     assert intent.tasks == []
-    assert intent.execution_options.force_final_generation == True
+    assert intent.verb == Verb.CREATE
 
     # Test with tasks (mock input for interactive flow)
     import builtins
@@ -230,7 +169,6 @@ def test_prompt_user_selection():
         job_configs=None,
         execution_path="test",
         job_name="test_job",
-        available_strategies={}
     )
 
     builtins.input = mock_input
@@ -238,7 +176,7 @@ def test_prompt_user_selection():
         intent = menu_orchestrator.resolve_user_intent(context_with_tasks)
         assert intent.execution_mode == "single"
         assert len(intent.tasks) == 1
-        assert intent.execution_options.force_final_generation == True
+        assert intent.verb == Verb.RESUME
     except Exception as e:
         # If interactive test fails, just verify the mock task structure
         assert mock_task.job_name == "test_job"

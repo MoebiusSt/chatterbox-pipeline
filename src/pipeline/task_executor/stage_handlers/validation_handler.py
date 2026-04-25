@@ -200,6 +200,125 @@ class ValidationHandler:
             filtered_words,
         )
 
+    def _compute_duration_gate(
+        self,
+        candidate: AudioCandidate,
+        original_text: str,
+        prosody_details: Optional[Dict[str, Any]],
+    ) -> Tuple[bool, Dict[str, Any]]:
+        """Reject token-cap loops that preserve lexical similarity but run far too long."""
+        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
+        duration_cfg = gating.get("duration", {}) or {}
+        enabled = bool(duration_cfg.get("enabled", True))
+
+        sample_rate = int(self.config.get("audio", {}).get("sample_rate", 24000))
+        duration_s = 0.0
+        try:
+            if candidate.audio_tensor is not None and getattr(candidate.audio_tensor, "numel", lambda: 0)() > 0:
+                duration_s = float(candidate.audio_tensor.shape[-1]) / float(sample_rate)
+        except Exception:
+            duration_s = 0.0
+
+        word_count = len([w for w in (original_text or "").split() if w.strip()])
+        wpm = None
+        if isinstance(prosody_details, dict):
+            try:
+                raw_wpm = prosody_details.get("wpm")
+                wpm = float(raw_wpm) if raw_wpm is not None else None
+            except Exception:
+                wpm = None
+        if wpm is None and duration_s > 0.0 and word_count > 0:
+            wpm = word_count / max(1e-6, duration_s / 60.0)
+
+        p_cfg = self.config.get("validation", {}).get("prosody", {}) or {}
+        targets = p_cfg.get("targets", {}) or {}
+        wpm_min = float(targets.get("wpm_min", 115.0))
+        wpm_max = float(targets.get("wpm_max", 155.0))
+        target_wpm = max(1.0, 0.5 * (wpm_min + wpm_max))
+        expected_duration_s = (word_count / target_wpm) * 60.0 if word_count > 0 else None
+
+        details: Dict[str, Any] = {
+            "enabled": enabled,
+            "audio_duration": duration_s,
+            "word_count": word_count,
+            "wpm": wpm,
+            "expected_duration_s": expected_duration_s,
+            "reasons": [],
+        }
+        if not enabled:
+            return True, details
+
+        min_word_count = int(duration_cfg.get("min_word_count", 12))
+        max_duration_ratio = float(duration_cfg.get("max_duration_ratio", 2.0))
+        max_audio_duration_s = float(duration_cfg.get("max_audio_duration_s", 0.0))
+        min_wpm = float(duration_cfg.get("min_wpm", 0.0))
+
+        reasons: List[str] = []
+        if max_audio_duration_s > 0.0 and duration_s > max_audio_duration_s:
+            reasons.append("max_audio_duration_s")
+        if (
+            word_count >= min_word_count
+            and expected_duration_s is not None
+            and expected_duration_s > 0.0
+            and max_duration_ratio > 0.0
+            and duration_s > expected_duration_s * max_duration_ratio
+        ):
+            reasons.append("max_duration_ratio")
+        if word_count >= min_word_count and min_wpm > 0.0 and wpm is not None and wpm < min_wpm:
+            reasons.append("min_wpm")
+
+        details.update(
+            {
+                "min_word_count": min_word_count,
+                "max_duration_ratio": max_duration_ratio,
+                "max_audio_duration_s": max_audio_duration_s,
+                "min_wpm": min_wpm,
+                "reasons": reasons,
+            }
+        )
+        return not reasons, details
+
+    def _compute_mos_threshold(
+        self,
+        prosody_details: Optional[Dict[str, Any]],
+    ) -> Optional[bool]:
+        """Return the raw MOS threshold result, independent of whether MOS gates selection."""
+        if not isinstance(prosody_details, dict):
+            return None
+        raw_mos = prosody_details.get("raw_mos")
+        if raw_mos is None:
+            return None
+        min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
+        return bool(float(raw_mos) >= min_mos)
+
+    def _compute_selection_gates(
+        self,
+        similarity_valid: bool,
+        prosody_details: Optional[Dict[str, Any]],
+        candidate: AudioCandidate,
+        original_text: str,
+    ) -> Tuple[bool, bool, bool, Dict[str, Any], Optional[bool], bool]:
+        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
+        require_mos = bool(gating.get("require_mos", True))
+        require_similarity = bool(gating.get("require_similarity", True))
+
+        passes_similarity = True
+        if require_similarity:
+            passes_similarity = bool(similarity_valid)
+
+        passes_mos_threshold = self._compute_mos_threshold(prosody_details)
+        passes_mos = True
+        if require_mos:
+            passes_mos = True if passes_mos_threshold is None else bool(passes_mos_threshold)
+
+        passes_duration, duration_gate = self._compute_duration_gate(
+            candidate,
+            original_text,
+            prosody_details,
+        )
+        final_valid = bool(passes_similarity and passes_mos and passes_duration)
+        return passes_mos, passes_similarity, passes_duration, duration_gate, passes_mos_threshold, final_valid
+
     def execute_validation(self) -> bool:
         try:
             logger.info("=" * 50)
@@ -303,7 +422,17 @@ class ValidationHandler:
                         )
                         # Backfill prosody/final score/gates if missing in prior runs
                         prev = existing_whisper[candidate.candidate_idx]
-                        needs_backfill = not isinstance(prev.get("prosody"), dict) or ("final_selection_score" not in prev)
+                        needs_backfill = (
+                            not isinstance(prev.get("prosody"), dict)
+                            or ("final_selection_score" not in prev)
+                            or ("asr_valid" not in prev)
+                            or ("passes_mos_threshold" not in prev)
+                            or ("passes_duration_gate" not in prev)
+                            or (
+                                isinstance(prev.get("prosody"), dict)
+                                and "mos_window_stats" not in prev.get("prosody", {})
+                            )
+                        )
                         if needs_backfill and candidate.audio_tensor is not None:
                             try:
                                 # Recompute prosody
@@ -326,23 +455,22 @@ class ValidationHandler:
                                 gamma = float(sel_cfg.get("gamma_mos", 0.15))
                                 overall = float(prev.get("overall_quality_score", 0.0))
                                 final_selection_score = alpha * overall + beta * prosody_score + gamma * mos_unit
-                                # Gates
-                                gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
-                                require_mos = bool(gating.get("require_mos", True))
-                                require_similarity = bool(gating.get("require_similarity", True))
-                                passes_mos = True
-                                if require_mos and isinstance(prosody_details, dict):
-                                    min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
-                                    raw_mos = prosody_details.get("raw_mos")
-                                    passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
-                                passes_similarity = True
-                                if require_similarity:
-                                    passes_similarity = bool(prev.get("is_valid", True))
+                                passes_mos, passes_similarity, passes_duration, duration_gate, passes_mos_threshold, final_valid = self._compute_selection_gates(
+                                    similarity_valid=bool(prev.get("asr_valid", prev.get("passes_similarity_gate", prev.get("is_valid", True)))),
+                                    prosody_details=prosody_details,
+                                    candidate=candidate,
+                                    original_text=chunk.text,
+                                )
                                 # Merge and save
                                 prev["prosody"] = prosody_details
                                 prev["final_selection_score"] = final_selection_score
+                                prev["asr_valid"] = passes_similarity
+                                prev["is_valid"] = final_valid
                                 prev["passes_mos_gate"] = passes_mos
+                                prev["passes_mos_threshold"] = passes_mos_threshold
                                 prev["passes_similarity_gate"] = passes_similarity
+                                prev["passes_duration_gate"] = passes_duration
+                                prev["duration_gate"] = duration_gate
                                 self.file_manager.save_whisper(chunk.idx, candidate.candidate_idx, prev)
                             except Exception as e:
                                 logger.debug(f"Backfill prosody failed: {e}")
@@ -469,22 +597,16 @@ class ValidationHandler:
                             + gamma * float(mos_unit)
                         )
 
-                        # Apply gating
-                        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
-                        require_mos = bool(gating.get("require_mos", True))
-                        require_similarity = bool(gating.get("require_similarity", True))
-                        passes_mos = True
-                        if require_mos and isinstance(prosody_details, dict):
-                            min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
-                            raw_mos = prosody_details.get("raw_mos")
-                            # If MOS is unavailable (None), do not block selection
-                            passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
-                        passes_similarity = True
-                        if require_similarity:
-                            passes_similarity = bool(whisper_result.is_valid)
+                        passes_mos, passes_similarity, passes_duration, duration_gate, passes_mos_threshold, final_valid = self._compute_selection_gates(
+                            similarity_valid=bool(whisper_result.is_valid),
+                            prosody_details=prosody_details,
+                            candidate=candidate,
+                            original_text=chunk.text,
+                        )
 
                         combined_result = {
-                            "is_valid": whisper_result.is_valid,
+                            "asr_valid": whisper_result.is_valid,
+                            "is_valid": final_valid,
                             "transcription": whisper_result.transcription,
                             "similarity_score": whisper_result.similarity_score,
                             "quality_score": whisper_result.quality_score,
@@ -511,7 +633,10 @@ class ValidationHandler:
                             ),
                             "final_selection_score": final_selection_score,
                             "passes_mos_gate": passes_mos,
+                            "passes_mos_threshold": passes_mos_threshold,
                             "passes_similarity_gate": passes_similarity,
+                            "passes_duration_gate": passes_duration,
+                            "duration_gate": duration_gate,
                         }
                         # Attach tail_trim metadata if available
                         try:
@@ -537,7 +662,7 @@ class ValidationHandler:
                         chunk_results[candidate.candidate_idx] = combined_result
 
                         # Log validation result
-                        status = "✅ Valid" if whisper_result.is_valid else "❌ Invalid"
+                        status = "✅ Valid" if final_valid else "❌ Invalid"
                         logger.debug(
                             f"{status} - candidate {candidate_num} (similarity: {whisper_result.similarity_score:.3f}, quality: {whisper_result.quality_score:.3f}, overall: {quality_result.overall_score:.3f})"
                         )
@@ -802,21 +927,16 @@ class ValidationHandler:
                             + gamma * float(mos_unit)
                         )
 
-                        # Apply gating flags
-                        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
-                        require_mos = bool(gating.get("require_mos", True))
-                        require_similarity = bool(gating.get("require_similarity", True))
-                        passes_mos = True
-                        if require_mos and isinstance(prosody_details, dict):
-                            min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
-                            raw_mos = prosody_details.get("raw_mos")
-                            passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
-                        passes_similarity = True
-                        if require_similarity:
-                            passes_similarity = bool(whisper_result.is_valid)
+                        passes_mos, passes_similarity, passes_duration, duration_gate, passes_mos_threshold, final_valid = self._compute_selection_gates(
+                            similarity_valid=bool(whisper_result.is_valid),
+                            prosody_details=prosody_details,
+                            candidate=retry_candidate,
+                            original_text=chunk.text,
+                        )
 
                         combined_result = {
-                            "is_valid": whisper_result.is_valid,
+                            "asr_valid": whisper_result.is_valid,
+                            "is_valid": final_valid,
                             "transcription": whisper_result.transcription,
                             "similarity_score": whisper_result.similarity_score,
                             "quality_score": whisper_result.quality_score,
@@ -830,7 +950,10 @@ class ValidationHandler:
                             "prosody": prosody_details,
                             "final_selection_score": final_selection_score,
                             "passes_mos_gate": passes_mos,
+                            "passes_mos_threshold": passes_mos_threshold,
                             "passes_similarity_gate": passes_similarity,
+                            "passes_duration_gate": passes_duration,
+                            "duration_gate": duration_gate,
                         }
 
                         # Attach tail_trim metadata if available (retry)
@@ -855,7 +978,7 @@ class ValidationHandler:
                         )
                         chunk_results[retry_candidate.candidate_idx] = combined_result
 
-                        status = "✅ Valid" if whisper_result.is_valid else "❌ Invalid"
+                        status = "✅ Valid" if final_valid else "❌ Invalid"
                         logger.debug(
                             f"{status} - retry candidate {candidate_num} (similarity: {whisper_result.similarity_score:.3f}, quality: {whisper_result.quality_score:.3f}, overall: {quality_result.overall_score:.3f})"
                         )
@@ -951,7 +1074,7 @@ class ValidationHandler:
                     result_dict = chunk_validation[candidate.candidate_idx]
 
                     validation_result = ValidationResult(
-                        is_valid=result_dict.get("is_valid", False),
+                        is_valid=result_dict.get("asr_valid", result_dict.get("is_valid", False)),
                         transcription=result_dict.get("transcription", ""),
                         similarity_score=result_dict.get("similarity_score", 0.0),
                         quality_score=result_dict.get("quality_score", 0.0),
@@ -985,7 +1108,8 @@ class ValidationHandler:
                     # Respect gating flags if present
                     passes_mos = result_dict.get("passes_mos_gate", True)
                     passes_similarity = result_dict.get("passes_similarity_gate", True)
-                    if not (passes_mos and passes_similarity):
+                    passes_duration = result_dict.get("passes_duration_gate", True)
+                    if not (passes_mos and passes_similarity and passes_duration):
                         # Demote gated-out candidates
                         candidate_effective = float("-inf")
                     else:
@@ -1045,9 +1169,13 @@ class ValidationHandler:
                         "overall_quality_score": float(individual_scores.get("overall_score", 0.0)),
                         "final_selection_score": final_sel,
                         "prosody": result_dict.get("prosody"),
+                        "asr_valid": result_dict.get("asr_valid", result_dict.get("passes_similarity_gate", result_dict.get("is_valid", False))),
                         "is_valid": result_dict.get("is_valid", False),
                         "passes_mos_gate": result_dict.get("passes_mos_gate", True),
+                        "passes_mos_threshold": result_dict.get("passes_mos_threshold"),
                         "passes_similarity_gate": result_dict.get("passes_similarity_gate", True),
+                        "passes_duration_gate": result_dict.get("passes_duration_gate", True),
+                        "duration_gate": result_dict.get("duration_gate"),
                     }
 
                 # Log results
@@ -1238,7 +1366,17 @@ class ValidationHandler:
                         )
                         # Backfill prosody/final score/gates if missing
                         prev = existing_whisper[candidate.candidate_idx]
-                        needs_backfill = not isinstance(prev.get("prosody"), dict) or ("final_selection_score" not in prev)
+                        needs_backfill = (
+                            not isinstance(prev.get("prosody"), dict)
+                            or ("final_selection_score" not in prev)
+                            or ("asr_valid" not in prev)
+                            or ("passes_mos_threshold" not in prev)
+                            or ("passes_duration_gate" not in prev)
+                            or (
+                                isinstance(prev.get("prosody"), dict)
+                                and "mos_window_stats" not in prev.get("prosody", {})
+                            )
+                        )
                         if needs_backfill and candidate.audio_tensor is not None and getattr(candidate.audio_tensor, "numel", lambda: 0)() > 0:
                             try:
                                 # Ensure scorer exists
@@ -1281,22 +1419,21 @@ class ValidationHandler:
                                 gamma = float(sel_cfg.get("gamma_mos", 0.15))
                                 overall = float(prev.get("overall_quality_score", 0.0))
                                 final_selection_score = alpha * overall + beta * prosody_score + gamma * mos_unit
-                                # Gates
-                                gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
-                                require_mos = bool(gating.get("require_mos", True))
-                                require_similarity = bool(gating.get("require_similarity", True))
-                                passes_mos = True
-                                if require_mos and isinstance(prosody_details, dict):
-                                    min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
-                                    raw_mos = prosody_details.get("raw_mos")
-                                    passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
-                                passes_similarity = True
-                                if require_similarity:
-                                    passes_similarity = bool(prev.get("is_valid", True))
+                                passes_mos, passes_similarity, passes_duration, duration_gate, passes_mos_threshold, final_valid = self._compute_selection_gates(
+                                    similarity_valid=bool(prev.get("asr_valid", prev.get("passes_similarity_gate", prev.get("is_valid", True)))),
+                                    prosody_details=prosody_details,
+                                    candidate=candidate,
+                                    original_text=chunk.text,
+                                )
                                 prev["prosody"] = prosody_details
                                 prev["final_selection_score"] = final_selection_score
+                                prev["asr_valid"] = passes_similarity
+                                prev["is_valid"] = final_valid
                                 prev["passes_mos_gate"] = passes_mos
+                                prev["passes_mos_threshold"] = passes_mos_threshold
                                 prev["passes_similarity_gate"] = passes_similarity
+                                prev["passes_duration_gate"] = passes_duration
+                                prev["duration_gate"] = duration_gate
                                 self.file_manager.save_whisper(chunk.idx, candidate.candidate_idx, prev)
                             except Exception as e:
                                 logger.debug(f"Selective backfill prosody failed: {e}")
@@ -1420,22 +1557,17 @@ class ValidationHandler:
                             + gamma * float(mos_unit)
                         )
 
-                        # Gates (same logic)
-                        gating = self.config.get("validation", {}).get("selection", {}).get("gating", {})
-                        require_mos = bool(gating.get("require_mos", True))
-                        require_similarity = bool(gating.get("require_similarity", True))
-                        passes_mos = True
-                        if require_mos and isinstance(prosody_details, dict):
-                            min_mos = float(self.config.get("validation", {}).get("mos", {}).get("min_mos", 3.5))
-                            raw_mos = prosody_details.get("raw_mos")
-                            passes_mos = (raw_mos is None) or (float(raw_mos) >= min_mos)
-                        passes_similarity = True
-                        if require_similarity:
-                            passes_similarity = bool(whisper_result.is_valid)
+                        passes_mos, passes_similarity, passes_duration, duration_gate, passes_mos_threshold, final_valid = self._compute_selection_gates(
+                            similarity_valid=bool(whisper_result.is_valid),
+                            prosody_details=prosody_details,
+                            candidate=candidate,
+                            original_text=chunk.text,
+                        )
 
                         # Combine results
                         combined_result = {
-                            "is_valid": whisper_result.is_valid,
+                            "asr_valid": whisper_result.is_valid,
+                            "is_valid": final_valid,
                             "transcription": whisper_result.transcription,
                             "similarity_score": whisper_result.similarity_score,
                             "quality_score": whisper_result.quality_score,
@@ -1449,7 +1581,10 @@ class ValidationHandler:
                             "prosody": prosody_details,
                             "final_selection_score": final_selection_score,
                             "passes_mos_gate": passes_mos,
+                            "passes_mos_threshold": passes_mos_threshold,
                             "passes_similarity_gate": passes_similarity,
+                            "passes_duration_gate": passes_duration,
+                            "duration_gate": duration_gate,
                         }
 
                         # Attach tail_trim metadata if available (selective)
@@ -1476,7 +1611,7 @@ class ValidationHandler:
                         chunk_results[candidate.candidate_idx] = combined_result
 
                         # Log validation result
-                        status = "✅ Valid" if whisper_result.is_valid else "❌ Invalid"
+                        status = "✅ Valid" if final_valid else "❌ Invalid"
                         logger.debug(
                             f"{status} - candidate {candidate_num} (similarity: {whisper_result.similarity_score:.3f}, quality: {whisper_result.quality_score:.3f}, overall: {quality_result.overall_score:.3f})"
                         )
@@ -1581,7 +1716,7 @@ class ValidationHandler:
                         result_dict = chunk_validation[candidate.candidate_idx]
 
                         validation_result = ValidationResult(
-                            is_valid=result_dict.get("is_valid", False),
+                            is_valid=result_dict.get("asr_valid", result_dict.get("is_valid", False)),
                             transcription=result_dict.get("transcription", ""),
                             similarity_score=result_dict.get("similarity_score", 0.0),
                             quality_score=result_dict.get("quality_score", 0.0),
@@ -1614,7 +1749,8 @@ class ValidationHandler:
                         # Respect gating flags if present
                         passes_mos = result_dict.get("passes_mos_gate", True)
                         passes_similarity = result_dict.get("passes_similarity_gate", True)
-                        candidate_effective = candidate_score if (passes_mos and passes_similarity) else float("-inf")
+                        passes_duration = result_dict.get("passes_duration_gate", True)
+                        candidate_effective = candidate_score if (passes_mos and passes_similarity and passes_duration) else float("-inf")
 
                         if candidate_effective > best_score_value:
                             best_score_value = candidate_effective
@@ -1668,9 +1804,13 @@ class ValidationHandler:
                             "overall_quality_score": float(individual_scores.get("overall_score", 0.0)),
                             "final_selection_score": final_sel,
                             "prosody": result_dict.get("prosody"),
+                            "asr_valid": result_dict.get("asr_valid", result_dict.get("passes_similarity_gate", result_dict.get("is_valid", False))),
                             "is_valid": result_dict.get("is_valid", False),
                             "passes_mos_gate": result_dict.get("passes_mos_gate", True),
+                            "passes_mos_threshold": result_dict.get("passes_mos_threshold"),
                             "passes_similarity_gate": result_dict.get("passes_similarity_gate", True),
+                            "passes_duration_gate": result_dict.get("passes_duration_gate", True),
+                            "duration_gate": result_dict.get("duration_gate"),
                         }
 
                     # Log results

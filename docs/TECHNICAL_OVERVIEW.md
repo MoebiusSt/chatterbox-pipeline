@@ -121,35 +121,25 @@ chatterbox-pipeline/
 ```python
 from enum import Enum
 
-class ExecutionStrategy(Enum):
-    LAST = "last"        # Use latest task
-    ALL = "all"         # Use all tasks
-    NEW = "new"         # Create new task
-    LAST_NEW = "last-new"  # Use latest task + new final audio
-    ALL_NEW = "all-new"    # Use all tasks + new final audio
-
-class UserChoice(Enum):
-    LATEST = "latest"           # Use latest task
-    ALL = "all"                # Use all tasks
-    NEW = "new"                # Create new task
-    LATEST_NEW = "latest-new"  # Use latest task + new final audio
-    ALL_NEW = "all-new"        # Use all tasks + new final audio
-    SPECIFIC = "specific"      # Select specific task
-    SPECIFIC_NEW = "specific-new"  # Select specific task + new final audio
-    CANCEL = "cancel"          # Cancel execution
+class Verb(Enum):
+    CREATE = "create"          # Create new task(s)
+    RESUME = "resume"          # Fill gaps in existing task(s)
+    REASSEMBLE = "reassemble"  # Regenerate final audio
+    REBUILD = "rebuild"        # Rerender candidates and final audio
+    EDIT = "edit"              # Open candidate editor
 
 JobManager:
     - load_job_config() → JobConfig
     - track_job_state() → JobState
     - queue_jobs() → JobQueue
     - resolve_execution_plan() → ExecutionPlan
-    - prompt_user_selection() → UserChoice
+    - resolve_user_intent() → ExecutionIntent
 
 TaskOrchestrator:
     - execute_task() → TaskResult
     - detect_state() → TaskState
     - analyze_gaps() → GapAnalysis
-    - force_final_regeneration() → bool
+    - force_final_generation → bool
 
 TaskExecutor:
     - execute_task() → TaskResult  # Individual task execution
@@ -652,30 +642,25 @@ logger.error("❌ Critical failures")       # Errors
 
 **Ready for**: feature extensions 
 
-### Execution Strategies
-The pipeline supports various execution strategies:
+### Execution Verbs
+The pipeline exposes task operations as CLI verbs:
 
-1. **Global Strategies** (`--mode`):
-   - `last`: Use latest task
-   - `all`: Execute all tasks
-   - `new`: Create new task
-   - `last-new`: Latest task + new final audio
-   - `all-new`: All tasks + new final audio
+1. **Task creation**
+   - `create`: create new task(s) from job YAML files.
 
-2. **Job-specific Strategies** (`--job-mode`):
-   ```bash
-   --job-mode "job1:last-new,job2:all-new,job3:last"
-   ```
+2. **Existing task processing**
+   - `resume`: fill gaps in the latest existing task per job.
+   - `reassemble`: regenerate final audio from existing candidates.
+   - `rebuild`: delete candidates and final audio, then rerender from scratch.
+   - `edit`: open the candidate editor for one latest task.
 
-3. **Interactive Selection**:
-   - Used when no strategy is specified
-   - Offers all options from global strategies
-   - Additional option for specific task selection
+3. **Task scope**
+   - Default scope: latest task per job.
+   - `--all`: all existing tasks in the selected job scope (`resume`, `reassemble`, `rebuild` only).
 
-### Priorities
-1. Job-specific strategies (`--job-mode`)
-2. Global strategy (`--mode`)
-3. Interactive selection (fallback)
+4. **Interactive selection**
+   - Used when no command is specified.
+   - Offers the same verb vocabulary as the CLI.
 
 
 

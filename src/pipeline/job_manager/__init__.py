@@ -8,14 +8,13 @@ Exports main classes and functionality for job management.
 from .config_validator import ConfigValidator
 from .execution_planner import ExecutionPlanner
 from .job_manager import JobManager
-from .types import ExecutionPlan, ExecutionStrategy, UserChoice
+from .types import ExecutionPlan, Verb
 
 # Export components
 __all__ = [
     "JobManager",
     "ExecutionPlanner",
     "ExecutionPlan",
-    "ExecutionStrategy",
-    "UserChoice",
+    "Verb",
     "ConfigValidator",
 ]
