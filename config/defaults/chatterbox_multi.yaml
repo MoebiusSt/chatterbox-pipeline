@@ -220,7 +220,7 @@ generation:
         temperature: 0.85
 
     - id: cori_samuel_1
-      reference_audio: cori_samuel_2.wav
+      reference_audio: cori_samuel_1.wav
       language: de
       tts_params:
         exaggeration: 1.56
@@ -462,7 +462,7 @@ generation:
         min_p: 0.25
         top_p: 0.98
 
-    - id: gesine_3-2 # ---- DONE AUFGEREGTER----
+    - id: gesine_3-2 # ---- DONE Lebhafter AUFGEREGTER----
       reference_audio: gesine_3.wav
       language: de
       tts_params:
@@ -721,7 +721,7 @@ generation:
       conservative_candidate:
         enabled: false
 
-    - id: lenhart
+    - id: hans-juergen-lenhart
       reference_audio: hans-juergen-lenhart.wav
       language: en
       tts_params:
@@ -737,7 +737,7 @@ generation:
       conservative_candidate:
         enabled: false
 
-    - id: lenhart_DE # ---- DONE ----
+    - id: hans-juergen-lenhart_DE # ---- DONE ----
       reference_audio: hans-juergen-lenhart_DE.wav
       language: de
       tts_params:
@@ -759,7 +759,7 @@ generation:
         min_p: 0.08
         top_p: 0.94
 
-    - id: lenhart_DE-EN
+    - id: hans-juergen-lenhart_DE-EN
       reference_audio: hans-juergen-lenhart_DE.wav
       language: en
       tts_params:

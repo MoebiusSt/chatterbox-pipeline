@@ -30,12 +30,15 @@ validation:
   preprocessing:
     tail_trim:
       enabled: false
+  selection:
+      gating:
+        require_mos: true
 
 generation:
-  model_type: vibevoice  # override to vibevoice_1_5b or vibevoice_q4 in your job if needed
-  num_candidates: 2
+  model_type: vibevoice_q4  # override to vibevoice_1_5b or vibevoice_q4 in your job if needed
+  num_candidates: 3
   max_retries: 1
-  default_speaker: stephan_moebius
+  default_speaker: default_speaker
 
   vibevoice:
     # When true, unsupported language codes raise ValueError instead of silently
@@ -44,68 +47,651 @@ generation:
     # warning logged once per language.
     language_strict: false
 
-  speakers:
-    - id: stephan_moebius
-      reference_audio: stephan_moebius_2.wav
-      language: en # vibevoice has many languages available. The language param is not used, but needed for whisper.
-      tts_params:
-        # VibeVoice parameters – see readme_agent.md or default_config.yaml for ramp semantics.
-        temperature: 0.95             # start; positive *temperature_max_deviation* → ramp UP (only with use_sampling=true)
-        temperature_max_deviation: 0.4
-        top_p: 0.98                   # used only with use_sampling=true
-        cfg_scale: 1.30               # start; positive *cfg_scale_max_deviation* → ramp UP
-        cfg_scale_max_deviation: 0.15
-        diffusion_steps: 20          # start; positive *diffusion_steps_max_deviation* → ramp UP
-        diffusion_steps_max_deviation: 10  # (0 = no ramp;)
-        voice_speed_factor: 1.00
-        use_sampling: true           # false = deterministic; true = sampling mode with top_p, and temperature
-      conservative_candidate:
-        enabled: true
-        temperature: 0.90
-        top_p: 0.92
-        cfg_scale: 1.5
-        # Last candidate: overrides expressive ramp; set diffusion_steps here for a fixed conservative DDPM depth
-        diffusion_steps: 24
-        voice_speed_factor: 1.00
-    - id: mike_kamp_2_DE_15s.wav
-      language: de
-      reference_audio: mike_kamp_2_DE_15s.wav
-      tts_params:
-        temperature: 1.70 # start; positive dev → ramp UP
-        temperature_max_deviation: 0.15
-        top_p: 0.99
-        cfg_scale: 1.28 # start; positive dev → ramp UP
-        cfg_scale_max_deviation: 0.12
-        diffusion_steps: 45 # start; positive dev → ramp UP
-        diffusion_steps_max_deviation: 10  # (0 = no ramp;)
-        voice_speed_factor: 1.04
-        use_sampling: true
-      conservative_candidate:
-        enabled: true
-        temperature: 1.70
-        top_p: 0.98
-        cfg_scale: 1.35      
-        diffusion_steps: 45
-        voice_speed_factor: 1.04
-    - id: annie_coleman_rothenberg_1_DE-fake_15s.wav
-      reference_audio: annie_coleman_rothenberg_1_DE-fake_15s.wav
-      language: de
-      tts_params:
-        temperature: 1.60             # start; positive dev → ramp UP (only with use_sampling=true)
-        temperature_max_deviation: 0.20
-        top_p: 0.99                   # used only with use_sampling=true
-        cfg_scale: 1.25               # start; positive dev → ramp UP
-        cfg_scale_max_deviation: 0.20
-        diffusion_steps: 35          # start; positive dev → ramp UP
-        diffusion_steps_max_deviation: 15  # (0 = no ramp;)
-        voice_speed_factor: 0.98
-        use_sampling: true
-      conservative_candidate:
-        enabled: true
-        temperature: 1.40
-        temperature_max_deviation: 0
-        top_p: 0.98
-        cfg_scale: 1.35
-        cfg_scale_max_deviation: 0
-        diffusion_steps: 40
-    
+# =============================================================================
+# VIBEVOICE Q4 PER-SPEAKER PRODUCTION RAMPING
+# =============================================================================
+#
+# Based on 25-speaker bench run (April 2026) using two transects per speaker
+# (T1: cool start at temp=0.90, T2: warm start at temp=1.30), each with 5
+# candidate positions, 2 chunks (one with multiple short paragraphs preserved
+# via force_paragraph_chunks=false, one continuous long paragraph).
+#
+# METHODOLOGY
+# Score margins between candidates are extremely tight (often within
+# 0.01-0.02 final_selection_score). UTMOS-based scoring tends to over-reward
+# stable/calm output and under-reward expressive prosody. Recommendations are
+# therefore based on a balanced metric: 50% final_selection_score + 50%
+# prosody_liveliness, normalized per speaker. Recommendations:
+#   - centroid = weighted mean of top-3 (transect, position) coordinates
+#   - range = ±0.20 temperature, ±0.05 cfg_scale, ±10 diffusion_steps
+#
+# NO HALLUCINATIONS detected in any of 500 candidates (vs. 12 in qwen3 bench).
+# VibeVoice Q4 is robust on long-form material; the parameter choice is more
+# about expressiveness than safety.
+# =============================================================================
+
+speakers:
+# =============================================================================
+# UNIVERSAL DEFAULT TEMPLATE for unknown new speakers
+# =============================================================================
+# Aggregate centroid across the 25 tested speakers, with a slightly wider range
+# to bracket variation between speakers. After 1 production run, listen to a
+# candidate and adjust based on perception.
+# Aggregate centroids: temp=1.50 (range 1.20-1.82),
+# cfg_scale=1.377 (range 1.320-1.455),
+# diffusion=40 (range 32-53)
+# =============================================================================
+  - id: default_speaker
+    reference_audio: stephan_moebius_2.wav
+    language: en # vibevoice has many languages available. The language param is not used, but needed for whisper.       
+    tts_params: # VibeVoice parameters – see readme_agent.md for ramp semantics.
+      temperature: 1.25
+      temperature_max_deviation: 0.50              # -> 1.75
+      top_p: 0.98
+      cfg_scale: 1.327
+      cfg_scale_max_deviation: 0.100             # -> 1.427
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+# =============================================================================
+# CONSERVATIVE CANDIDATE for VibeVoice
+# =============================================================================
+# A single safe set of parameters that runs alongside the ramp. Selected as the
+# coordinate that appeared in the top-3 for the LARGEST number of speakers under
+# both score AND combined metrics. Conservative here means "broadly applicable",
+# not "extra safe" — VibeVoice has no hallucination cliff to worry about.
+# =============================================================================
+    conservative_candidate:
+      enabled: true
+      temperature: 1.45         # T2 pos 2 — top-3 finalist for 12/25 speakers
+      top_p: 0.98
+      cfg_scale: 1.338
+      diffusion_steps: 35
+      voice_speed_factor: 1.00
+      use_sampling: true
+
+  - id: annie_coleman_rothenberg_2
+    reference_audio: annie_coleman_rothenberg_2.wav
+    language: en
+    tts_params:
+      temperature: 1.41
+      temperature_max_deviation: 0.40 # -> 1.81
+      top_p: 0.98
+      cfg_scale: 1.343
+      cfg_scale_max_deviation: 0.100  # -> 1.443
+      diffusion_steps: 35
+      diffusion_steps_max_deviation: 20 # -> 55
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: annie_coleman_rothenberg_1_DE-fake_15s.wav
+    reference_audio: annie_coleman_rothenberg_1_DE-fake_15s.wav
+    language: de
+    tts_params:
+      temperature: 1.60             # start; positive dev → ramp UP
+      temperature_max_deviation: 0.20
+      top_p: 0.99                   # used only with use_sampling=true
+      cfg_scale: 1.25               # start; positive dev → ramp UP
+      cfg_scale_max_deviation: 0.20
+      diffusion_steps: 35          # start; positive dev → ramp UP
+      diffusion_steps_max_deviation: 15  # (0 = no ramp;)
+      voice_speed_factor: 0.98
+      use_sampling: true
+    conservative_candidate:
+      enabled: true
+      temperature: 1.40
+      temperature_max_deviation: 0
+      top_p: 0.98
+      cfg_scale: 1.35
+      cfg_scale_max_deviation: 0
+      diffusion_steps: 40
+
+  - id: cori_samuel_1
+    reference_audio: cori_samuel_1.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t1_p2: t=1.15, cfg=1.312, diff=30
+      # Weighted centroid: temp=1.63, cfg=1.416, diff=46
+      temperature: 1.43
+      temperature_max_deviation: 0.40              # -> 1.83
+      top_p: 0.98
+      cfg_scale: 1.366
+      cfg_scale_max_deviation: 0.100             # -> 1.466
+      diffusion_steps: 35
+      diffusion_steps_max_deviation: 20                 # -> 55
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: cori_samuel_2
+    reference_audio: cori_samuel_2.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p2: t=1.15, cfg=1.312, diff=30
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      # Weighted centroid: temp=1.38, cfg=1.339, diff=35
+      temperature: 1.18
+      temperature_max_deviation: 0.40              # -> 1.58
+      top_p: 0.98
+      cfg_scale: 1.289
+      cfg_scale_max_deviation: 0.100             # -> 1.389
+      diffusion_steps: 25
+      diffusion_steps_max_deviation: 20                 # -> 45
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: cori_samuel_3
+    reference_audio: cori_samuel_3.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p2: t=1.15, cfg=1.312, diff=30
+      #   t2_p2: t=1.45, cfg=1.338, diff=35
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      # Weighted centroid: temp=1.44, cfg=1.367, diff=39
+      temperature: 1.24
+      temperature_max_deviation: 0.40              # -> 1.64
+      top_p: 0.98
+      cfg_scale: 1.317
+      cfg_scale_max_deviation: 0.100             # -> 1.417
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: david-barnes_2_DE-fake
+    reference_audio: david-barnes_2_DE-fake.wav
+    language: de
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      # Weighted centroid: temp=1.50, cfg=1.384, diff=41
+      temperature: 1.30
+      temperature_max_deviation: 0.40              # -> 1.70
+      top_p: 0.98
+      cfg_scale: 1.334
+      cfg_scale_max_deviation: 0.100             # -> 1.434
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: david_barnes_1
+    reference_audio: david_barnes_1.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      # Weighted centroid: temp=1.38, cfg=1.356, diff=38
+      temperature: 1.18
+      temperature_max_deviation: 0.40              # -> 1.58
+      top_p: 0.98
+      cfg_scale: 1.306
+      cfg_scale_max_deviation: 0.100             # -> 1.406
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: david_barnes_2
+    reference_audio: david_barnes_2.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p5: t=1.90, cfg=1.450, diff=50
+      #   t2_p2: t=1.45, cfg=1.338, diff=35
+      #   t1_p2: t=1.15, cfg=1.312, diff=30
+      # Weighted centroid: temp=1.57, cfg=1.379, diff=40
+      temperature: 1.37
+      temperature_max_deviation: 0.40              # -> 1.77
+      top_p: 0.98
+      cfg_scale: 1.329
+      cfg_scale_max_deviation: 0.100             # -> 1.429
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: gesine_1
+    reference_audio: gesine_1.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      #   t2_p3: t=1.60, cfg=1.375, diff=40
+      # Weighted centroid: temp=1.76, cfg=1.455, diff=53
+      temperature: 1.56
+      temperature_max_deviation: 0.39              # -> 1.95
+      top_p: 0.98
+      cfg_scale: 1.405
+      cfg_scale_max_deviation: 0.100             # -> 1.505
+      diffusion_steps: 45
+      diffusion_steps_max_deviation: 20                 # -> 65
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: gesine_2
+    reference_audio: gesine_2.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      # Weighted centroid: temp=1.51, cfg=1.402, diff=44
+      temperature: 1.31
+      temperature_max_deviation: 0.40              # -> 1.71
+      top_p: 0.98
+      cfg_scale: 1.352
+      cfg_scale_max_deviation: 0.100             # -> 1.452
+      diffusion_steps: 35
+      diffusion_steps_max_deviation: 20                 # -> 55
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: gesine_3
+    reference_audio: gesine_3.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p2: t=1.15, cfg=1.312, diff=30
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      # Weighted centroid: temp=1.20, cfg=1.324, diff=32
+      temperature: 1.00
+      temperature_max_deviation: 0.40              # -> 1.40
+      top_p: 0.98
+      cfg_scale: 1.274
+      cfg_scale_max_deviation: 0.100             # -> 1.374
+      diffusion_steps: 20
+      diffusion_steps_max_deviation: 20                 # -> 40
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: glen_hallstrom_1
+    reference_audio: glen_hallstrom_1.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      # Weighted centroid: temp=1.55, cfg=1.384, diff=42
+      temperature: 1.35
+      temperature_max_deviation: 0.40              # -> 1.75
+      top_p: 0.98
+      cfg_scale: 1.334
+      cfg_scale_max_deviation: 0.100             # -> 1.434
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: glen_hallstrom_2
+    reference_audio: glen_hallstrom_2.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p5: t=1.90, cfg=1.450, diff=50
+      #   t2_p2: t=1.45, cfg=1.338, diff=35
+      #   t1_p2: t=1.15, cfg=1.312, diff=30
+      # Weighted centroid: temp=1.52, cfg=1.371, diff=39
+      temperature: 1.32
+      temperature_max_deviation: 0.40              # -> 1.72
+      top_p: 0.98
+      cfg_scale: 1.321
+      cfg_scale_max_deviation: 0.100             # -> 1.421
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: glen_hallstrom_3
+    reference_audio: glen_hallstrom_3.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p5: t=1.90, cfg=1.450, diff=50
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      #   t2_p2: t=1.45, cfg=1.338, diff=35
+      # Weighted centroid: temp=1.76, cfg=1.431, diff=49
+      temperature: 1.56
+      temperature_max_deviation: 0.39              # -> 1.95
+      top_p: 0.98
+      cfg_scale: 1.381
+      cfg_scale_max_deviation: 0.100             # -> 1.481
+      diffusion_steps: 40
+      diffusion_steps_max_deviation: 20                 # -> 60
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: martina-zimmermann_DE
+    reference_audio: martina-zimmermann_DE.wav
+    language: de
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      # Weighted centroid: temp=1.34, cfg=1.344, diff=35
+      temperature: 1.14
+      temperature_max_deviation: 0.40              # -> 1.54
+      top_p: 0.98
+      cfg_scale: 1.294
+      cfg_scale_max_deviation: 0.100             # -> 1.394
+      diffusion_steps: 25
+      diffusion_steps_max_deviation: 20                 # -> 45
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: maryjohn
+    reference_audio: maryjohn.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      #   t1_p3: t=1.40, cfg=1.375, diff=40
+      # Weighted centroid: temp=1.47, cfg=1.377, diff=41
+      temperature: 1.27
+      temperature_max_deviation: 0.40              # -> 1.67
+      top_p: 0.98
+      cfg_scale: 1.327
+      cfg_scale_max_deviation: 0.100             # -> 1.427
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: mike_kamp_1
+    reference_audio: mike_kamp_1.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p5: t=1.90, cfg=1.450, diff=50
+      #   t1_p5: t=1.90, cfg=1.500, diff=60
+      #   t2_p3: t=1.60, cfg=1.375, diff=40
+      # Weighted centroid: temp=1.82, cfg=1.444, diff=50
+      temperature: 1.62
+      temperature_max_deviation: 0.33              # -> 1.95
+      top_p: 0.98
+      cfg_scale: 1.394
+      cfg_scale_max_deviation: 0.100             # -> 1.494
+      diffusion_steps: 40
+      diffusion_steps_max_deviation: 20                 # -> 60
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: mike_kamp_2_DE
+    reference_audio: mike_kamp_2_DE.wav
+    language: de
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p2: t=1.45, cfg=1.338, diff=35
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      # Weighted centroid: temp=1.47, cfg=1.359, diff=38
+      temperature: 1.27
+      temperature_max_deviation: 0.40              # -> 1.67
+      top_p: 0.98
+      cfg_scale: 1.309
+      cfg_scale_max_deviation: 0.100             # -> 1.409
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+      
+  - id: mike_kamp_2_lebhaft
+    language: de
+    reference_audio: mike_kamp_2_DE_15s.wav
+    tts_params:
+      temperature: 1.70 # start; positive dev → ramp UP
+      temperature_max_deviation: 0.15
+      top_p: 0.99
+      cfg_scale: 1.28 # start; positive dev → ramp UP
+      cfg_scale_max_deviation: 0.12
+      diffusion_steps: 45 # start; positive dev → ramp UP
+      diffusion_steps_max_deviation: 10  # (0 = no ramp;)
+      voice_speed_factor: 1.04
+      use_sampling: true
+    conservative_candidate:
+      enabled: true
+      temperature: 1.70
+      top_p: 0.98
+      cfg_scale: 1.35      
+      diffusion_steps: 45
+      voice_speed_factor: 1.04
+      
+  - id: peter_yearsley_1
+    reference_audio: peter_yearsley_1.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t1_p3: t=1.40, cfg=1.375, diff=40
+      # Weighted centroid: temp=1.33, cfg=1.341, diff=34
+      temperature: 1.13
+      temperature_max_deviation: 0.40              # -> 1.53
+      top_p: 0.98
+      cfg_scale: 1.291
+      cfg_scale_max_deviation: 0.100             # -> 1.391
+      diffusion_steps: 25
+      diffusion_steps_max_deviation: 20                 # -> 45
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: stefan_backes_DE
+    reference_audio: stefan_backes_DE.wav
+    language: de
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      #   t2_p2: t=1.45, cfg=1.338, diff=35
+      # Weighted centroid: temp=1.49, cfg=1.370, diff=40
+      temperature: 1.29
+      temperature_max_deviation: 0.40              # -> 1.69
+      top_p: 0.98
+      cfg_scale: 1.320
+      cfg_scale_max_deviation: 0.100             # -> 1.420
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: stephan_moebius_2_safe
+    reference_audio: stephan_moebius_2.wav
+    language: en 
+    tts_params:
+      temperature: 0.95             
+      temperature_max_deviation: 0.4
+      top_p: 0.98                   
+      cfg_scale: 1.30               
+      cfg_scale_max_deviation: 0.15
+      diffusion_steps: 20          
+      diffusion_steps_max_deviation: 10
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: true
+      temperature: 0.90
+      top_p: 0.92
+      cfg_scale: 1.5
+      # Last candidate: overrides expressive ramp; set diffusion_steps here for a fixed conservative DDPM depth
+      diffusion_steps: 24
+      voice_speed_factor: 1.00
+
+  - id: stephan_moebius_2
+    reference_audio: stephan_moebius_2.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t2_p3: t=1.60, cfg=1.375, diff=40
+      #   t1_p3: t=1.40, cfg=1.375, diff=40
+      # Weighted centroid: temp=1.59, cfg=1.388, diff=42
+      temperature: 1.39
+      temperature_max_deviation: 0.40              # -> 1.79
+      top_p: 0.98
+      cfg_scale: 1.338
+      cfg_scale_max_deviation: 0.100             # -> 1.438
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: stephan_moebius_3
+    reference_audio: stephan_moebius_3.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p2: t=1.45, cfg=1.338, diff=35
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t1_p3: t=1.40, cfg=1.375, diff=40
+      # Weighted centroid: temp=1.25, cfg=1.320, diff=32
+      temperature: 1.05
+      temperature_max_deviation: 0.40              # -> 1.45
+      top_p: 0.98
+      cfg_scale: 1.270
+      cfg_scale_max_deviation: 0.100             # -> 1.370
+      diffusion_steps: 20
+      diffusion_steps_max_deviation: 20                 # -> 40
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: stephan_moebius_4
+    reference_audio: stephan_moebius_4.wav
+    language: en
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t1_p3: t=1.40, cfg=1.375, diff=40
+      # Weighted centroid: temp=1.47, cfg=1.357, diff=38
+      temperature: 1.27
+      temperature_max_deviation: 0.40              # -> 1.67
+      top_p: 0.98
+      cfg_scale: 1.307
+      cfg_scale_max_deviation: 0.100             # -> 1.407
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: stephan_moebius_7_DE
+    reference_audio: stephan_moebius_7_DE.wav
+    language: de
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t1_p1: t=0.90, cfg=1.250, diff=20
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      # Weighted centroid: temp=1.42, cfg=1.361, diff=37
+      temperature: 1.22
+      temperature_max_deviation: 0.40              # -> 1.62
+      top_p: 0.98
+      cfg_scale: 1.311
+      cfg_scale_max_deviation: 0.100             # -> 1.411
+      diffusion_steps: 25
+      diffusion_steps_max_deviation: 20                 # -> 45
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: ulrich_joosten_1_DE
+    reference_audio: ulrich_joosten_1_DE.wav
+    language: de
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      #   t2_p5: t=1.90, cfg=1.450, diff=50
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      # Weighted centroid: temp=1.77, cfg=1.433, diff=48
+      temperature: 1.57
+      temperature_max_deviation: 0.38              # -> 1.95
+      top_p: 0.98
+      cfg_scale: 1.383
+      cfg_scale_max_deviation: 0.100             # -> 1.483
+      diffusion_steps: 40
+      diffusion_steps_max_deviation: 20                 # -> 60
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
+
+  - id: ulrich_joosten_2_DE
+    reference_audio: ulrich_joosten_2_DE.wav
+    language: de
+    tts_params:
+      # Top-3 source points (balanced metric):
+      #   t1_p4: t=1.65, cfg=1.438, diff=50
+      #   t2_p1: t=1.30, cfg=1.300, diff=30
+      #   t2_p4: t=1.75, cfg=1.413, diff=45
+      # Weighted centroid: temp=1.54, cfg=1.380, diff=41
+      temperature: 1.34
+      temperature_max_deviation: 0.40              # -> 1.74
+      top_p: 0.98
+      cfg_scale: 1.330
+      cfg_scale_max_deviation: 0.100             # -> 1.430
+      diffusion_steps: 30
+      diffusion_steps_max_deviation: 20                 # -> 50
+      voice_speed_factor: 1.00
+      use_sampling: true
+    conservative_candidate:
+      enabled: false
