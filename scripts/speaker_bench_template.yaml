@@ -1,0 +1,84 @@
+parent: defaults/qwen3.yaml
+
+# =============================================================================
+# SPEAKER BENCHMARK — single-transect wide-range parameter probe
+# =============================================================================
+#
+# PURPOSE
+#   Per-speaker probe to identify (a) hallucination cliff on the hot end,
+#   (b) flattening/freezing cliff on the cool end, and (c) safe production
+#   range in between. One speaker per job. Same transect, same ranges,
+#   same test text applied to every speaker for cross-speaker comparability.
+#
+# READING THE RESULTS
+#   For each speaker, analyse analysis_metrics.json to extract:
+#     1. Hallucination cliff: position where is_valid=false first appears,
+#        or where whisper_similarity drops below ~0.85.
+#     2. Freeze cliff: position where prosody_liveliness drops below ~0.80
+#        or wpm drops below 130 while similarity stays high.
+#     3. Safe zone: positions between the two cliffs.
+#   Recommended production ramp: the central portion of the safe zone.
+#
+# TRANSECT (10 candidates, standard crossover direction)
+#   temperature            0.90 → 1.75
+#   top_k                   90  → 200
+#   subtalker_temperature  1.60 → 0.95   (DOWN)
+#   subtalker_top_k         230 → 120    (DOWN)
+#
+#   The ranges go intentionally wider than any production-safe window. Some
+#   candidates WILL hallucinate on some speakers — that is the data point
+#   we want. A hallucinating candidate at position 10 tells us the safe
+#   upper boundary for that speaker.
+#
+# CHUNKING
+#   force_paragraph_chunks: true ensures the test-text paragraph structure
+#   maps 1-to-1 to chunks. That way every speaker gets the same chunk
+#   variety (very short ~50 chars, short ~200 chars, medium ~500 chars,
+#   long ~2000 chars). This matches real-world renderings where short
+#   paragraphs are harder for the model due to limited context.
+#
+# SEED POLICY
+#   seed_fixed: true with global_seed: 12345 to isolate parameter effects
+#   from seed variance. Matches the Erik benchmark run.
+# =============================================================================
+
+job:
+  name: speaker_bench
+  run_label: __RUN_LABEL__
+
+input:
+  text_file: speaker_bench/__TEXT_FILE__
+
+chunking:
+  force_paragraph_chunks: true
+  target_chunk_limit: 2200
+  max_chunk_limit: 2600
+  min_chunk_length: 40
+
+generation:
+  num_candidates: 10
+  max_retries: 1
+  model_type: qwen3
+  default_speaker: __SPEAKER_ID__
+  global_seed: 12345
+  seed_fixed: true
+
+  speakers:
+
+    - id: __SPEAKER_ID__
+      reference_audio: __REFERENCE_AUDIO__
+      language: __LANGUAGE__
+      tts_params:
+        temperature: 0.90
+        temperature_max_deviation: 0.85              # -> 1.75
+        top_k: 90
+        top_k_max_deviation: 110                     # -> 200
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.60
+        subtalker_temperature_max_deviation: -0.65   # -> 0.95 (DOWN)
+        subtalker_top_k: 230
+        subtalker_top_k_max_deviation: -110          # -> 120 (DOWN)
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false

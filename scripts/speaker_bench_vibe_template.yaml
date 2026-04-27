@@ -1,0 +1,55 @@
+parent: defaults/vibevoice.yaml
+
+# =============================================================================
+# SPEAKER BENCHMARK (VibeVoice) — single-transect wide-range parameter probe
+# =============================================================================
+# Goal:
+#   Render one comparable 10-candidate transect per speaker over a broad
+#   VibeVoice parameter space to identify safe and expressive operating ranges.
+#
+# Notes:
+# - This benchmark intentionally runs a wider range than production defaults.
+# - Positive and negative max deviations define ramp direction.
+# - voice_speed_factor stays fixed at 1.00 for all candidates.
+# =============================================================================
+
+job:
+  name: speaker_bench_vibe
+  run_label: __RUN_LABEL__
+
+input:
+  text_file: speaker_bench/__TEXT_FILE__
+
+validation:
+  similarity_threshold: 0.90  # WhisperValidator: token-based similarity of original and transcription
+  min_quality_score: 0.90  # WhisperValidator: 70% * similarity_score + 30% * length_score
+  preprocessing:
+    tail_trim:
+      enabled: false
+
+generation:
+  model_type: vibevoice  # override to vibevoice_1_5b or vibevoice_q4 in your job if needed
+  num_candidates: 10
+  max_retries: 0
+  default_speaker: __SPEAKER_ID__
+
+  speakers:
+    - id: __SPEAKER_ID__
+      reference_audio: __REFERENCE_AUDIO__
+      language: __LANGUAGE__
+      tts_params:
+        # VibeVoice benchmark transect (broad range):
+        # temperature: 0.85 -> 1.85
+        # cfg_scale: 1.15 -> 1.60
+        # diffusion_steps: 14 -> 40
+        temperature: 0.85
+        temperature_max_deviation: 1.00
+        top_p: 0.98
+        cfg_scale: 1.15
+        cfg_scale_max_deviation: 0.45
+        diffusion_steps: 14
+        diffusion_steps_max_deviation: 26
+        voice_speed_factor: 1.00
+        use_sampling: true
+      conservative_candidate:
+        enabled: false
