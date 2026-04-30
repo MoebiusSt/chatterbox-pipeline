@@ -32,3 +32,9 @@ See `README.md` for full documentation.
 - The update script installs `chatterbox-tts` with `--no-deps` to avoid the `pkuseg` build failure, then separately installs its other transitive dependencies. If `chatterbox-tts` adds new deps in a future version, they must be added manually.
 - `numpy` must be installed before `chatterbox-tts --no-deps` because several packages need it at build time.
 - spaCy model `en_core_web_sm` must be downloaded separately (`python -m spacy download en_core_web_sm`).
+
+### Folker orchestration
+
+- Folker WordPress-to-TTS orchestration notes live in `docs/folker-tts-orchestration.md`.
+- `tts-pipeline-jobs` is expected to be a separate private repository cloned next to this repository.
+- `TTS_JOBS_GITHUB_TOKEN` must have read/write access to that private jobs repository before agents can clone it, push job YAMLs, or monitor workflow runs.
