@@ -173,5 +173,7 @@ scripts/github_token.txt
  
 # External repositories and local workfiles/folders
 NISQA/
+versa_cache/
+tests/
 .chatterbox_tester_presets.yaml
 chatterbox-pipeline.code-workspace
