@@ -5,7 +5,7 @@
 ### Project overview
 
 Pure CLI TTS pipeline (`src/cbpipe.py`). No web server, no database, no Docker.
-See `README.md` for full documentation.
+See `docs/readme_agent.md` for agent documentaiton or `README.md` for full documentation or `docs/basic-usage_CLI-arguments.md` for basic usage.
 
 ### Environment
 

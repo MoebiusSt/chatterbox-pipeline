@@ -1,5 +1,7 @@
 name: TTS Render
 
+run-name: "TTS: ${{ inputs.project || 'auto' }} / ${{ inputs.job_config || 'push-trigger' }} (${{ inputs.verb || 'create' }})"
+
 on:
   workflow_dispatch:
     inputs:
@@ -163,3 +165,4 @@ jobs:
           echo "- **Verb:** ${{ steps.config.outputs.verb }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Duration:** ${{ steps.output.outputs.duration }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Artifact:** ${{ steps.config.outputs.project }}-${{ steps.output.outputs.job_label }}-mp3" >> $GITHUB_STEP_SUMMARY
+          
