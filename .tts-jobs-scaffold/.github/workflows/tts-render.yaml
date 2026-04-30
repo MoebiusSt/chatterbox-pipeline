@@ -1,0 +1,165 @@
+name: TTS Render
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project name (subdirectory under jobs/)"
+        required: true
+        type: string
+      job_config:
+        description: "YAML filename (e.g. dem_algorithmus.yaml)"
+        required: true
+        type: string
+      verb:
+        description: "cbpipe verb"
+        required: false
+        default: "create"
+        type: choice
+        options:
+          - create
+          - resume
+          - reassemble
+          - rebuild
+      device:
+        description: "Torch device"
+        required: false
+        default: "cuda"
+        type: choice
+        options:
+          - cuda
+          - cpu
+
+  push:
+    paths:
+      - "jobs/pending/**/*.yaml"
+
+jobs:
+  render:
+    runs-on: self-hosted
+    timeout-minutes: 180
+    env:
+      CBPIPE_DIR: /home/stephan/projekte/chatterbox-pipeline
+    steps:
+      - name: Checkout tts-jobs repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine job config
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "project=${{ github.event.inputs.project }}" >> "$GITHUB_OUTPUT"
+            echo "file=${{ github.event.inputs.job_config }}" >> "$GITHUB_OUTPUT"
+            echo "verb=${{ github.event.inputs.verb }}" >> "$GITHUB_OUTPUT"
+            echo "device=${{ github.event.inputs.device }}" >> "$GITHUB_OUTPUT"
+          else
+            # Auto-trigger on push: find newly added YAML
+            ADDED=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- 'jobs/pending/**/*.yaml' | head -1)
+            if [ -z "$ADDED" ]; then
+              echo "No new job config found, skipping."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # Extract project from path: jobs/pending/<project>/<file>.yaml
+            PROJECT=$(echo "$ADDED" | cut -d/ -f3)
+            FILE=$(basename "$ADDED")
+            echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+            echo "file=$FILE" >> "$GITHUB_OUTPUT"
+            echo "verb=create" >> "$GITHUB_OUTPUT"
+            echo "device=cuda" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Copy job config to cbpipe
+        if: steps.config.outputs.skip != 'true'
+        run: |
+          cp "jobs/pending/${{ steps.config.outputs.project }}/${{ steps.config.outputs.file }}" \
+             "$CBPIPE_DIR/config/${{ steps.config.outputs.project }}/"
+
+      - name: Run cbpipe TTS pipeline
+        if: steps.config.outputs.skip != 'true'
+        working-directory: ${{ env.CBPIPE_DIR }}
+        run: |
+          source venv/bin/activate
+          python src/cbpipe.py ${{ steps.config.outputs.verb }} \
+            "config/${{ steps.config.outputs.project }}/${{ steps.config.outputs.file }}" \
+            --device ${{ steps.config.outputs.device }}
+
+      - name: Convert WAV to MP3 and extract metadata
+        if: steps.config.outputs.skip != 'true'
+        id: output
+        working-directory: ${{ env.CBPIPE_DIR }}
+        run: |
+          source venv/bin/activate
+          PROJECT="${{ steps.config.outputs.project }}"
+
+          JOB_LABEL=$(python -c "
+          import yaml
+          cfg = yaml.safe_load(open('config/${PROJECT}/${{ steps.config.outputs.file }}'))
+          print(cfg.get('job', {}).get('run_label', '') or cfg.get('job', {}).get('name', 'unknown'))
+          ")
+          JOB_NAME=$(python -c "
+          import yaml
+          cfg = yaml.safe_load(open('config/${PROJECT}/${{ steps.config.outputs.file }}'))
+          print(cfg.get('job', {}).get('name', 'unknown'))
+          ")
+          echo "job_label=$JOB_LABEL" >> "$GITHUB_OUTPUT"
+          echo "job_name=$JOB_NAME" >> "$GITHUB_OUTPUT"
+
+          # Find latest task's final.wav
+          TASK_DIR=$(ls -td "data/output/${JOB_NAME}/${JOB_LABEL}/"*/  2>/dev/null \
+                  || ls -td "data/output/${JOB_NAME}/"*/  2>/dev/null \
+                  | head -1)
+          if [ -z "$TASK_DIR" ]; then
+            echo "::error::No task output found"
+            exit 1
+          fi
+
+          FINAL_WAV=$(find "$TASK_DIR" -name "final.wav" | head -1)
+          if [ -z "$FINAL_WAV" ]; then
+            echo "::error::No final.wav in $TASK_DIR"
+            exit 1
+          fi
+
+          MP3_PATH="/tmp/tts-output/${PROJECT}_${JOB_LABEL}.mp3"
+          mkdir -p /tmp/tts-output
+          ffmpeg -y -i "$FINAL_WAV" -codec:a libmp3lame -qscale:a 2 "$MP3_PATH"
+          echo "mp3_path=$MP3_PATH" >> "$GITHUB_OUTPUT"
+
+          DURATION_S=$(ffprobe -v error -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 "$MP3_PATH")
+          DURATION_FMT=$(python -c "
+          d=float('$DURATION_S'); print(f'{int(d//60)}:{int(d%60):02d} min')
+          ")
+          echo "duration=$DURATION_FMT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload MP3 as artifact
+        if: steps.config.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ steps.config.outputs.project }}-${{ steps.output.outputs.job_label }}-mp3"
+          path: "${{ steps.output.outputs.mp3_path }}"
+          retention-days: 30
+
+      - name: Move job config to completed
+        if: steps.config.outputs.skip != 'true'
+        run: |
+          PROJECT="${{ steps.config.outputs.project }}"
+          FILE="${{ steps.config.outputs.file }}"
+          git config user.name "tts-runner"
+          git config user.email "tts-runner@localhost"
+          mv "jobs/pending/${PROJECT}/${FILE}" "jobs/completed/${PROJECT}/${FILE}"
+          git add .
+          git commit -m "Completed: ${PROJECT}/${FILE} (${{ steps.output.outputs.duration }})"
+          git push
+
+      - name: Summary
+        if: steps.config.outputs.skip != 'true'
+        run: |
+          echo "## TTS Render Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **Project:** ${{ steps.config.outputs.project }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Job:** ${{ steps.output.outputs.job_label }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Verb:** ${{ steps.config.outputs.verb }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Duration:** ${{ steps.output.outputs.duration }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact:** ${{ steps.config.outputs.project }}-${{ steps.output.outputs.job_label }}-mp3" >> $GITHUB_STEP_SUMMARY
