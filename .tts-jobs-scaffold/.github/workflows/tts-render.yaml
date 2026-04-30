@@ -107,20 +107,20 @@ jobs:
           echo "job_label=$JOB_LABEL" >> "$GITHUB_OUTPUT"
           echo "job_name=$JOB_NAME" >> "$GITHUB_OUTPUT"
 
-          # Find latest task's final.wav
-          TASK_DIR=$(ls -td "data/output/${JOB_NAME}/${JOB_LABEL}/"*/  2>/dev/null \
-                  || ls -td "data/output/${JOB_NAME}/"*/  2>/dev/null \
-                  | head -1)
-          if [ -z "$TASK_DIR" ]; then
-            echo "::error::No task output found"
-            exit 1
-          fi
-
-          FINAL_WAV=$(find "$TASK_DIR" -name "final.wav" | head -1)
+          # Find the final WAV — cbpipe output structure:
+          # data/output/<job_name>/<task_id>/final/<name>_final.wav
+          OUTPUT_BASE="data/output/${JOB_NAME}"
+          FINAL_WAV=$(find "$OUTPUT_BASE" -path "*/final/*_final.wav" -type f 2>/dev/null | sort -r | head -1)
           if [ -z "$FINAL_WAV" ]; then
-            echo "::error::No final.wav in $TASK_DIR"
+            # Fallback: any file named *final*.wav
+            FINAL_WAV=$(find "$OUTPUT_BASE" -name "*final*.wav" -type f 2>/dev/null | sort -r | head -1)
+          fi
+          if [ -z "$FINAL_WAV" ]; then
+            echo "::error::No final WAV found in $OUTPUT_BASE"
+            find "$OUTPUT_BASE" -name "*.wav" -type f 2>/dev/null | head -10
             exit 1
           fi
+          echo "Found final WAV: $FINAL_WAV"
 
           MP3_PATH="/tmp/tts-output/${PROJECT}_${JOB_LABEL}.mp3"
           mkdir -p /tmp/tts-output
