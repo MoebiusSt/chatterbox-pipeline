@@ -147,10 +147,10 @@ pip install -r dev-requirements.txt
 Pipeline parameters can be adjusted in `config/default_config.yaml`. This defines the default job. Running the main program without arguments is the same as running it with the default_config.yaml 
 
 ```bash
-# Full pipeline ChatterboxTTS
+# Interactive menu
 python src/cbpipe.py
-# Same as executing the default job in /config/default_config.yaml
-python src/cbpipe.py default_config.yaml
+# Create and run a new task from config/default_config.yaml
+python src/cbpipe.py create default_config.yaml
 ```
 
 ### 5. Command Line Options
@@ -161,10 +161,10 @@ Any job that has never run before will be executed without interruption (without
 
 ```bash
 # Standard mode (interactive)
-python src/cbpipe.py myjob1.yaml job2.yaml          # Specific job configurations
-python src/cbpipe.py --job "my_job"               # Execute job(s) with specific job-name present in a config or existing outputdirectory
-python src/cbpipe.py --job "testjob*"             # Execute all jobs starting with "testjob" (pattern matching)
-python src/cbpipe.py --job "test?job"             # Execute jobs matching pattern (e.g., test1job, test2job)
+python src/cbpipe.py create myjob1.yaml job2.yaml  # Create new task(s) from specific job configurations
+python src/cbpipe.py resume --job "my_job"         # Resume latest task(s) for a specific job name
+python src/cbpipe.py resume --job "testjob*"       # Resume latest task(s) for wildcard-matched jobs
+python src/cbpipe.py resume --job "test?job"       # Resume latest task(s) for pattern-matched jobs
 Shortform: -j
 ```
 Running a job will create a 'task'.  This means, a job will create a copy of its configuration in the output directory among other files like text-chunks, audio-chunks, validation-results for this task etc. The task.yaml will look something like this:
@@ -227,7 +227,7 @@ python src/cbpipe.py --device cuda               # Device selection: Force GPU e
 ```
 ###  🚀 Try this example for fun
 ```bash
-python src/cbpipe.py radio-broadcast.yaml
+python src/cbpipe.py create radio-broadcast.yaml
 ```
 
 ## Additional Tools

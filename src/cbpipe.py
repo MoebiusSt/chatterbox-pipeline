@@ -142,6 +142,39 @@ Usage Examples:
             subparser, allow_all=command in {"resume", "reassemble", "rebuild"}
         )
 
+    _known_verbs = {"create", "resume", "reassemble", "rebuild", "edit"}
+
+    # Backward-compat: "python cbpipe.py config.yaml [config2.yaml ...]" without a verb
+    # argparse validates the subparser choice before parse_known_args can catch it, so we
+    # intercept here: if the first non-flag argument is a YAML file (not a verb), parse
+    # only the flag-arguments and inject the YAML files afterwards.
+    import sys as _sys
+
+    first_positional = next(
+        (a for a in _sys.argv[1:] if not a.startswith("-")), None
+    )
+    is_yaml_without_verb = (
+        first_positional is not None
+        and first_positional not in _known_verbs
+        and first_positional.lower().endswith((".yaml", ".yml"))
+    )
+
+    if is_yaml_without_verb:
+        yaml_files = [
+            Path(a)
+            for a in _sys.argv[1:]
+            if not a.startswith("-") and a.lower().endswith((".yaml", ".yml"))
+        ]
+        flag_argv = [a for a in _sys.argv[1:] if a.startswith("-")]
+        orig_argv = _sys.argv[:]
+        _sys.argv = [_sys.argv[0]] + flag_argv
+        try:
+            args = parser.parse_args()
+        finally:
+            _sys.argv = orig_argv
+        args.config_files = yaml_files
+        return args
+
     return parser.parse_args()
 
 

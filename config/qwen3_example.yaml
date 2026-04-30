@@ -8,7 +8,6 @@ input:
   text_file: input-document.txt
 
 generation:
-  num_candidates: 2
   default_speaker: stephan_EN
 
   speakers:

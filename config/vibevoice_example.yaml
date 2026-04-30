@@ -11,7 +11,6 @@ generation:
   model_type: vibevoice  # override to vibevoice_1_5b or vibevoice_q4 in your job if needed
   # Override model_type to vibevoice_1_5b or vibevoice_q4 here if needed.
   # All three VibeVoice variants use the same tts_params keys.
-  num_candidates: 2
   default_speaker: stephan_moebius
 
   speakers:

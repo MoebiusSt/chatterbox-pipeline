@@ -122,7 +122,7 @@ TTSGenerator.generate_candidates() → List[AudioCandidate]
 #   cfg_weight / temperature:  positive *max_deviation* ramps UP from the configured start value
 #
 # Parameter behavior (Qwen3)
-#   temperature, top_k, subtalker_top_k:  positive *max_deviation* ramps UP
+#   temperature, top_k, subtalker_top_k:  positive *max_deviation* usually ramps UP
 #   subtalker_temperature:  sign of *subtalker_temperature_max_deviation* sets direction (negative = DOWN)
 
 # Parameter behavior (VibeVoice: vibevoice / vibevoice_1_5b / vibevoice_q4)

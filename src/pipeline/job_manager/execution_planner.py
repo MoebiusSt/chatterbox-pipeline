@@ -221,6 +221,10 @@ class ExecutionPlanner:
             logger.debug("Resolving intent from CLI arguments")
             cli_intent = self.cli_mapper.parse_cli_to_execution_intent(args, context)
             if cli_intent is not None:
+                if cli_intent.verb == Verb.EDIT:
+                    # edit always requires the interactive candidate editor
+                    logger.debug("Routing edit verb to candidate editor")
+                    return self.menu_orchestrator.resolve_edit_intent(context)
                 return cli_intent
 
         # Fallback to interactive MenuOrchestrator

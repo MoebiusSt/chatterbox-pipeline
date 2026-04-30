@@ -74,6 +74,8 @@ output/
 *.pkf
 
 # Keep reference audio samples
+data/input/reference_audio/**
+!data/input/reference_audio/
 !data/input/reference_audio/stephan_moebius_1.wav
 !data/input/reference_audio/stephan_moebius_1_3s.wav
 !data/input/reference_audio/stephan_moebius_1_3s.txt

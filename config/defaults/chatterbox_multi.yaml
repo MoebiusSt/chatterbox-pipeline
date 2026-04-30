@@ -9,7 +9,7 @@
 parent: default_config.yaml
 
 generation:
-  num_candidates: 4
+  num_candidates: 5
   max_retries: 1
   model_type: multilingual
   default_speaker: stefan_backes_DE
@@ -36,18 +36,27 @@ generation:
         repetition_penalty: 2.20
         min_p: 0.22
         top_p: 0.94
+
     - id: stefan_backes_DE_2 # ---- DONE ---- 
       reference_audio: stefan_backes_DE.wav
       tts_params:
         exaggeration: 1.61
-        exaggeration_max_deviation: 0.0
+        exaggeration_max_deviation: -0.2
         cfg_weight: 0.24
-        cfg_weight_max_deviation: 0.0
+        cfg_weight_max_deviation: 0.2
         temperature: 0.87
-        temperature_max_deviation: 0.0
+        temperature_max_deviation: 0.3
         repetition_penalty: 2.00
         min_p: 0.17
         top_p: 1.00
+      conservative_candidate:
+        enabled: true
+        exaggeration: 1.38
+        cfg_weight: 0.31
+        temperature: 0.62
+        repetition_penalty: 2.20
+        min_p: 0.22
+        top_p: 0.94
 
     - id: stephan_moebius_2 # ---- DONE ----
       reference_audio: stephan_moebius_2.wav
@@ -221,7 +230,7 @@ generation:
 
     - id: cori_samuel_1
       reference_audio: cori_samuel_1.wav
-      language: de
+      language: en
       tts_params:
         exaggeration: 1.56
         exaggeration_max_deviation: -0.1
@@ -243,7 +252,7 @@ generation:
 
     - id: cori_samuel_2 # ---- DONE ----
       reference_audio: cori_samuel_2.wav
-      language: de
+      language: en
       tts_params:
         exaggeration: 1.56
         exaggeration_max_deviation: -0.1
@@ -265,7 +274,7 @@ generation:
 
     - id: cori_samuel_2-2 # ---- DONE ----
       reference_audio: cori_samuel_2.wav
-      language: de
+      language: en
       tts_params:
         exaggeration: 1.07
         exaggeration_max_deviation: 0.0
@@ -286,7 +295,7 @@ generation:
         top_p: 0.92
 
     - id: cori_samuel_3 # ---- DONE HELLER ----
-      language: de
+      language: en
       reference_audio: cori_samuel_3.wav
       tts_params:
         exaggeration: 1.40
@@ -312,19 +321,16 @@ generation:
       language: en
       tts_params:
         exaggeration: 1.84
-        exaggeration_max_deviation: 0.0
+        exaggeration_max_deviation: -0.4
         cfg_weight: 0.25
         cfg_weight_max_deviation: 0.0
         temperature: 1.20
-        temperature_max_deviation: 0.0
+        temperature_max_deviation: 0.30
         repetition_penalty: 1.60
-        min_p: 0.05
+        min_p: 0.09
         top_p: 1.00
       conservative_candidate:
         enabled: false
-        exaggeration: 0.35
-        cfg_weight: 0.6
-        temperature: 0.8
         
     - id: david_barnes_2 # ---- DONE ----
       reference_audio: david_barnes_2.wav
@@ -342,23 +348,7 @@ generation:
       conservative_candidate:
         enabled: false
         
-    - id: david_barnes_2_DE-fake # ---- DONE ----
-      reference_audio: david_barnes_2_15s.wav
-      language: de
-      tts_params:
-        exaggeration: 1.05
-        exaggeration_max_deviation: -0.2
-        cfg_weight: 0.22
-        cfg_weight_max_deviation: 0.06
-        temperature: 0.95
-        temperature_max_deviation: 0.20
-        repetition_penalty: 2.50
-        min_p: 0.19
-        top_p: 0.99
-      conservative_candidate:
-        enabled: false
-        
-    - id: david_barnes_2_DE-fake # ---- DONE ----
+    - id: david_barnes_2_DE # ---- DONE ----
       reference_audio: david_barnes_2_DE-fake.wav
       language: de
       seed: 0
@@ -490,39 +480,41 @@ generation:
       tts_params:
         exaggeration: 0.45                  
         exaggeration_max_deviation: -0.1    
-        cfg_weight: 0.45                    
-        cfg_weight_max_deviation: 0.20      
+        cfg_weight: 0.35                    
+        cfg_weight_max_deviation: -0.10      
         temperature: 1.0                    
         temperature_max_deviation: 0.25     
-        repetition_penalty: 1.2             
-        min_p: 0.02                         
+        repetition_penalty: 1.3             
+        min_p: 0.08                         
         top_p: 0.99                         
       conservative_candidate:
-        enabled: false
+        enabled: true
         exaggeration: 0.4
-        cfg_weight: 0.5
+        cfg_weight: 0.3
         temperature: 0.8
-        min_p: 0.08    
+        min_p: 0.09    
         top_p: 0.9     
 
     - id: glen_hallstrom_2
       reference_audio: glen_hallstrom_2.wav
       language: en
       tts_params:
-        exaggeration: 0.45
-        exaggeration_max_deviation: -0.2
-        cfg_weight: 0.50
-        cfg_weight_max_deviation: 0.3
-        temperature: 0.90
-        temperature_max_deviation: 0.2
-        repetition_penalty: 1.3
-        min_p: 0.05
-        top_p: 0.95
+        exaggeration: 0.45                  
+        exaggeration_max_deviation: -0.1    
+        cfg_weight: 0.35                    
+        cfg_weight_max_deviation: -0.10      
+        temperature: 1.0                    
+        temperature_max_deviation: 0.25     
+        repetition_penalty: 1.3             
+        min_p: 0.08                         
+        top_p: 0.99                         
       conservative_candidate:
-        enabled: false
+        enabled: true
         exaggeration: 0.4
-        cfg_weight: 0.5
+        cfg_weight: 0.3
         temperature: 0.8
+        min_p: 0.09    
+        top_p: 0.9   
 
     - id: glen_hallstrom_3
       reference_audio: glen_hallstrom_3.wav
@@ -567,17 +559,17 @@ generation:
         top_p: 0.90
 
     - id: mike_kamp_DE # ---- DONE ----
-      reference_audio: mike_kamp_2_DE.wav
+      reference_audio: mike_kamp_2_DE_15s.wav
       language: de
       tts_params:
-        exaggeration: 1.60
-        exaggeration_max_deviation: -0.5
-        cfg_weight: 0.25
-        cfg_weight_max_deviation: 0.00
-        temperature: 1.10
-        temperature_max_deviation: 0.20
+        exaggeration: 1.55
+        exaggeration_max_deviation: -0.45
+        cfg_weight: 0.35
+        cfg_weight_max_deviation: -0.10
+        temperature: 1.05
+        temperature_max_deviation: 0.30
         repetition_penalty: 2.00
-        min_p: 0.09
+        min_p: 0.07
         top_p: 1.00
       conservative_candidate:
         enabled: true
@@ -674,16 +666,16 @@ generation:
         exaggeration: 1.50
         exaggeration_max_deviation: -0.15
         cfg_weight: 0.35
-        cfg_weight_max_deviation: 0.05
+        cfg_weight_max_deviation: -0.05
         temperature: 1.00
-        temperature_max_deviation: 0.25
+        temperature_max_deviation: 0.20
         repetition_penalty: 2.06
         min_p: 0.10
         top_p: 0.98
       conservative_candidate:
         enabled: true
         exaggeration: 1.28
-        cfg_weight: 0.40
+        cfg_weight: 0.30
         temperature: 1.20
         repetition_penalty: 2.30
         min_p: 0.14
@@ -821,7 +813,7 @@ generation:
 
     - id: ulrich_joosten1_EN
       language: en
-      reference_audio: ulrich_joosten_1_DE.wav
+      reference_audio: ulrich_joosten_1_DE_15s.wav
       tts_params:
         exaggeration: 1.50
         exaggeration_max_deviation: -0.2

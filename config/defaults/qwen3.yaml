@@ -27,7 +27,7 @@ chunking:
 
 generation:
   model_type: qwen3
-  num_candidates: 2
+  num_candidates: 4
   max_retries: 1
   global_seed: 0  # Base Seed + Candidate-Offset + Text-Hash keeps Tasks reproducible but Chunks discerned
   seed_fixed: false # true = one torch seed everywhere (docs/SEEDING.md); needs global_seed > 0 or speaker seed > 0
@@ -69,7 +69,6 @@ generation:
           subtalker_top_k: 181
           subtalker_top_p: 0.98
 
-    
 # =============================================================================
 # PER-SPEAKER PRODUCTION RAMPING — final recommendations
 # =============================================================================
@@ -89,7 +88,41 @@ generation:
 # re-evaluation.
 # =============================================================================
 
-speakers:
+    - id: annie_coleman_rothenberg_1_DE
+      reference_audio: annie_coleman_rothenberg_1_DE-fake_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.37
+        temperature_max_deviation: 0.3
+        repetition_penalty: 1.05
+        top_k: 81
+        top_k_max_deviation: 0
+        top_p: 0.93
+        subtalker_temperature: 1.43
+        subtalker_temperature_max_deviation: 0.0
+        subtalker_top_k: 130
+        subtalker_top_k_max_deviation: 0
+        subtalker_top_p: 0.98
+      conservative_candidate:
+        enabled: false
+
+    - id: annie_coleman_rothenberg_1
+      reference_audio: annie_coleman_rothenberg_1_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.37
+        temperature_max_deviation: 0.3
+        repetition_penalty: 1.07
+        top_k: 81
+        top_k_max_deviation: 100
+        top_p: 0.99
+        subtalker_temperature: 1.30
+        subtalker_temperature_max_deviation: 0.2
+        subtalker_top_k: 120
+        subtalker_top_k_max_deviation: 20
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
 
     - id: annie_coleman_rothenberg_2
       reference_audio: annie_coleman_rothenberg_2_15s.wav
@@ -151,8 +184,8 @@ speakers:
       conservative_candidate:
         enabled: false
 
-    - id: cori_samuel_3-2
-      reference_audio: cori_samuel_3-2_15s.wav
+    - id: cori_samuel_3
+      reference_audio: cori_samuel_3_15s.wav
       language: en
       tts_params:
         # Top-3 positions: [3, 7, 8] (margin +0.0102); ceiling pos 8.
@@ -237,35 +270,17 @@ speakers:
       tts_params:
         # Top-3 positions: [5, 9, 10] (margin +0.0100); ceiling pos 10.
         # Recommended ramp: pos 5 -> pos 10.
-        temperature: 1.278
-        temperature_max_deviation: +0.472        # -> 1.750
-        top_k: 139
-        top_k_max_deviation: +61                  # -> 200
+        temperature: 1.3
+        temperature_max_deviation: +0.45        # -> 1.750
+        top_k: 140
+        top_k_max_deviation: +60                  # -> 200
         top_p: 0.99
         repetition_penalty: 1.07
-        subtalker_temperature: 1.311
+        subtalker_temperature: 1.4
         subtalker_temperature_max_deviation: -0.361    # -> 0.950
         subtalker_top_k: 181
         subtalker_top_k_max_deviation: -61        # -> 120
         subtalker_top_p: 0.97
-      conservative_candidate:
-        enabled: false
-
-    - id: erik_prochnow_DE_15s_OLD_GOOD_VALUES
-      reference_audio: erik_prochnow_DE_15s.wav
-      language: de
-      tts_params:
-        temperature: 1.20 # start; positive *temperature_max_deviation* → ramp UP
-        temperature_max_deviation: 0.30
-        top_k: 126 # start; positive *top_k_max_deviation* → ramp UP
-        top_k_max_deviation: 30
-        top_p: 0.99
-        repetition_penalty: 1.07
-        subtalker_temperature: 1.45 # start; sign of *subtalker_temperature_max_deviation* sets direction
-        subtalker_temperature_max_deviation: -0.16
-        subtalker_top_k: 174 # start; positive *subtalker_top_k_max_deviation* → ramp UP
-        subtalker_top_k_max_deviation: 20
-        subtalker_top_p: 0.98
       conservative_candidate:
         enabled: false
 
@@ -388,6 +403,44 @@ speakers:
         subtalker_top_p: 0.97
       conservative_candidate:
         enabled: false
+
+    - id: hans-juergen-lenhart
+      reference_audio: hans-juergen-lenhart_15s.wav
+      language: en
+      tts_params:
+        temperature: 1.089
+        temperature_max_deviation: +0.45        # -> 1.561
+        top_k: 114
+        top_k_max_deviation: +55                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.362    # -> 1.094
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -63        # -> 144
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
+
+    - id: hans-juergen-lenhart_DE
+      reference_audio: hans-juergen-lenhart_DE_15s.wav
+      language: de
+      tts_params:
+        temperature: 1.089
+        temperature_max_deviation: +0.472        # -> 1.561
+        top_k: 114
+        top_k_max_deviation: +62                  # -> 176
+        top_p: 0.99
+        repetition_penalty: 1.07
+        subtalker_temperature: 1.456
+        subtalker_temperature_max_deviation: -0.362    # -> 1.094
+        subtalker_top_k: 206
+        subtalker_top_k_max_deviation: -62        # -> 144
+        subtalker_top_p: 0.97
+      conservative_candidate:
+        enabled: false
+
 
     - id: martina-zimmermann_DE
       reference_audio: martina-zimmermann_DE_15s.wav

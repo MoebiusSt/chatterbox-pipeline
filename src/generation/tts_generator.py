@@ -625,10 +625,12 @@ class TTSGenerator:
 
             talker.generate = _patched_generate  # type: ignore[assignment]
 
+        qwen3_text = re.sub(r"\n{2,}", " ", text).strip()
+
         try:
             try:
                 wavs, _sr = self.model.generate_voice_clone(
-                    text=text,
+                    text=qwen3_text,
                     language=language_name,
                     voice_clone_prompt=voice_prompt,
                     **gen_kwargs,
