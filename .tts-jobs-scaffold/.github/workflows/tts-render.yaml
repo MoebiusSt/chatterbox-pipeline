@@ -55,16 +55,16 @@ jobs:
             echo "verb=${{ github.event.inputs.verb }}" >> "$GITHUB_OUTPUT"
             echo "device=${{ github.event.inputs.device }}" >> "$GITHUB_OUTPUT"
           else
-            # Auto-trigger on push: find newly added YAML
-            ADDED=$(git diff --name-only --diff-filter=A HEAD~1 HEAD -- 'jobs/pending/**/*.yaml' | head -1)
-            if [ -z "$ADDED" ]; then
-              echo "No new job config found, skipping."
+            # Auto-trigger on push: find added or modified YAMLs in jobs/pending/
+            CHANGED=$(git diff --name-only --diff-filter=AM HEAD~1 HEAD -- 'jobs/pending/**/*.yaml' | head -1)
+            if [ -z "$CHANGED" ]; then
+              echo "No new or modified job config found, skipping."
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             # Extract project from path: jobs/pending/<project>/<file>.yaml
-            PROJECT=$(echo "$ADDED" | cut -d/ -f3)
-            FILE=$(basename "$ADDED")
+            PROJECT=$(echo "$CHANGED" | cut -d/ -f3)
+            FILE=$(basename "$CHANGED")
             echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
             echo "file=$FILE" >> "$GITHUB_OUTPUT"
             echo "verb=create" >> "$GITHUB_OUTPUT"
