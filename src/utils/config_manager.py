@@ -505,7 +505,11 @@ class ConfigManager:
 
         # Check whether the parent IS default_config.yaml itself (terminal case)
         if parent_path == self.default_config_path.resolve():
-            return self.load_default_config()
+            # Merge THIS file onto defaults. Returning bare defaults alone would drop
+            # all keys when the YAML only declares `parent: default_config.yaml`.
+            overlay = copy.deepcopy(config_data)
+            overlay.pop("parent", None)
+            return self.merge_configs(overlay, self.load_default_config())
 
         if not parent_path.exists():
             raise FileNotFoundError(
@@ -613,6 +617,15 @@ class ConfigManager:
             Merged configuration
         """
         merged = copy.deepcopy(default_config)
+        job_config = copy.deepcopy(job_config)
+
+        # Some stack defaults (e.g. folker/defaults/vibevoice.yaml) place `speakers`
+        # at YAML root alongside `generation:`. Cascading assumes they live under
+        # generation.speakers so _merge_speakers_config and inheritance see them.
+        gen = job_config.get("generation")
+        if isinstance(gen, dict) and isinstance(job_config.get("speakers"), list):
+            if "speakers" not in gen:
+                gen["speakers"] = job_config.pop("speakers")
 
         def merge_recursive(target: Dict[str, Any], source: Dict[str, Any]) -> None:
             """Recursively merge source into target."""
@@ -637,6 +650,8 @@ class ConfigManager:
             merge_recursive(merged, job_config_copy)
         else:
             merge_recursive(merged, job_config)
+
+        merged.pop("speakers", None)
 
         # Ensure default_speaker is valid after merging
         self._validate_and_fix_default_speaker(merged)
