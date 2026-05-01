@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Set, Tuple
 
+from utils.config_manager import TaskConfig
 from utils.file_manager.file_manager import FileManager
 from utils.file_manager.task_metrics_generator import TaskMetricsGenerator
 
@@ -105,7 +106,7 @@ class ChunkOverview:
 class UserCandidateManager:
     """Manages user interaction for candidate selection editing."""
 
-    def __init__(self, file_manager: FileManager, task_config: Dict):
+    def __init__(self, file_manager: FileManager, task_config: TaskConfig):
         """
         Initialize UserCandidateManager.
 

@@ -142,36 +142,52 @@ Usage Examples:
             subparser, allow_all=command in {"resume", "reassemble", "rebuild"}
         )
 
-    _known_verbs = {"create", "resume", "reassemble", "rebuild", "edit"}
+    known_verbs = {"create", "resume", "reassemble", "rebuild", "edit"}
+    options_with_values = {"--device"}
 
-    # Backward-compat: "python cbpipe.py config.yaml [config2.yaml ...]" without a verb
-    # argparse validates the subparser choice before parse_known_args can catch it, so we
-    # intercept here: if the first non-flag argument is a YAML file (not a verb), parse
-    # only the flag-arguments and inject the YAML files afterwards.
-    import sys as _sys
+    # Backward compatibility: "python cbpipe.py config.yaml [config2.yaml ...]"
+    # should open the interactive menu scoped to those config files. argparse
+    # validates subparser names before parse_known_args can catch this, so detect
+    # YAML files before parsing and pass the remaining top-level options through.
+    first_positional = None
+    skip_next = False
+    for arg in sys.argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in options_with_values:
+            skip_next = True
+            continue
+        if any(arg.startswith(f"{option}=") for option in options_with_values):
+            continue
+        if arg.startswith("-"):
+            continue
+        first_positional = arg
+        break
 
-    first_positional = next(
-        (a for a in _sys.argv[1:] if not a.startswith("-")), None
-    )
     is_yaml_without_verb = (
         first_positional is not None
-        and first_positional not in _known_verbs
+        and first_positional not in known_verbs
         and first_positional.lower().endswith((".yaml", ".yml"))
     )
 
     if is_yaml_without_verb:
         yaml_files = [
             Path(a)
-            for a in _sys.argv[1:]
+            for a in sys.argv[1:]
             if not a.startswith("-") and a.lower().endswith((".yaml", ".yml"))
         ]
-        flag_argv = [a for a in _sys.argv[1:] if a.startswith("-")]
-        orig_argv = _sys.argv[:]
-        _sys.argv = [_sys.argv[0]] + flag_argv
+        parse_argv = [
+            a
+            for a in sys.argv[1:]
+            if not (not a.startswith("-") and a.lower().endswith((".yaml", ".yml")))
+        ]
+        original_argv = sys.argv[:]
+        sys.argv = [sys.argv[0]] + parse_argv
         try:
             args = parser.parse_args()
         finally:
-            _sys.argv = orig_argv
+            sys.argv = original_argv
         args.config_files = yaml_files
         return args
 

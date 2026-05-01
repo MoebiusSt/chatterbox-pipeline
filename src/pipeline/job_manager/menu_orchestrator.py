@@ -64,6 +64,52 @@ class MenuOrchestrator:
             if options_result.should_return:
                 continue
 
+    def resolve_edit_intent(self, context: ExecutionContext) -> ExecutionIntent:
+        """
+        CLI `edit` entry: open UserCandidateManager. One task → editor directly;
+        several tasks → pick task first (Enter = latest). 'c' in editor returns to
+        task list when multiple tasks exist.
+        """
+        tasks = context.existing_tasks
+        if not tasks:
+            print(f"\nNo existing tasks found for job '{context.job_name}'.")
+            return self._create_cancelled_intent()
+
+        while True:
+            if len(tasks) > 1:
+                print(f"\nSelect task to edit for job '{context.job_name}':")
+                for i, t in enumerate(tasks, 1):
+                    latest_marker = " (<-- latest)" if i == 1 else ""
+                    print(f"{i}. {self._format_task_display(t)}{latest_marker}")
+                spacing = " " * max(1, 6 - len(str(len(tasks))))
+                print("\n[Enter] - Edit latest task")
+                print(f"1-{len(tasks)}{spacing}- Edit specific task")
+                print("c       - Cancel")
+                choice = input("\n> ").strip().lower()
+                if choice == "c":
+                    return self._create_cancelled_intent()
+                if choice == "":
+                    selected = tasks[0]
+                elif choice.isdigit():
+                    idx = int(choice) - 1
+                    if not (0 <= idx < len(tasks)):
+                        print("Invalid choice. Please try again.")
+                        continue
+                    selected = tasks[idx]
+                else:
+                    print("Invalid choice. Please try again.")
+                    continue
+            else:
+                selected = tasks[0]
+
+            is_latest = selected is tasks[0]
+            result = self._maybe_open_candidate_editor(selected, is_latest=is_latest)
+            if result.is_final_choice() and result.execution_intent is not None:
+                return result.execution_intent
+            if len(tasks) > 1:
+                continue
+            return self._create_cancelled_intent()
+
     def _show_task_selection_menu(self, context: ExecutionContext) -> MenuResult:
         """Show the top-level task and verb selection menu."""
         tasks = context.existing_tasks
@@ -133,6 +179,7 @@ class MenuOrchestrator:
     ) -> MenuResult:
         """Show verb options for one selected task."""
         is_latest = selection_result.selected_task_index in (None, 0)
+        reuse_file_manager: Optional[FileManager] = None
         try:
             config_data = self.config_manager.load_cascading_config(task.config_path)
             file_manager = FileManager(
@@ -141,6 +188,7 @@ class MenuOrchestrator:
             task_state = file_manager.analyze_task_state()
             allow_edit = bool(task_state.candidate_editor_available)
             state_message = task_state.task_status_message
+            reuse_file_manager = file_manager
         except Exception as e:
             logger.warning("Task state analysis failed: %s", e)
             allow_edit = False
@@ -154,10 +202,20 @@ class MenuOrchestrator:
 
         task_type = "latest task" if is_latest else "task"
         title = f"{task_type}: {task.job_name} - {display_time}\nTask state: {state_message}"
-        return self._show_task_operation_menu([task], title=title, allow_edit=allow_edit)
+        return self._show_task_operation_menu(
+            [task],
+            title=title,
+            allow_edit=allow_edit,
+            reuse_file_manager=reuse_file_manager,
+        )
 
     def _show_task_operation_menu(
-        self, tasks: List[TaskConfig], title: str, allow_edit: bool
+        self,
+        tasks: List[TaskConfig],
+        title: str,
+        allow_edit: bool,
+        *,
+        reuse_file_manager: Optional[FileManager] = None,
     ) -> MenuResult:
         """Show verb choices for an already selected task scope."""
 
@@ -187,7 +245,9 @@ class MenuOrchestrator:
                 show_menu()
                 continue
             if choice == "e" and allow_edit and len(tasks) == 1:
-                return self._show_candidate_editor(tasks[0])
+                return self._show_candidate_editor(
+                    tasks[0], file_manager=reuse_file_manager
+                )
             if choice == "c":
                 return MenuResult(should_return=True)
             print("Invalid choice. Please try again.")
@@ -195,20 +255,24 @@ class MenuOrchestrator:
     def _show_candidate_editor(
         self,
         task: TaskConfig,
+        *,
         file_manager: Optional[FileManager] = None,
-        config_data: Optional[dict] = None,
     ) -> MenuResult:
         """Show candidate editor and return the chosen follow-up intent."""
         try:
             from pipeline.user_candidate_manager import UserCandidateManager
 
-            if config_data is None:
-                config_data = self.config_manager.load_cascading_config(task.config_path)
-            if file_manager is None:
-                file_manager = FileManager(
-                    task, preloaded_config=config_data, config_manager=self.config_manager
+            active_fm = file_manager
+            if active_fm is None:
+                config_data = self.config_manager.load_cascading_config(
+                    task.config_path
                 )
-            candidate_manager = UserCandidateManager(file_manager, task)
+                active_fm = FileManager(
+                    task,
+                    preloaded_config=config_data,
+                    config_manager=self.config_manager,
+                )
+            candidate_manager = UserCandidateManager(active_fm, task)
             task_info = self._generate_task_info_dict(task, True)
 
             while True:
@@ -221,7 +285,7 @@ class MenuOrchestrator:
                     return self._create_scoped_intent([task], Verb.REASSEMBLE)
                 if editor_choice.isdigit():
                     chunk_idx = int(editor_choice) - 1
-                    chunks = file_manager.get_chunks()
+                    chunks = active_fm.get_chunks()
                     if 0 <= chunk_idx < len(chunks):
                         while 0 <= chunk_idx < len(chunks):
                             result = candidate_manager.show_candidate_selector(
@@ -256,7 +320,9 @@ class MenuOrchestrator:
             )
             task_state = file_manager.analyze_task_state()
             if task_state.candidate_editor_available:
-                return self._show_candidate_editor(task, file_manager=file_manager, config_data=config_data)
+                return self._show_candidate_editor(
+                    task, file_manager=file_manager
+                )
         except Exception as e:
             logger.warning("Candidate editor availability check failed: %s", e)
 
@@ -378,51 +444,6 @@ class MenuOrchestrator:
             source="menu",
         )
         return MenuResult(choice=verb, execution_intent=intent)
-
-    def resolve_edit_intent(self, context: ExecutionContext) -> ExecutionIntent:
-        """Entry point for the CLI edit verb.
-
-        If the job has more than one task, shows a task-selection menu first.
-        Pressing 'c' inside the editor returns to that selection; 'c' at the
-        selection level cancels the whole operation.
-        """
-        tasks = context.existing_tasks
-        if not tasks:
-            print(f"\nNo existing tasks found for job '{context.job_name}'.")
-            return self._create_cancelled_intent()
-
-        while True:
-            if len(tasks) == 1:
-                task = tasks[0]
-            else:
-                print(f"\nSelect task to edit for job '{context.job_name}':")
-                for i, t in enumerate(tasks, 1):
-                    latest_marker = " (<-- latest)" if i == 1 else ""
-                    print(f"{i}. {self._format_task_display(t)}{latest_marker}")
-                spacing = " " * (6 - len(str(len(tasks))))
-                print(f"\n[Enter]{' ' * 1}- Edit latest task")
-                print(f"1-{len(tasks)}{spacing}- Edit specific task")
-                print(f"c      - Cancel")
-                choice = input("\n> ").strip().lower()
-                if choice == "c":
-                    return self._create_cancelled_intent()
-                if choice == "" or (choice.isdigit() and int(choice) == 1):
-                    task = tasks[0]
-                elif choice.isdigit() and 1 <= int(choice) <= len(tasks):
-                    task = tasks[int(choice) - 1]
-                else:
-                    print("Invalid choice. Please try again.")
-                    continue
-
-            result = self._maybe_open_candidate_editor(
-                task, is_latest=(task is tasks[0])
-            )
-            if result.is_final_choice() and result.execution_intent is not None:
-                return result.execution_intent
-            # "c" in editor or unavailable editor
-            if len(tasks) == 1:
-                return self._create_cancelled_intent()
-            # Multi-task: go back to task selection
 
     def _create_cancelled_intent(self) -> ExecutionIntent:
         """Create execution intent for cancelled operation."""

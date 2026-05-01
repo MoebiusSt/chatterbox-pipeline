@@ -144,28 +144,33 @@ pip install -r dev-requirements.txt
 
 ### 4. Production TTS Pipeline
 
-Pipeline parameters can be adjusted in `config/default_config.yaml`. This defines the default job. Running the main program without arguments is the same as running it with the default_config.yaml 
+Pipeline defaults live in `config/default_config.yaml`. The CLI is **verb-first**: always use a subcommand (`create`, `resume`, `reassemble`, `rebuild`, `edit`) unless you want the interactive menu.
 
 ```bash
-# Interactive menu
+# Interactive menu (job / task selection)
 python src/cbpipe.py
-# Create and run a new task from config/default_config.yaml
-python src/cbpipe.py create default_config.yaml
+
+# New task from the default job template (non-interactive pipeline run)
+python src/cbpipe.py create config/default_config.yaml
 ```
+
+See [docs/basic-usage_CLI-arguments.md](docs/basic-usage_CLI-arguments.md) for the full reference.
 
 ### 5. Command Line Options
 
-For an easy start you can clone the default_config.yaml in order to create a job-yaml, i.e. "myjob1.yaml". (There is a smarter way, explained below).
+For an easy start, copy `config/default_config.yaml` into a job YAML (e.g. `myjob1.yaml`) and adjust paths and parameters.
 
-Any job that has never run before will be executed without interruption (without menu system). Run it like so:
+Scope the run with **either** job YAML path(s) **or** `--job` / `-j` — not both. Typical patterns:
 
 ```bash
-# Standard mode (interactive)
-python src/cbpipe.py create myjob1.yaml job2.yaml  # Create new task(s) from specific job configurations
-python src/cbpipe.py resume --job "my_job"         # Resume latest task(s) for a specific job name
-python src/cbpipe.py resume --job "testjob*"       # Resume latest task(s) for wildcard-matched jobs
-python src/cbpipe.py resume --job "test?job"       # Resume latest task(s) for pattern-matched jobs
-Shortform: -j
+# Job YAML(s) under config/ (paths relative to repo or to config/)
+python src/cbpipe.py create myjob1.yaml job2.yaml
+python src/cbpipe.py resume myjob1.yaml
+
+# By job name (wildcards: testjob*, test?job, …)
+python src/cbpipe.py resume --job "my_job"
+python src/cbpipe.py resume --job "testjob*"
+python src/cbpipe.py resume --job "test?job"
 ```
 Running a job will create a 'task'.  This means, a job will create a copy of its configuration in the output directory among other files like text-chunks, audio-chunks, validation-results for this task etc. The task.yaml will look something like this:
 ```bash
@@ -185,10 +190,13 @@ Found existing tasks for job 'default':
 2. default - no-label - input-document.txt - 12.07.2025 - 21:11
 
 Select action:
-[Enter] - Options for latest task
+[Enter] - Resume latest task (fill gaps; final only if missing)
+f       - Reassemble final audio for latest task
+r       - Rebuild latest task from scratch
+e       - Edit candidates for latest task
+a       - Options for all tasks
 n       - Create and run new task
-a       - Options to run all tasks
-1-1     - Options for specific task
+1-2     - Options for specific task
 c       - Cancel
 ```
 
@@ -199,7 +207,7 @@ Use verb subcommands to state the task operation directly.
 - **resume**: Fill gaps in the latest existing task per job. Add `--all` to process all tasks.
 - **reassemble**: Rebuild final audio from existing candidates. Add `--all` to process all tasks.
 - **rebuild**: Delete candidates and final audio, then rerender from scratch. Add `--all` to process all tasks.
-- **edit**: Open the candidate editor for one latest task.
+- **edit**: Open the candidate editor; with a single matching task it opens directly, with several you pick first (Enter = latest).
 
 ```bash
 python src/cbpipe.py create myjob1.yaml
@@ -222,8 +230,8 @@ python src/cbpipe.py reassemble --job "testjob*" --all -v
 
 #####  Additional options
 ```bash
-python src/cbpipe.py --verbose or -v             # Detailed logging
-python src/cbpipe.py --device cuda               # Device selection: Force GPU execution
+python src/cbpipe.py resume myjob1.yaml -v       # Detailed logging (--verbose / -v after the verb)
+python src/cbpipe.py resume myjob1.yaml --device cuda   # Force GPU execution
 ```
 ###  🚀 Try this example for fun
 ```bash
@@ -316,7 +324,7 @@ This linear task process is wrapped by a job/task manager that orchestrates exec
 - Enables flexible job and task-specific adjustments without complex configs
 
 #### Job Search and Configuration
-When using `--job "switching-speakers"`, the system searches for job configurations in this order:
+When using a verb with `--job "switching-speakers"` (for example `python src/cbpipe.py resume --job "switching-speakers"`), the system searches for job configurations in this order:
 
 1. **Config directory search**: `config/*.yaml` files
    - Opens each YAML file and checks if `job:name: switching-speakers` key/value pairs can be found (With the given example files `config/speakers_example.yaml` will be found)

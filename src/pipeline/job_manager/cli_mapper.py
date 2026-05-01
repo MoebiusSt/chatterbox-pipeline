@@ -44,8 +44,8 @@ class CLIMapper:
             execution_mode = "batch" if len(tasks) > 1 else "single"
         elif verb == Verb.EDIT:
             tasks = self._latest_task_per_job(context)
-            if len(tasks) != 1:
-                raise ValueError("edit requires exactly one resolved task")
+            if not tasks:
+                raise ValueError(f"{verb.value} found no existing task to process")
             execution_mode = "single"
         else:
             return None
