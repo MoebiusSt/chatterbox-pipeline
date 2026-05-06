@@ -536,10 +536,16 @@ class TaskExecutor:
         has_missing_whisper = any(
             "whisper_chunk" in comp for comp in task_state.missing_components
         )
-        # Ensure whisper metrics are available for gap-fill analysis
+        # Prior validation snapshot: used to choose selective validation on resume
+        # so unchanged chunks keep Whisper/MOS results and user selections.
+        # (get_metrics() returns {} without raising if the file is missing — do not
+        # treat that as "existing metrics".)
         try:
-            _ = self.file_manager.get_metrics()
-            has_existing_metrics = True
+            _metrics_snapshot = self.file_manager.get_metrics()
+            has_existing_metrics = bool(
+                isinstance(_metrics_snapshot, dict)
+                and _metrics_snapshot.get("chunks")
+            )
         except Exception:
             has_existing_metrics = False
         # Detect incomplete selected_candidates to trigger gap-filling path as well
@@ -554,23 +560,28 @@ class TaskExecutor:
             missing_selection_indices = []
         has_missing_selections = len(missing_selection_indices) > 0
 
-        is_gap_filling = (
-            has_existing_metrics
-            and (has_missing_candidates or has_missing_whisper or has_missing_selections)
-            and self.task_config.force_final_generation
+        has_pipeline_gaps = (
+            has_missing_candidates or has_missing_whisper or has_missing_selections
+        )
+        # Resume / partial repair: re-validate only touched chunks when prior
+        # whisper_metrics already holds chunk-level data (not CLI force_final only).
+        use_selective_gap_resume = (
+            not self.task_config.rerender_all
+            and has_existing_metrics
+            and has_pipeline_gaps
         )
 
         if (
             task_state.completion_stage == CompletionStage.COMPLETE
-            and not is_gap_filling
+            and not has_pipeline_gaps
             and not self.task_config.force_final_generation
         ):
             logger.info("Task already complete")
             return True
 
-        if is_gap_filling:
+        if use_selective_gap_resume:
             logger.info(
-                "🔄 Gap-filling mode detected - regenerating missing components"
+                "🔄 Partial resume / gap repair: selective validation for changed chunks only"
             )
             # Determine which chunks need validation in gap-filling mode
             missing_chunk_indices = []
@@ -599,6 +610,7 @@ class TaskExecutor:
                 for idx in missing_selection_indices:
                     if idx not in missing_chunk_indices:
                         missing_chunk_indices.append(idx)
+            missing_chunk_indices = sorted(set(missing_chunk_indices))
 
         # Execute stages in order based on what's missing
         if task_state.completion_stage in [
@@ -615,7 +627,9 @@ class TaskExecutor:
                 CompletionStage.PREPROCESSING,
                 CompletionStage.GENERATION,
             ]
-        ) or is_gap_filling:  # Also run generation for gap-filling
+        ) or (
+            use_selective_gap_resume and has_missing_candidates
+        ):  # Regenerate only when candidate gaps exist (generation skips complete chunks)
             if not self.generation_handler.execute_generation():
                 return False
 
@@ -627,12 +641,12 @@ class TaskExecutor:
                 CompletionStage.GENERATION,
                 CompletionStage.VALIDATION,
             ]
-        ) or is_gap_filling:  # Also run validation for gap-filling
+        ) or use_selective_gap_resume:  # e.g. COMPLETE task with stale whisper for some chunks
 
-            if is_gap_filling:
+            if use_selective_gap_resume:
                 # Use selective validation to preserve existing selected_candidates
                 logger.info(
-                    "🔧 Gap-filling detected: Using selective validation to preserve user candidate selections"
+                    "🔧 Selective validation (partial resume) to preserve user candidate selections"
                 )
                 if not self.validation_handler.execute_selective_validation(
                     chunks_to_validate=missing_chunk_indices

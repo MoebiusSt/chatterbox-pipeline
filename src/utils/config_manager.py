@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, TextIO
 
 import yaml
 
-from utils.language_registry import VIBEVOICE_MODEL_TYPES
+from utils.language_registry import VIBEVOICE_MODEL_TYPES, get_supported_tts_params
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +280,20 @@ class ConfigManager:
         if not isinstance(data, dict):
             return data
 
-        sorted_dict = OrderedDict()
+        sorted_dict: OrderedDict[str, Any] = OrderedDict()
+
+        def _sort_with_preferred_order(
+            item: Dict[str, Any], preferred_keys: List[str]
+        ) -> OrderedDict:
+            """Sort dict keys by preferred order; keep unknown keys at the end."""
+            out = OrderedDict()
+            for pref in preferred_keys:
+                if pref in item:
+                    out[pref] = item[pref]
+            for extra_key in item.keys():
+                if extra_key not in out:
+                    out[extra_key] = item[extra_key]
+            return out
 
         # Get the key order for this level
         level_order = key_order_structure.get("_order", [])
@@ -294,6 +307,95 @@ class ConfigManager:
                     sorted_dict[key] = self._sort_dict_hierarchically(
                         value, key_order_structure[key]
                     )
+                elif isinstance(value, list) and key in key_order_structure:
+                    # Preserve list order, but sort dict items inside list by nested key order
+                    nested_structure = key_order_structure[key]
+                    if key == "speakers":
+                        # Enforce stable speaker field order in task-yamls.
+                        # Keep model-specific tts_params order users expect.
+                        speaker_key_order = [
+                            "id",
+                            "reference_audio",
+                            "language",
+                            "seed",
+                            "tts_params",
+                            "conservative_candidate",
+                        ]
+                        model_type = str(data.get("model_type", "")).strip().lower()
+                        if model_type in VIBEVOICE_MODEL_TYPES:
+                            tts_params_order = [
+                                "temperature",
+                                "temperature_max_deviation",
+                                "top_p",
+                                "cfg_scale",
+                                "cfg_scale_max_deviation",
+                                "diffusion_steps",
+                                "diffusion_steps_max_deviation",
+                                "voice_speed_factor",
+                                "use_sampling",
+                            ]
+                            conservative_order = [
+                                "enabled",
+                                "temperature",
+                                "top_p",
+                                "cfg_scale",
+                                "diffusion_steps",
+                                "voice_speed_factor",
+                                "use_sampling",
+                            ]
+                        else:
+                            tts_params_order = [
+                                "exaggeration",
+                                "exaggeration_max_deviation",
+                                "cfg_weight",
+                                "cfg_weight_max_deviation",
+                                "temperature",
+                                "temperature_max_deviation",
+                                "repetition_penalty",
+                                "min_p",
+                                "top_p",
+                            ]
+                            conservative_order = [
+                                "enabled",
+                                "exaggeration",
+                                "cfg_weight",
+                                "temperature",
+                                "repetition_penalty",
+                                "min_p",
+                                "top_p",
+                            ]
+
+                        normalized_speakers = []
+                        for item in value:
+                            if not isinstance(item, dict):
+                                normalized_speakers.append(item)
+                                continue
+                            speaker_sorted = _sort_with_preferred_order(
+                                dict(item), speaker_key_order
+                            )
+
+                            if isinstance(speaker_sorted.get("tts_params"), dict):
+                                speaker_sorted["tts_params"] = _sort_with_preferred_order(
+                                    dict(speaker_sorted["tts_params"]), tts_params_order
+                                )
+                            if isinstance(
+                                speaker_sorted.get("conservative_candidate"), dict
+                            ):
+                                speaker_sorted[
+                                    "conservative_candidate"
+                                ] = _sort_with_preferred_order(
+                                    dict(speaker_sorted["conservative_candidate"]),
+                                    conservative_order,
+                                )
+                            normalized_speakers.append(speaker_sorted)
+                        sorted_dict[key] = normalized_speakers
+                    else:
+                        sorted_dict[key] = [
+                            self._sort_dict_hierarchically(item, nested_structure)
+                            if isinstance(item, dict)
+                            else item
+                            for item in value
+                        ]
                 else:
                     sorted_dict[key] = value
 
@@ -307,10 +409,64 @@ class ConfigManager:
                 sorted_dict[key] = self._sort_dict_hierarchically(
                     value, nested_structure
                 )
+            elif isinstance(value, list):
+                nested_structure = key_order_structure.get(key, {})
+                sorted_dict[key] = [
+                    self._sort_dict_hierarchically(item, nested_structure)
+                    if isinstance(item, dict)
+                    else item
+                    for item in value
+                ]
             else:
                 sorted_dict[key] = value
 
         return sorted_dict
+
+    def _get_model_inheritance_param_keys(self, model_type: str) -> set[str]:
+        """Return speaker parameter keys that may be inherited for this model."""
+        model_type = str(model_type or "").strip().lower()
+        supported_keys = set(get_supported_tts_params(model_type))
+
+        model_internal_keys: Dict[str, set[str]] = {
+            "standard": {
+                "exaggeration_max_deviation",
+                "cfg_weight_max_deviation",
+                "temperature_max_deviation",
+            },
+            "multilingual": {
+                "exaggeration_max_deviation",
+                "cfg_weight_max_deviation",
+                "temperature_max_deviation",
+            },
+            "turbo": {
+                "exaggeration_max_deviation",
+                "cfg_weight_max_deviation",
+                "temperature_max_deviation",
+            },
+            "qwen3": {
+                "temperature_max_deviation",
+                "top_k_max_deviation",
+                "subtalker_temperature_max_deviation",
+                "subtalker_top_k_max_deviation",
+            },
+            "vibevoice": {
+                "temperature_max_deviation",
+                "cfg_scale_max_deviation",
+                "diffusion_steps_max_deviation",
+            },
+            "vibevoice_1_5b": {
+                "temperature_max_deviation",
+                "cfg_scale_max_deviation",
+                "diffusion_steps_max_deviation",
+            },
+            "vibevoice_q4": {
+                "temperature_max_deviation",
+                "cfg_scale_max_deviation",
+                "diffusion_steps_max_deviation",
+            },
+        }
+
+        return supported_keys | model_internal_keys.get(model_type, set())
 
     def _convert_ordered_dict_to_dict(self, data: Any) -> Any:
         """
@@ -859,9 +1015,9 @@ class ConfigManager:
         Apply complete cascading inheritance for missing speaker parameters.
 
         Fallback hierarchy for missing parameters:
-        1. Local default_speaker (from job config)
-        2. Same speaker ID in default_config.yaml
-        3. Default_speaker from default_config.yaml
+        1. Same speaker ID in base_config (parent/default chain)
+        2. Local default_speaker (from job config)
+        3. Default_speaker from base_config
 
         Args:
             job_speaker: Job speaker configuration (potentially incomplete)
@@ -877,7 +1033,14 @@ class ConfigManager:
         # Get fallback sources in priority order
         fallback_sources = []
         
-        # 1. Local default_speaker (from job config)
+        # 1. Same speaker ID in base config (most specific structural match)
+        base_speakers = base_config.get("generation", {}).get("speakers", [])
+        for speaker in base_speakers:
+            if speaker.get("id") == speaker_id:
+                fallback_sources.append(("base same ID", speaker))
+                break
+
+        # 2. Local default_speaker (from job config)
         job_default_speaker_id = job_config.get("generation", {}).get("default_speaker")
         if job_default_speaker_id and job_default_speaker_id != speaker_id:
             job_speakers = job_config.get("generation", {}).get("speakers", [])
@@ -886,14 +1049,7 @@ class ConfigManager:
                     fallback_sources.append(("job default_speaker", speaker))
                     break
 
-        # 2. Same speaker ID in default_config.yaml
-        base_speakers = base_config.get("generation", {}).get("speakers", [])
-        for speaker in base_speakers:
-            if speaker.get("id") == speaker_id:
-                fallback_sources.append(("base same ID", speaker))
-                break
-
-        # 3. Default_speaker from default_config.yaml
+        # 3. Default_speaker from base config
         base_default_speaker_id = base_config.get("generation", {}).get("default_speaker")
         if base_default_speaker_id:
             for speaker in base_speakers:
@@ -902,7 +1058,14 @@ class ConfigManager:
                     break
 
         # Apply cascading inheritance for missing parameters
-        self._inherit_missing_parameters(merged, fallback_sources, speaker_id)
+        model_type = (
+            job_config.get("generation", {}).get("model_type")
+            or base_config.get("generation", {}).get("model_type")
+            or "standard"
+        )
+        self._inherit_missing_parameters(
+            merged, fallback_sources, speaker_id, str(model_type)
+        )
 
         return merged
 
@@ -910,7 +1073,8 @@ class ConfigManager:
         self, 
         target_speaker: Dict[str, Any], 
         fallback_sources: List[tuple], 
-        speaker_id: str
+        speaker_id: str,
+        model_type: str = "standard",
     ) -> None:
         """
         Inherit missing parameters from fallback sources in priority order.
@@ -919,6 +1083,7 @@ class ConfigManager:
             target_speaker: Speaker to fill missing parameters for (modified in-place)
             fallback_sources: List of (source_name, speaker_config) tuples in priority order
             speaker_id: ID of target speaker for logging
+            model_type: Active generation model type for model-specific params
         """
         # Define all possible speaker parameters
         all_params: Dict[str, Any] = {
@@ -946,23 +1111,21 @@ class ConfigManager:
             
             target_nested = target_speaker[nested_param]
             
-            # Define expected nested parameters
-            if nested_param == "tts_params":
-                # Union of all keys present in any fallback (model-agnostic; Qwen3/VibeVoice
-                # keys are not hardcoded). Static allowlists went stale for top_k/subtalker_*.
-                expected_keys_set: set[str] = set()
-                for _, source_speaker in fallback_sources:
-                    source_nested = source_speaker.get(nested_param, {})
-                    if isinstance(source_nested, dict):
-                        expected_keys_set.update(source_nested.keys())
-                expected_keys = sorted(expected_keys_set)
-            elif nested_param == "conservative_candidate":
-                expected_keys = [
-                    "enabled", "exaggeration", "cfg_weight", 
-                    "temperature", "min_p", "top_p"
-                ]
-            else:
-                expected_keys = []
+            # Inherit only keys that are valid for the active model type. The
+            # fallback chain still spans all parents up to default_config.yaml;
+            # this prevents cross-model defaults from filling VibeVoice/Qwen3
+            # speakers with Chatterbox-only keys.
+            expected_keys_set: set[str] = set()
+            for _, source_speaker in fallback_sources:
+                source_nested = source_speaker.get(nested_param, {})
+                if isinstance(source_nested, dict):
+                    expected_keys_set.update(source_nested.keys())
+
+            allowed_keys = self._get_model_inheritance_param_keys(model_type)
+            if nested_param == "conservative_candidate":
+                allowed_keys = allowed_keys | {"enabled"}
+
+            expected_keys = sorted(expected_keys_set & allowed_keys)
 
             # Inherit missing nested parameters
             for key in expected_keys:
