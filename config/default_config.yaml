@@ -18,6 +18,13 @@ chunking:
   force_paragraph_chunks: true  # true (Chatterbox default): every \n\n is a HARD chunk boundary → paragraph-break silence guaranteed.
                                 # false (VibeVoice): only \n\n\n+ (2+ empty lines) is a HARD boundary (→ long-pause silence);
                                 #   single \n\n is a preferred but soft split-point (greedy packing still applies).
+  strict_speaker_validation: true  # true: abort preprocessing with a verbose error message if the source text contains
+                                   #   <speaker:id> markup whose id is not defined in generation.speakers (default-speaker
+                                   #   aliases "0", "default", "reset" are always accepted).
+                                   # false: legacy behaviour – log a warning and silently fall back to the default speaker.
+  collapse_redundant_speaker_tags: true  # true: consecutive <speaker:id> tags that resolve to the already active
+                                         #   speaker are treated as no-ops (no extra hard chunk break, no artificial pause).
+                                         # false: legacy behaviour – every <speaker:id> tag forces a hard boundary.
 
 generation:
   num_candidates: 2
@@ -175,7 +182,7 @@ generation:
         top_p: 0.99
 
 validation:
-  whisper_model: small # base small medium large
+  whisper_model: medium # base small medium large
   similarity_threshold: 0.70  # WhisperValidator: token-based similarity of original and transcribed text tokens
   similarity_threshold_bonus_max: 0.08  # Upper cap for the length/punctuation based threshold reduction
   min_quality_score: 0.72  #  WhisperValidator: 70% * similarity_score + 30% * length_score
@@ -236,9 +243,9 @@ validation:
       intelligibility: 0.08     
       mos: 0.32                 # MOS-Weight, note: MOS will score double as per gamma_mos
     targets:                    # the deviation from the mediean defines the flow score
-      wpm_min: 115              # halfwidth (155-115)/2= 20 -> target wpm 135  
-      wpm_max: 155
-      liveliness_target: 0.44
+      wpm_min: 110              # halfwidth (165-110)/2= 20 -> target wpm 138  
+      wpm_max: 165
+      liveliness_target: 0.80
       liveliness_halfwidth: 0.15        # half-width of the triangular liveliness window (smaller -> more discriminative)
       f0_std_low_hz: 15.0               # f0 std (Hz) mapped to 0.0 (monotone speech)
       f0_std_high_hz: 40.0              # f0 std (Hz) mapped to 1.0 (lively prosody)
@@ -279,7 +286,7 @@ validation:
       duration:
         enabled: true           # rejects token-cap loops that stay lexically similar
         min_word_count: 12      # avoid over-gating tiny fragments
-        max_duration_ratio: 2.0 # fail if audio is >2x the target-WPM duration
+        max_duration_ratio: 1.5 # fail if audio is >2x the target-WPM duration
         max_audio_duration_s: 0 # 0 disables absolute duration cap
         min_wpm: 0              # 0 disables absolute WPM floor
 

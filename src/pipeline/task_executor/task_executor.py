@@ -123,6 +123,9 @@ class TaskExecutor:
                 respect_headings_in_speaker_mode=chunking_config.get(
                     "respect_headings_in_speaker_mode", True
                 ),
+                collapse_redundant_speaker_tags=chunking_config.get(
+                    "collapse_redundant_speaker_tags", True
+                ),
             )
         return self._chunker
 

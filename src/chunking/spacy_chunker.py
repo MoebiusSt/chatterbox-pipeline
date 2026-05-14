@@ -2,7 +2,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
 import spacy
 from spacy.tokens import Span
@@ -23,6 +23,7 @@ class SpeakerMarkupParser:
     """
 
     SPEAKER_PATTERN = r"<speaker:([^>]+)>"
+    DEFAULT_SPEAKER_ALIASES = ("0", "default", "reset")
 
     def parse_speaker_transitions(self, text: str) -> List[Tuple[int, str]]:
         """
@@ -68,8 +69,10 @@ class SpeakerMarkupParser:
             Validated/normalized speaker ID
         """
         # Normalize special IDs (default speaker aliases)
-        if speaker_id in ["0", "default", "reset"]:
-            return available_speakers[0] if available_speakers else default_speaker_id
+        if speaker_id in self.DEFAULT_SPEAKER_ALIASES:
+            return default_speaker_id if default_speaker_id else (
+                available_speakers[0] if available_speakers else speaker_id
+            )
 
         # Check if speaker is available
         if speaker_id in available_speakers:
@@ -78,7 +81,36 @@ class SpeakerMarkupParser:
         logger.warning(
             f"Unknown speaker '{speaker_id}', falling back to default speaker"
         )
-        return available_speakers[0] if available_speakers else default_speaker_id
+        return default_speaker_id if default_speaker_id else (
+            available_speakers[0] if available_speakers else speaker_id
+        )
+
+    def find_unknown_speakers(
+        self, text: str, available_speakers: List[str]
+    ) -> List[Tuple[int, str]]:
+        """
+        Find all <speaker:id> markups whose id is neither a default-speaker alias
+        ("0", "default", "reset") nor present in ``available_speakers``.
+
+        Args:
+            text: Text with speaker markup
+            available_speakers: List of configured speaker IDs
+
+        Returns:
+            List of (line_number, speaker_id) tuples in document order. Each
+            occurrence is reported individually so callers can produce a
+            verbose, location-aware error message.
+        """
+        unknown: List[Tuple[int, str]] = []
+        for match in re.finditer(self.SPEAKER_PATTERN, text):
+            speaker_id = match.group(1).strip()
+            if speaker_id in self.DEFAULT_SPEAKER_ALIASES:
+                continue
+            if speaker_id in available_speakers:
+                continue
+            line_number = text.count("\n", 0, match.start()) + 1
+            unknown.append((line_number, speaker_id))
+        return unknown
 
 
 class SpaCyChunker(BaseChunker):
@@ -96,6 +128,7 @@ class SpaCyChunker(BaseChunker):
         force_paragraph_chunks: bool = False,
         micro_chunk_max_chars: Optional[int] = None,
         respect_headings_in_speaker_mode: bool = True,
+        collapse_redundant_speaker_tags: bool = True,
     ):
         self.target_limit = target_limit
         self.max_limit = max_limit
@@ -104,6 +137,7 @@ class SpaCyChunker(BaseChunker):
         # If not explicitly provided, micro-merge threshold derives from min_length
         self.micro_chunk_max_chars = micro_chunk_max_chars if micro_chunk_max_chars is not None else self.min_length
         self.respect_headings_in_speaker_mode = respect_headings_in_speaker_mode
+        self.collapse_redundant_speaker_tags = collapse_redundant_speaker_tags
         try:
             self.nlp = spacy.load(model_name)
         except OSError:
@@ -361,9 +395,7 @@ class SpaCyChunker(BaseChunker):
         sections = []
         # Since we validated in chunk_text that default_speaker_id is not None, we can assert here
         assert self.default_speaker_id is not None
-        current_speaker = (
-            self.available_speakers[0] if self.available_speakers else self.default_speaker_id
-        )
+        current_speaker = self.default_speaker_id
 
         # Strategy: Parse the original text to create speaker sections,
         # then map each section to the corresponding clean text
@@ -375,6 +407,9 @@ class SpaCyChunker(BaseChunker):
 
         # Split original text by speaker tags
         parts = re.split(speaker_pattern, original_text)
+        pending_original_markup: Optional[str] = None
+        pending_redundant_speaker_tag = False
+        pending_tag_line_number: Optional[int] = None
 
         i = 0
         while i < len(parts):
@@ -396,29 +431,66 @@ class SpaCyChunker(BaseChunker):
                 # We have a speaker ID (from the regex split)
                 if i % 2 == 1:
                     # This is a speaker ID
+                    previous_speaker = current_speaker
                     new_speaker_id = text_part.strip()
                     validated_speaker = self.speaker_parser.validate_speaker_id(
                         new_speaker_id, self.available_speakers, self.default_speaker_id
                     )
                     current_speaker = validated_speaker
+                    pending_original_markup = new_speaker_id
+                    pending_redundant_speaker_tag = (
+                        self.collapse_redundant_speaker_tags
+                        and validated_speaker == previous_speaker
+                    )
+                    tag_index = i // 2
+                    if tag_index < len(transitions):
+                        pending_tag_line_number = (
+                            original_text.count("\n", 0, transitions[tag_index][0]) + 1
+                        )
+                    else:
+                        pending_tag_line_number = None
                 else:
                     # This is text content after a speaker tag
                     if text_part.strip():
-                        # Determine transition context based on surrounding text
-                        prev_text = parts[i - 2] if i - 2 >= 0 else ""
-                        context = self._classify_speaker_transition_context(
-                            prev_text, text_part
-                        )
-                        sections.append(
-                            {
-                                "text": text_part.lstrip(),
-                                "speaker_id": current_speaker,
-                                "start_pos": 0,  # Will be recalculated
-                                "speaker_transition": True,
-                                "original_markup": new_speaker_id if i > 1 else None,
-                                "speaker_transition_context": context,
-                            }
-                        )
+                        if (
+                            pending_redundant_speaker_tag
+                            and sections
+                            and sections[-1]["speaker_id"] == current_speaker
+                        ):
+                            sections[-1]["text"] = (
+                                cast(str, sections[-1]["text"]) + text_part
+                            )
+                            location = (
+                                f" at line {pending_tag_line_number}"
+                                if pending_tag_line_number is not None
+                                else ""
+                            )
+                            logger.debug(
+                                f"Collapsed redundant <speaker:{pending_original_markup}>"
+                                f"{location} – speaker '{current_speaker}' already active"
+                            )
+                        else:
+                            # Determine transition context based on surrounding text
+                            prev_text = parts[i - 2] if i - 2 >= 0 else ""
+                            context = None
+                            if not pending_redundant_speaker_tag:
+                                context = self._classify_speaker_transition_context(
+                                    prev_text, text_part
+                                )
+                            sections.append(
+                                {
+                                    "text": text_part.lstrip(),
+                                    "speaker_id": current_speaker,
+                                    "start_pos": 0,  # Will be recalculated
+                                    "speaker_transition": not pending_redundant_speaker_tag,
+                                    "original_markup": (
+                                        pending_original_markup
+                                        if not pending_redundant_speaker_tag
+                                        else None
+                                    ),
+                                    "speaker_transition_context": context,
+                                }
+                            )
             i += 1
 
         logger.debug(f"Created {len(sections)} speaker sections")

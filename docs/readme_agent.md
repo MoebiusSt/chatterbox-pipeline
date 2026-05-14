@@ -73,6 +73,12 @@ SpaCyChunker.chunk_text() → List[TextChunk]
 <speaker:id> markup → automatic speaker switching.
 # Speaker splits always win, independent of force_paragraph_chunks.
 # <speaker:0>, <speaker:default>, <speaker:reset> all return to the default speaker.
+# Redundant <speaker:id> tags that resolve to the already active speaker are
+#   collapsed by default (chunking.collapse_redundant_speaker_tags=true), so
+#   they do not create extra hard chunk breaks or speaker-transition pauses.
+# Unknown <speaker:id> tags abort the preprocessing stage with a verbose error
+#   message when chunking.strict_speaker_validation=true (default).  Set the
+#   flag to false to fall back to the default speaker with a warning instead.
 
 # Finalization (_finalize_chunks, src/chunking/spacy_chunker.py)
 # _merge_micro_chunks: merge short chunks (≤ micro_chunk_max_chars = min_chunk_length) into neighbors.
@@ -405,6 +411,7 @@ chunking:
   min_chunk_length: 80
   spacy_model: en_core_web_sm
   force_paragraph_chunks: true   # split at every blank line (Chatterbox longform is weaker)
+  collapse_redundant_speaker_tags: true  # same resolved speaker id = no speaker-transition split
 
   # VibeVoice – longform (values from defaults/vibevoice.yaml)
   # target_chunk_limit: 2800
@@ -664,6 +671,13 @@ Expected: Normal behavior, model loads once per process
 
 # Speaker Not Found
 Solution: Check speaker IDs in config, verify reference_audio files exist
+
+# Source text references undefined <speaker:id>
+"❌ SPEAKER MARKUP VALIDATION FAILED" (preprocessing aborts)
+Solution: Add the missing id to generation.speakers in the job YAML, replace
+         the markup with an existing id / default alias, or set
+         chunking.strict_speaker_validation: false to revert to the legacy
+         warning + default-speaker fallback.
 ```
 
 ### Debug Commands

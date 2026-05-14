@@ -71,6 +71,13 @@ annie_coleman_rothenberg_2_15s.wav::qwen3:
   subtalker_top_k: 157.0
   subtalker_top_p: 0.97
   repetition_penalty: 1.07
+annie_coleman_rothenberg_2_15s.wav::vibevoice:
+  temperature: 1.2
+  top_p: 0.97
+  cfg_scale: 1.6
+  diffusion_steps: 19.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 cori_samuel_1.wav:
   exaggeration: 1.56
   cfg_weight: 0.37
@@ -251,6 +258,14 @@ hans-juergen-lenhart_DE_15s.wav::vibevoice:
   diffusion_steps: 30.0
   voice_speed_factor: 1.0
   use_sampling: true
+hans-juergen-lenhart_IT.wav::qwen3:
+  temperature: 1.089
+  top_k: 114.0
+  top_p: 0.99
+  subtalker_temperature: 1.456
+  subtalker_top_k: 206.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
 hans-juergen-lenhart_IT.wav::vibevoice_q4:
   temperature: 1.41
   top_p: 1.0

@@ -2,10 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from chunking.chunk_validator import ChunkValidator
-from chunking.spacy_chunker import SpaCyChunker
+from chunking.spacy_chunker import SpaCyChunker, SpeakerMarkupParser
 from preprocessor.text_preprocessor import TextPreprocessor
 from utils.file_manager.file_manager import FileManager
 
@@ -21,6 +21,87 @@ class PreprocessingHandler:
         self.file_manager = file_manager
         self.config = config
         self.chunker = chunker
+
+    def _validate_speaker_markup(
+        self, text: str, available_speakers: List[str], default_speaker_id: str
+    ) -> bool:
+        """
+        Strict validation of <speaker:id> markup against the configured speakers.
+
+        When ``chunking.strict_speaker_validation`` is true (default), the pipeline
+        aborts with a verbose error message if the source text references a
+        speaker ID that is not configured in the merged job/task YAML. The
+        default-speaker aliases ``0``, ``default`` and ``reset`` are always
+        accepted.
+
+        Returns:
+            True if validation passes (or is disabled), False if it fails and the
+            stage must abort.
+        """
+        chunking_cfg = self.config.get("chunking", {}) or {}
+        strict = bool(chunking_cfg.get("strict_speaker_validation", True))
+
+        parser = SpeakerMarkupParser()
+        unknown = parser.find_unknown_speakers(text, available_speakers)
+
+        if not unknown:
+            return True
+
+        unique_unknown = sorted({sid for _, sid in unknown})
+        configured = list(available_speakers) + list(parser.DEFAULT_SPEAKER_ALIASES)
+
+        if not strict:
+            for line, sid in unknown:
+                logger.warning(
+                    f"⚠️  Unknown speaker '<speaker:{sid}>' at line {line} – "
+                    f"falling back to default speaker '{default_speaker_id}' "
+                    "(strict_speaker_validation=false)"
+                )
+            return True
+
+        logger.info("=" * 60)
+        logger.error("❌ SPEAKER MARKUP VALIDATION FAILED")
+        logger.info("=" * 60)
+        logger.error(
+            f"The source text references {len(unique_unknown)} speaker ID(s) "
+            "that are not defined in the merged job/task configuration:"
+        )
+        logger.error("")
+        for sid in unique_unknown:
+            occurrences = [str(line) for line, s in unknown if s == sid]
+            logger.error(
+                f"   • <speaker:{sid}>  (line(s): {', '.join(occurrences)})"
+            )
+        logger.error("")
+        logger.error(
+            f"📋 Configured speaker IDs ({len(available_speakers)}): "
+            f"{available_speakers}"
+        )
+        logger.error(
+            f"📋 Accepted default-speaker aliases: "
+            f"{list(parser.DEFAULT_SPEAKER_ALIASES)}"
+        )
+        logger.error(f"📋 Resolved default_speaker: '{default_speaker_id}'")
+        logger.error("")
+        logger.error("🛠  Resolution options:")
+        logger.error(
+            "   1. Add the missing speaker(s) to generation.speakers in the job "
+            "YAML (id, reference_audio, language [, tts_params])."
+        )
+        logger.error(
+            "   2. Or replace the unknown <speaker:…> markup in the source text "
+            "with an existing ID or one of the default aliases."
+        )
+        logger.error(
+            "   3. Or set chunking.strict_speaker_validation: false in the job "
+            "YAML to silently fall back to the default speaker (legacy behaviour)."
+        )
+        logger.error("")
+        logger.error(
+            f"🔎 Known IDs (incl. aliases) for cross-check: {configured}"
+        )
+        logger.info("=" * 60)
+        return False
 
     def execute_preprocessing(self) -> bool:
         """Execute the text preprocessing stage."""
@@ -119,6 +200,27 @@ class PreprocessingHandler:
                         "⚠️  The preprocessing stage cannot proceed without valid input text."
                     )
                     return False
+
+            # Strict validation: every <speaker:id> in the source text must
+            # resolve to a configured speaker (or a default-speaker alias).
+            try:
+                available_speakers = self.file_manager.get_all_speaker_ids()
+                default_speaker_id = self.file_manager.get_default_speaker_id()
+            except Exception as e:
+                logger.error(
+                    f"❌ Could not resolve speaker configuration for markup "
+                    f"validation: {e}"
+                )
+                return False
+
+            if not self._validate_speaker_markup(
+                chunking_input_text, available_speakers, default_speaker_id
+            ):
+                logger.error(
+                    "⚠️  Aborting preprocessing stage due to undefined speaker "
+                    "markup. See details above."
+                )
+                return False
 
             # Chunk text (using processed or original text based on preprocessing config)
             text_chunks = self.chunker.chunk_text(chunking_input_text)

@@ -43,9 +43,19 @@ Back to the default speaker.
 ### Rules
 - ✅ **Only start tags required** - no end tags needed
 - ✅ **Speaker changes have highest chunking priority**
-- ✅ **Unknown IDs** → Warning + fallback to default speaker
+- ✅ **Redundant IDs** → with `chunking.collapse_redundant_speaker_tags: true`
+  (default), `<speaker:id>` is treated as a no-op when it resolves to the
+  speaker that is already active; no extra hard chunk break and no artificial
+  speaker-transition pause are inserted. Set the flag to `false` to preserve
+  legacy behaviour where every speaker tag forces a boundary.
+- ✅ **Unknown IDs** → with `chunking.strict_speaker_validation: true` (default)
+  the preprocessing stage aborts with a verbose error listing every offending
+  `<speaker:id>` and its line number; set the flag to `false` to fall back
+  silently to the default speaker (legacy behaviour).
 - ✅ **Syntax errors** → Ignore + warning
 - ✅ **Default speaker** → Explicitly configured via `default_speaker` key
+- ✅ **Aliases** `<speaker:0>`, `<speaker:default>`, `<speaker:reset>` are always
+  accepted and resolve to the configured `default_speaker`.
 
 ---
 
@@ -249,10 +259,17 @@ python scripts/test_speaker_performance.py
 
 ### Common Issues
 
-**Problem: "Unknown speaker 'xyz' not found"**
+**Problem: "❌ SPEAKER MARKUP VALIDATION FAILED" (preprocessing aborts)**
 ```bash
-Solution: Check speaker IDs in default_config.yaml
-          or add the speaker
+Cause:    Source text contains <speaker:id> markup whose id is not in
+          generation.speakers and is not one of the default aliases
+          ("0", "default", "reset").
+Solution: 1. Add the missing speaker to generation.speakers in the job YAML
+             (id, reference_audio, language [, tts_params]).
+          2. Or replace the unknown markup in the source text with an
+             existing ID or a default alias.
+          3. Or set chunking.strict_speaker_validation: false in the job
+             YAML to silently fall back to the default speaker (legacy).
 ```
 
 **Problem: "Reference audio not found"**
