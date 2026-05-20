@@ -12,8 +12,8 @@ Sehr gute Frage. Im aktuellen Code ist das Verhalten klar:
 
 - Bei `resume` wird **nur dann neu gechunkt**, wenn der Task-Status auf `PREPROCESSING` fällt (also effektiv: keine Chunks mehr vorhanden).
 - Wenn Chunks vorhanden sind, nutzt Generation **ausschließlich die vorhandenen `texts/chunk_*.txt`** plus `chunks_metadata.json` für Speaker-Metadaten.
-- Der `_processed`-Text in `texts/original_*_processed.txt` ist nur ein Artefakt/Trace und **keine direkte Quelle** für Resume-Generation.
-- Die unprocessed Backup-Kopie `texts/original_*.txt` ist die primäre Quelle für Preprocessing/Chunking, falls Preprocessing erneut läuft.
+- Der `_processed`-Text in `texts/<stem>_processed.txt` (Legacy: `texts/original_<stem>_processed.txt`) ist nur ein Artefakt/Trace und **keine direkte Quelle** für Resume-Generation.
+- Die unprocessed Backup-Kopie `texts/<filename>.txt` (Legacy: `texts/original_<filename>.txt`) ist die primäre Quelle für Preprocessing/Chunking, falls Preprocessing erneut läuft.
 
 ### 1) Nur Audio-Kandidaten aus 2 Chunks gelöscht (Chunks unverändert)
 Dann passiert bei `resume`:
@@ -55,26 +55,13 @@ Hier gibt es zwei unterschiedliche Fälle:
 
 Wichtig: Bei neuem Preprocessing kommt der Text aus `get_input_text()`, und das bevorzugt task-lokal:
 
-```184:193:src/utils/file_manager/file_manager.py
-def get_input_text(self) -> str:
-    text_file = self.config["input"]["text_file"]
-    text_filename = Path(text_file).name
-    backup_path = self.texts_dir / f"original_{text_filename}"
-    if backup_path.exists():
-        text_path = backup_path
-```
+`get_input_text()` bevorzugt task-lokal über `_resolve_task_input_backup_path()`:
 
-Also Reihenfolge:
-1. `texts/original_<filename>.txt` (Backup-Kopie im Task)
-2. sonst `data/input/texts/...` laut Config
+1. `texts/<filename>.txt` (aktuelle Backup-Kopie im Task)
+2. `texts/original_<filename>.txt` (Legacy-Backup, alte Tasks)
+3. sonst `data/input/texts/...` laut Config
 
-Der `_processed`-Text wird nicht als Input geladen; er wird nur geschrieben:
-
-```94:101:src/pipeline/task_executor/stage_handlers/preprocessing_handler.py
-processed_out_path = self.file_manager.texts_dir / f"original_{text_stem}_processed.txt"
-with open(processed_out_path, "w", encoding="utf-8") as f:
-    f.write(processed_text)
-```
+Der `_processed`-Text wird nicht als Input geladen; er wird nur geschrieben nach `processed_text_path()` (`<stem>_processed.txt`, Legacy: `original_<stem>_processed.txt`).
 
 ---
 
@@ -102,8 +89,8 @@ Siehe Löschlogik in `src/pipeline/task_executor/task_executor.py` (`_delete_all
 **Was nicht gelöscht wird bei `rebuild`:**
 - `texts/chunk_*.txt`
 - `texts/chunks_metadata.json`
-- `texts/original_*.txt`
-- `texts/original_*_processed.txt`
+- `texts/<input-filename>.txt` (bzw. Legacy `texts/original_*.txt`)
+- `texts/<stem>_processed.txt` (bzw. Legacy `texts/original_*_processed.txt`)
 
 Also: **Text-Chunks bleiben erhalten**. Danach wird neu gerendert/validiert/assembled auf Basis der vorhandenen Chunks.
 
@@ -112,7 +99,7 @@ Also: **Text-Chunks bleiben erhalten**. Danach wird neu gerendert/validiert/asse
 - `rebuild` löscht Audio/Validation/Metriken hart und baut diese Stufen komplett neu auf.
 
 ### Nur falls Text-Chunks fehlen
-Dann fällt der Run auf Preprocessing/Chunking zurück und erzeugt Chunks neu (Quelle wie zuvor erklärt: task-lokale `original_*.txt`-Kopie bevorzugt).
+Dann fällt der Run auf Preprocessing/Chunking zurück und erzeugt Chunks neu (Quelle wie zuvor erklärt: task-lokale Input-Kopie in `texts/` bevorzugt).
 
 ---
 

@@ -1,7 +1,6 @@
 """Preprocessing stage handler."""
 
 import logging
-from pathlib import Path
 from typing import Any, Dict, List
 
 from chunking.chunk_validator import ChunkValidator
@@ -172,11 +171,9 @@ class PreprocessingHandler:
                 # Use the processed text for chunking
                 chunking_input_text = processed_text
 
-                # Persist processed text for traceability next to original backup
+                # Persist processed text for traceability next to input backup
                 try:
-                    text_file = self.file_manager.config["input"]["text_file"]
-                    text_stem = Path(text_file).stem
-                    processed_out_path = self.file_manager.texts_dir / f"original_{text_stem}_processed.txt"
+                    processed_out_path = self.file_manager.processed_text_path()
                     with open(processed_out_path, "w", encoding="utf-8") as f:
                         f.write(processed_text)
                     logger.info(f"✅ Persisted processed text to: {processed_out_path.name}")

@@ -155,6 +155,59 @@ class FileManager:
             current = current.parent
         return Path.cwd()
 
+    @staticmethod
+    def _input_text_filename(text_file: str) -> str:
+        """Basename of the configured input text (flattened for task-local storage)."""
+        return Path(text_file).name
+
+    def _task_input_backup_path(self, text_file: Optional[str] = None) -> Path:
+        """Task-local input copy path (current naming: unchanged filename)."""
+        name = self._input_text_filename(
+            text_file if text_file is not None else self.config["input"]["text_file"]
+        )
+        return self.texts_dir / name
+
+    def _legacy_task_input_backup_path(self, text_file: Optional[str] = None) -> Path:
+        """Legacy task-local input copy (original_<filename>)."""
+        name = self._input_text_filename(
+            text_file if text_file is not None else self.config["input"]["text_file"]
+        )
+        return self.texts_dir / f"original_{name}"
+
+    def _resolve_task_input_backup_path(
+        self, text_file: Optional[str] = None
+    ) -> Optional[Path]:
+        """Return existing task-local input backup, preferring current over legacy naming."""
+        current = self._task_input_backup_path(text_file)
+        if current.exists():
+            return current
+        legacy = self._legacy_task_input_backup_path(text_file)
+        if legacy.exists():
+            return legacy
+        return None
+
+    def processed_text_path(self, text_file: Optional[str] = None) -> Path:
+        """Path for persisted preprocessed text trace artifact in the task texts dir."""
+        stem = Path(
+            text_file if text_file is not None else self.config["input"]["text_file"]
+        ).stem
+        return self.texts_dir / f"{stem}_processed.txt"
+
+    def _resolve_processed_text_path(
+        self, text_file: Optional[str] = None
+    ) -> Optional[Path]:
+        """Return existing processed-text artifact (current or legacy naming)."""
+        current = self.processed_text_path(text_file)
+        if current.exists():
+            return current
+        text_file = (
+            text_file if text_file is not None else self.config["input"]["text_file"]
+        )
+        legacy = self.texts_dir / f"original_{Path(text_file).stem}_processed.txt"
+        if legacy.exists():
+            return legacy
+        return None
+
     def _copy_input_text_backup(self) -> None:
         """
         Create a backup copy of the original input text file in the task's texts directory.
@@ -162,15 +215,12 @@ class FileManager:
         """
         text_file = self.config["input"]["text_file"]
         source_path = self.input_texts_dir / text_file
-        # Flatten the path to avoid creating subdirectories in the backup location
-        # Use only the filename part for the backup to avoid path issues
-        text_filename = Path(text_file).name
-        target_filename = f"original_{text_filename}"
-        target_path = self.texts_dir / target_filename
-        
-        # If a backup already exists for this task, reuse it and do not overwrite
-        if target_path.exists():
-            logger.info(f"Existing input text backup found and will be used: {target_path}")
+        target_path = self._task_input_backup_path(text_file)
+
+        # Reuse any existing task-local copy (current or legacy naming)
+        existing = self._resolve_task_input_backup_path(text_file)
+        if existing is not None:
+            logger.info(f"Existing input text backup found and will be used: {existing}")
             return
 
         # Otherwise create the backup once for new tasks
@@ -185,10 +235,8 @@ class FileManager:
         """Load input text file."""
         text_file = self.config["input"]["text_file"]
         # Prefer task-local backup (ensures reproducibility on resumed tasks)
-        # Use flattened filename for backup path to match _copy_input_text_backup
-        text_filename = Path(text_file).name
-        backup_path = self.texts_dir / f"original_{text_filename}"
-        if backup_path.exists():
+        backup_path = self._resolve_task_input_backup_path(text_file)
+        if backup_path is not None:
             text_path = backup_path
             logger.debug(f"Using backup input text: {text_path}")
         else:
@@ -223,9 +271,7 @@ class FileManager:
         """Check if input text file exists without raising an exception."""
         try:
             text_file = self.config["input"]["text_file"]
-            # Consider backup as the authoritative source for resumed tasks
-            backup_path = self.texts_dir / f"original_{text_file}"
-            if backup_path.exists():
+            if self._resolve_task_input_backup_path(text_file) is not None:
                 return True
             text_path = self.input_texts_dir / text_file
             return text_path.exists()
