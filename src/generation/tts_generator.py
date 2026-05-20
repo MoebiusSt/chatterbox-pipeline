@@ -1190,6 +1190,8 @@ class TTSGenerator:
             logger.warning("Empty text provided for generation")
             return torch.zeros(1000, device=self.device)
 
+        self._ensure_model()
+
         if self.model is None:
             logger.warning("🚨 No model loaded - generating silence")
             return torch.zeros(48000, device=self.device)
@@ -1274,6 +1276,8 @@ class TTSGenerator:
               "flags": Dict[str, bool]
             }
         """
+        self._ensure_model()
+
         generation_config = self.config.get("generation", {})
         max_retries: int = int(generation_config.get("max_retries", 0))
 

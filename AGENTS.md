@@ -32,3 +32,4 @@ See `README.md` for full documentation.
 - The update script installs `chatterbox-tts` with `--no-deps` to avoid the `pkuseg` build failure, then separately installs its other transitive dependencies. If `chatterbox-tts` adds new deps in a future version, they must be added manually.
 - `numpy` must be installed before `chatterbox-tts --no-deps` because several packages need it at build time.
 - spaCy model `en_core_web_sm` must be downloaded separately (`python -m spacy download en_core_web_sm`).
+- **Torch vs torchvision ABI**: WhisperX aligns via `pyannote.audio`; a stale `torchvision` (e.g. 0.21 with torch 2.8) triggers `torchvision::nms does not exist` and can surface as cudnn/pyannote failures. Match wheels from PyTorch (`torchvision …+cuXYZ` same CUDA flavor as torch). Echo at end of `scripts/cbpipe_venv_restore.sh` shows the cu128 repair one-liner.

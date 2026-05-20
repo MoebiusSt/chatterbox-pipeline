@@ -92,6 +92,17 @@ cori_samuel_2.wav:
   temperature: 0.82
   top_p: 0.94
   repetition_penalty: 2.1
+cori_samuel_2_15s.wav::dramabox:
+  db_cfg_scale: 5.0
+  db_stg_scale: 2.5
+  db_duration_multiplier: 1.1
+  db_gen_duration: 0.0
+  db_ref_duration: 9.0
+  db_steps: 32.0
+  db_rescale_scale: 0.5
+  dramabox_use_reference: true
+  dramabox_watermark: false
+  dramabox_auto_rescale: true
 cori_samuel_3.wav:
   exaggeration: 1.4
   cfg_weight: 0.75

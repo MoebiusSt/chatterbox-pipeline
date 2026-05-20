@@ -13,9 +13,20 @@ Supported models:
   vibevoice      VibeVoice-Large-Q8 (long-form with voice cloning)
   vibevoice_1_5b VibeVoice-1.5B (reference model)
   vibevoice_q4   VibeVoice-Large-Q4 (DevParker low-VRAM quant)
+  dramabox       Resemble DramaBox (LTX-2.3 IC-LoRA, tester-only via external repo)
 
-GUI text field: Chatterbox models are capped at 500 characters; qwen3 and all VibeVoice
-variants use 10000 so long-form input can be pasted (same cap as VibeVoice).
+GUI text field: Chatterbox models are capped at 500 characters; qwen3, DramaBox, and all
+VibeVoice variants use 10000 so long-form input can be pasted.
+
+Environment (DramaBox tester-only):
+
+  Repo path (either):
+    CHATTERBOX_TESTER_DRAMABOX_ROOT or DRAMABOX_REPO
+    dramabox_repo_root.txt (single line path) at this repo root
+
+  Isolated venv (recommended — keeps chatterbox deps untouched):
+    CHATTERBOX_TESTER_DRAMABOX_PYTHON=/path/to/DramaBox/venv/bin/python
+    Dramabox_tester spawns dramabox_worker_main.py in that interpreter.
 
 Environment (VibeVoice only):
   CHATTERBOX_TESTER_VIBEVOICE_ATTN  Override attention backend for the Qwen2 LM (all VV models).
@@ -29,6 +40,7 @@ This version uses pygame for audio playback (better WSL compatibility).
 """
 
 import tkinter as tk
+from tkinter import messagebox as tk_messagebox
 from tkinter import ttk
 import os
 import random
@@ -55,6 +67,12 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from generation.model_cache import ChatterboxModelCache
 from utils.qwen3_progress_streamer import Qwen3ProgressStreamer as _Qwen3ProgressStreamer
+from tools.dramabox_tester_loader import (
+    DramaboxTesterError,
+    dispose_dramabox_ttsserver,
+    dramabox_generate_to_file,
+    dramabox_prepare_runtime,
+)
 
 
 def _maybe_suppress_transformers_console_noise() -> None:
@@ -118,6 +136,14 @@ _SLIDER_CONFIG = [
     ("cfg_scale",            1.0,  2.0,    1.30,   0.05,  ["vibevoice", "vibevoice_1_5b", "vibevoice_q4"], False),
     ("diffusion_steps",      5.0,  100.0,  20.0,   1.0,   ["vibevoice", "vibevoice_1_5b", "vibevoice_q4"], True),
     ("voice_speed_factor",   0.8,  1.2,    1.00,   0.01,  ["vibevoice", "vibevoice_1_5b", "vibevoice_q4"], False),
+    # --- DramaBox (resemble-ai/DramaBox; keys prefixed to avoid preset collisions) ---
+    ("db_cfg_scale",         1.0,  10.0,   2.5,    0.05,  ["dramabox"],                             False),
+    ("db_stg_scale",         0.0,  5.0,    1.5,    0.05,  ["dramabox"],                             False),
+    ("db_duration_multiplier", 0.8, 1.5,   1.1,    0.01,  ["dramabox"],                             False),
+    ("db_gen_duration",      0.0,  120.0,  0.0,    1.0,   ["dramabox"],                             True),
+    ("db_ref_duration",      3.0,  30.0,   10.0,   0.5,   ["dramabox"],                             False),
+    ("db_steps",             8.0,  48.0,   24.0,   1.0,   ["dramabox"],                             True),
+    ("db_rescale_scale",     0.0,  1.0,    0.5,    0.01,  ["dramabox"],                             False),
 ]
 
 _SLIDER_MODELS: Dict[str, list] = {row[0]: row[5] for row in _SLIDER_CONFIG}
@@ -125,7 +151,7 @@ _VIBEVOICE_UI_MODELS = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
 
 # Tester-only UI limit (characters). Chatterbox stays short; long-form models match VibeVoice.
 _LONGFORM_TEXT_UI_LIMIT = 10000
-_LONGFORM_TEXT_UI_MODELS = _VIBEVOICE_UI_MODELS | {"qwen3"}
+_LONGFORM_TEXT_UI_MODELS = _VIBEVOICE_UI_MODELS | {"qwen3", "dramabox"}
 # Optional global override. Empty string → per-model defaults in model_cache.py take effect.
 _VIBEVOICE_TESTER_ATTN: str = os.environ.get(
     "CHATTERBOX_TESTER_VIBEVOICE_ATTN", ""
@@ -388,7 +414,7 @@ class ChatterboxTester:
         """Return preset dict key for current ref_audio + model combination."""
         ref   = self.ref_audio_var.get()
         model = self.model_var.get()
-        if model in ("turbo", "qwen3") or model in _VIBEVOICE_UI_MODELS:
+        if model in ("turbo", "qwen3", "dramabox") or model in _VIBEVOICE_UI_MODELS:
             return f"{ref}::{model}"
         # classic / multilanguage keep the old-style key for backward compat
         return ref
@@ -411,7 +437,14 @@ class ChatterboxTester:
                         pass
                 elif param_name == "use_sampling":
                     self.use_sampling_var.set(bool(value))
+                elif param_name == "dramabox_use_reference":
+                    self.dramabox_use_ref_var.set(bool(value))
+                elif param_name == "dramabox_watermark":
+                    self.dramabox_watermark_var.set(bool(value))
+                elif param_name == "dramabox_auto_rescale":
+                    self.dramabox_auto_rescale_var.set(bool(value))
             self.is_restoring_state = False
+            self._update_model_ui()
             self._mark_needs_refresh()
             self._save_state_to_history()
             self.load_preset_btn.config(text="✓ Loaded")
@@ -521,6 +554,7 @@ class ChatterboxTester:
                 "vibevoice",
                 "vibevoice_1_5b",
                 "vibevoice_q4",
+                "dramabox",
             ],
             state="readonly", font=("Arial", 12), width=16
         )
@@ -554,6 +588,39 @@ class ChatterboxTester:
             command=lambda: (self._on_text_change(), self._mark_needs_refresh()),
         )
         self.sampling_check.pack(anchor=tk.W)
+
+        # ---- DramaBox-only options (prompt TTS; CUDA + external repo) -----
+        self.dramabox_frame = tk.Frame(self.root)
+        self.dramabox_use_ref_var = tk.BooleanVar(value=True)
+
+        def _dramabox_chk_cmd() -> None:
+            self._update_model_ui()
+            self._on_text_change()
+            self._mark_needs_refresh()
+
+        self.dramabox_use_ref_check = ttk.Checkbutton(
+            self.dramabox_frame,
+            text="DramaBox: use reference audio (voice cloning)",
+            variable=self.dramabox_use_ref_var,
+            command=_dramabox_chk_cmd,
+        )
+        self.dramabox_use_ref_check.pack(anchor=tk.W)
+        self.dramabox_watermark_var = tk.BooleanVar(value=True)
+        self.dramabox_watermark_check = ttk.Checkbutton(
+            self.dramabox_frame,
+            text="DramaBox: apply neural watermark (Perth)",
+            variable=self.dramabox_watermark_var,
+            command=_dramabox_chk_cmd,
+        )
+        self.dramabox_watermark_check.pack(anchor=tk.W)
+        self.dramabox_auto_rescale_var = tk.BooleanVar(value=True)
+        self.dramabox_auto_rescale_check = ttk.Checkbutton(
+            self.dramabox_frame,
+            text="DramaBox: auto rescale_scale (CFG clipping guard)",
+            variable=self.dramabox_auto_rescale_var,
+            command=_dramabox_chk_cmd,
+        )
+        self.dramabox_auto_rescale_check.pack(anchor=tk.W)
 
         # ---- Seed row ----------------------------------------------------
         seed_frame = tk.Frame(self.root)
@@ -770,6 +837,8 @@ class ChatterboxTester:
             elif model in _VIBEVOICE_UI_MODELS:
                 # Hidden for vibevoice but reset to broad defaults when switching back.
                 self.slider_scales["top_k"].config(from_=1, to=2000, resolution=1)
+            elif model == "dramabox":
+                self.slider_scales["top_k"].config(from_=1, to=2000, resolution=1)
 
         # Language dropdown options
         if model == "multilanguage":
@@ -785,7 +854,7 @@ class ChatterboxTester:
             if self.lang_var.get() not in self.QWEN3_LANGUAGES:
                 self.lang_var.set("English (en)")
         else:
-            # classic / turbo / vibevoice: no language selection
+            # classic / turbo / vibevoice / dramabox: no language selection
             self.lang_dropdown.config(state="disabled")
 
         if model in _VIBEVOICE_UI_MODELS:
@@ -794,6 +863,18 @@ class ChatterboxTester:
         else:
             self.sampling_frame.pack_forget()
             self.vv_extra_ref_frame.pack_forget()
+
+        if model == "dramabox":
+            self.dramabox_frame.pack(fill=tk.X, padx=10, pady=(0, 3))
+        else:
+            self.dramabox_frame.pack_forget()
+
+        # DramaBox: manual rescale slider only when auto rescale is off
+        if "db_rescale_scale" in self.slider_frames:
+            if model == "dramabox" and not self.dramabox_auto_rescale_var.get():
+                self.slider_frames["db_rescale_scale"].grid()
+            else:
+                self.slider_frames["db_rescale_scale"].grid_remove()
 
         text_limit = self._get_text_limit()
         self.text_limit_label.config(text=f"Text to speak (max. {text_limit} characters):")
@@ -867,6 +948,12 @@ class ChatterboxTester:
                 self.lang_var.set(settings['language'])
             if settings.get('use_sampling') is not None:
                 self.use_sampling_var.set(bool(settings['use_sampling']))
+            if settings.get('dramabox_use_reference') is not None:
+                self.dramabox_use_ref_var.set(bool(settings['dramabox_use_reference']))
+            if settings.get('dramabox_watermark') is not None:
+                self.dramabox_watermark_var.set(bool(settings['dramabox_watermark']))
+            if settings.get('dramabox_auto_rescale') is not None:
+                self.dramabox_auto_rescale_var.set(bool(settings['dramabox_auto_rescale']))
             if settings.get('active_state'):
                 self.active_state = settings['active_state']
 
@@ -894,6 +981,16 @@ class ChatterboxTester:
                         self._format_label(param_name)
                     except Exception:
                         pass
+                elif param_name == "use_sampling":
+                    self.use_sampling_var.set(bool(value))
+                elif param_name == "dramabox_use_reference":
+                    self.dramabox_use_ref_var.set(bool(value))
+                elif param_name == "dramabox_watermark":
+                    self.dramabox_watermark_var.set(bool(value))
+                elif param_name == "dramabox_auto_rescale":
+                    self.dramabox_auto_rescale_var.set(bool(value))
+
+            self._update_model_ui()
 
             if self.active_state == 1:
                 self.state_a_btn.config(relief=tk.SUNKEN, bg="#ffffff")
@@ -938,6 +1035,9 @@ class ChatterboxTester:
                 'model_type':      self.model_var.get(),
                 'language':        self.lang_var.get(),
                 'use_sampling':    self.use_sampling_var.get(),
+                'dramabox_use_reference': self.dramabox_use_ref_var.get(),
+                'dramabox_watermark': self.dramabox_watermark_var.get(),
+                'dramabox_auto_rescale': self.dramabox_auto_rescale_var.get(),
                 'active_state':    self.active_state,
                 'window_x':        window_x,
                 'window_y':        window_y,
@@ -998,6 +1098,16 @@ class ChatterboxTester:
                     preset_params[name] = round(float(self.param_vars[name].get()), 4)
             if model in _VIBEVOICE_UI_MODELS:
                 preset_params["use_sampling"] = bool(self.use_sampling_var.get())
+            if model == "dramabox":
+                preset_params["dramabox_use_reference"] = bool(
+                    self.dramabox_use_ref_var.get()
+                )
+                preset_params["dramabox_watermark"] = bool(
+                    self.dramabox_watermark_var.get()
+                )
+                preset_params["dramabox_auto_rescale"] = bool(
+                    self.dramabox_auto_rescale_var.get()
+                )
 
             self.presets[key] = preset_params
             sorted_presets = dict(sorted(self.presets.items()))
@@ -1024,6 +1134,27 @@ class ChatterboxTester:
 
     def _load_model(self, model_ui_name: str):
         """Load the appropriate TTS model into cache."""
+        prev_type = getattr(self, "current_model_type", None)
+
+        if prev_type == "dramabox" and model_ui_name != "dramabox":
+            dispose_dramabox_ttsserver()
+
+        if model_ui_name == "dramabox":
+            ChatterboxModelCache.free_vram(self.device)
+            self.current_model = None
+            self.current_model_type = "dramabox"
+            try:
+                dramabox_prepare_runtime(self.device)
+            except DramaboxTesterError as e:
+                err_txt = str(e)
+                print(f"DramaBox: {err_txt}")
+
+                def _warn_setup(m: str = err_txt) -> None:
+                    tk_messagebox.showwarning("DramaBox setup", m)
+
+                self.root.after(0, _warn_setup)
+            return
+
         model_map = {
             "classic":      "standard",
             "multilanguage": "multilingual",
@@ -1039,7 +1170,6 @@ class ChatterboxTester:
         # non-VV model, free the VV weights first. Otherwise the next load
         # (e.g. Qwen3) competes for VRAM, swaps to system RAM and appears to
         # hang the GUI for minutes.
-        prev_type = getattr(self, "current_model_type", None)
         _VV_TYPES = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
         if (
             prev_type in _VV_TYPES
@@ -1150,6 +1280,15 @@ class ChatterboxTester:
     def _get_all_params(self) -> Dict[str, float]:
         params = {name: float(var.get()) for name, var in self.param_vars.items()}
         params["use_sampling"] = 1.0 if self.use_sampling_var.get() else 0.0
+        params["dramabox_use_reference"] = (
+            1.0 if self.dramabox_use_ref_var.get() else 0.0
+        )
+        params["dramabox_watermark"] = (
+            1.0 if self.dramabox_watermark_var.get() else 0.0
+        )
+        params["dramabox_auto_rescale"] = (
+            1.0 if self.dramabox_auto_rescale_var.get() else 0.0
+        )
         return params
 
     def _get_current_state(self) -> Dict[str, Any]:
@@ -1227,6 +1366,13 @@ class ChatterboxTester:
                         pass
                 elif param_name == "use_sampling":
                     self.use_sampling_var.set(bool(value))
+                elif param_name == "dramabox_use_reference":
+                    self.dramabox_use_ref_var.set(bool(value))
+                elif param_name == "dramabox_watermark":
+                    self.dramabox_watermark_var.set(bool(value))
+                elif param_name == "dramabox_auto_rescale":
+                    self.dramabox_auto_rescale_var.set(bool(value))
+            self._update_model_ui()
         finally:
             self.is_restoring_state = False
 
@@ -1293,6 +1439,15 @@ class ChatterboxTester:
                         self._format_label(param_name)
                     except Exception:
                         pass
+                elif param_name == "use_sampling":
+                    self.use_sampling_var.set(bool(value))
+                elif param_name == "dramabox_use_reference":
+                    self.dramabox_use_ref_var.set(bool(value))
+                elif param_name == "dramabox_watermark":
+                    self.dramabox_watermark_var.set(bool(value))
+                elif param_name == "dramabox_auto_rescale":
+                    self.dramabox_auto_rescale_var.set(bool(value))
+            self._update_model_ui()
             self.current_audio  = new_state.get('audio')
             self.temp_audio_file = new_state.get('temp_file')
             if self.current_audio is not None and self.temp_audio_file:
@@ -1356,6 +1511,15 @@ class ChatterboxTester:
                             self._format_label(param_name)
                         except Exception:
                             pass
+                    elif param_name == "use_sampling":
+                        self.use_sampling_var.set(bool(value))
+                    elif param_name == "dramabox_use_reference":
+                        self.dramabox_use_ref_var.set(bool(value))
+                    elif param_name == "dramabox_watermark":
+                        self.dramabox_watermark_var.set(bool(value))
+                    elif param_name == "dramabox_auto_rescale":
+                        self.dramabox_auto_rescale_var.set(bool(value))
+                self._update_model_ui()
                 self._update_refresh_button_color()
             finally:
                 self.is_restoring_state = False
@@ -1450,7 +1614,7 @@ class ChatterboxTester:
         try:
             model_ui = self.model_var.get()
             current_model = self.current_model
-            if current_model is None:
+            if model_ui != "dramabox" and current_model is None:
                 raise RuntimeError("No TTS model loaded")
 
             gen_elapsed = 0.0
@@ -1520,6 +1684,65 @@ class ChatterboxTester:
                 audio_np = wavs[0].astype(np.float32)
                 self.sample_rate = int(sr)
                 sum_speaker_names = [Path(ref_audio_file).stem] if ref_audio_file else []
+                sum_unique_speakers = 1
+                sum_segments = 1
+
+            # ---- DramaBox (Resemble — external repo, tester-only) --------
+            elif model_ui == "dramabox":
+                voice_ref: Optional[str] = None
+                if self.dramabox_use_ref_var.get():
+                    if not ref_audio_file or not os.path.exists(ref_audio_path):
+                        raise RuntimeError(
+                            "DramaBox: select a valid reference WAV or disable "
+                            "\"use reference audio\"."
+                        )
+                    voice_ref = ref_audio_path
+
+                if self.dramabox_auto_rescale_var.get():
+                    rescale_kw: str | float = "auto"
+                else:
+                    rescale_kw = float(self.param_vars["db_rescale_scale"].get())
+
+                gd_int = int(self.param_vars["db_gen_duration"].get())
+                gen_dur_kw = float(gd_int) if gd_int > 0 else 0.0
+
+                drama_kwargs = {
+                    "cfg_scale": float(self.param_vars["db_cfg_scale"].get()),
+                    "stg_scale": float(self.param_vars["db_stg_scale"].get()),
+                    "duration_multiplier": float(
+                        self.param_vars["db_duration_multiplier"].get()
+                    ),
+                    "seed": seed,
+                    "ref_duration": float(self.param_vars["db_ref_duration"].get()),
+                    "rescale_scale": rescale_kw,
+                    "gen_duration": gen_dur_kw,
+                    "steps": int(self.param_vars["db_steps"].get()),
+                }
+                print(f"🎙️ DramaBox | voice_ref={voice_ref!r} | {drama_kwargs}")
+
+                out_wav = tempfile.mktemp(suffix=".wav")
+                _t0 = time.perf_counter()
+                dramabox_generate_to_file(
+                    self.device,
+                    prompt=text,
+                    output_path=out_wav,
+                    voice_ref=voice_ref,
+                    watermark=bool(self.dramabox_watermark_var.get()),
+                    **drama_kwargs,
+                )
+                gen_elapsed = time.perf_counter() - _t0
+                audio_np, sr = sf.read(out_wav)
+                try:
+                    os.remove(out_wav)
+                except OSError:
+                    pass
+                if audio_np.ndim > 1:
+                    audio_np = np.mean(audio_np, axis=1)
+                audio_np = np.asarray(audio_np, dtype=np.float32)
+                self.sample_rate = int(sr)
+                sum_speaker_names = (
+                    [Path(ref_audio_file).stem] if ref_audio_file else ["(no ref)"]
+                )
                 sum_unique_speakers = 1
                 sum_segments = 1
 
@@ -1749,6 +1972,14 @@ class ChatterboxTester:
             self._stop_playback()
             self._play_audio()
 
+        except DramaboxTesterError as e:
+            err_msg = str(e)
+            print(f"Error generating audio: {err_msg}")
+
+            def _show_db_err(m: str = err_msg) -> None:
+                tk_messagebox.showerror("DramaBox", m)
+
+            self.root.after(0, _show_db_err)
         except Exception as e:
             print(f"Error generating audio: {e}")
             import traceback
@@ -1926,6 +2157,25 @@ class ChatterboxTester:
         """Return model-specific tts_params YAML block."""
         model_ui = self.model_var.get()
 
+        if model_ui == "dramabox":
+            if self.dramabox_auto_rescale_var.get():
+                rs_repr = "auto"
+            else:
+                rs_repr = f"{float(self.param_vars['db_rescale_scale'].get()):.3f}"
+            return (
+                "# DramaBox — tester-only (not used by cbpipe)\n"
+                "dramabox_params:\n"
+                f"  cfg_scale: {float(self.param_vars['db_cfg_scale'].get()):.3f}\n"
+                f"  stg_scale: {float(self.param_vars['db_stg_scale'].get()):.3f}\n"
+                f"  duration_multiplier: "
+                f"{float(self.param_vars['db_duration_multiplier'].get()):.3f}\n"
+                f"  gen_duration: {int(self.param_vars['db_gen_duration'].get())}\n"
+                f"  ref_duration: {float(self.param_vars['db_ref_duration'].get()):.3f}\n"
+                f"  rescale_scale: {rs_repr}\n"
+                f"  use_reference_audio: {str(bool(self.dramabox_use_ref_var.get())).lower()}\n"
+                f"  watermark: {str(bool(self.dramabox_watermark_var.get())).lower()}\n"
+                f"  auto_rescale: {str(bool(self.dramabox_auto_rescale_var.get())).lower()}"
+            )
         if model_ui in _VIBEVOICE_UI_MODELS:
             use_sampling = "true" if self.use_sampling_var.get() else "false"
             return (
@@ -2057,6 +2307,45 @@ class ChatterboxTester:
             param_mapping = {row[0]: row[0] for row in _SLIDER_CONFIG}
             updated_items = []
 
+            drama = data.get("dramabox_params")
+            if isinstance(drama, dict):
+                for src_k, dest_k in (
+                    ("cfg_scale", "db_cfg_scale"),
+                    ("stg_scale", "db_stg_scale"),
+                    ("duration_multiplier", "db_duration_multiplier"),
+                    ("gen_duration", "db_gen_duration"),
+                    ("ref_duration", "db_ref_duration"),
+                ):
+                    if src_k in drama and dest_k in self.param_vars:
+                        try:
+                            v = float(drama[src_k])
+                            self.param_vars[dest_k].set(v)
+                            self._format_label(dest_k)
+                            updated_items.append(f"{dest_k}={v}")
+                        except (TypeError, ValueError) as e:
+                            print(f"[CLIPBOARD] Skipping drama {src_k}: {e}")
+                if "rescale_scale" in drama:
+                    rs = drama["rescale_scale"]
+                    if isinstance(rs, str) and rs.strip().lower() == "auto":
+                        self.dramabox_auto_rescale_var.set(True)
+                    else:
+                        try:
+                            self.dramabox_auto_rescale_var.set(False)
+                            self.param_vars["db_rescale_scale"].set(float(rs))
+                            self._format_label("db_rescale_scale")
+                        except (TypeError, ValueError) as e:
+                            print(f"[CLIPBOARD] Skipping drama rescale_scale: {e}")
+                    updated_items.append("dramabox_rescale")
+                if "use_reference_audio" in drama:
+                    self.dramabox_use_ref_var.set(bool(drama["use_reference_audio"]))
+                    updated_items.append("dramabox_use_reference")
+                if "watermark" in drama:
+                    self.dramabox_watermark_var.set(bool(drama["watermark"]))
+                    updated_items.append("dramabox_watermark")
+                if "auto_rescale" in drama:
+                    self.dramabox_auto_rescale_var.set(bool(drama["auto_rescale"]))
+                    updated_items.append("dramabox_auto_rescale")
+                self._update_model_ui()
             for yaml_key, ui_key in param_mapping.items():
                 if yaml_key in tts_params:
                     try:
@@ -2162,6 +2451,11 @@ class ChatterboxTester:
                 extra = var.get().strip()
                 if extra:
                     header += f"# Reference Audio (speaker {spk_i}): {extra}\n"
+        elif model_ui == "dramabox":
+            header += "# Language: English (DramaBox)\n"
+            header += f"# use_reference_audio: {self.dramabox_use_ref_var.get()}\n"
+            header += f"# watermark: {self.dramabox_watermark_var.get()}\n"
+            header += f"# auto_rescale: {self.dramabox_auto_rescale_var.get()}\n"
 
         header += f"# Seed: {seed}\n\n"
         header += f"# Text:\n# {self.text_widget.get('1.0', tk.END).strip()}\n\n"
@@ -2181,6 +2475,7 @@ class ChatterboxTester:
 
     def cleanup(self):
         self._stop_playback()
+        dispose_dramabox_ttsserver()
         if self.external_player_process:
             try:
                 self.external_player_process.terminate()
@@ -2221,6 +2516,7 @@ Supported models:
                  Place a .txt transcript next to your .wav reference audio
                  for best cloning quality (ICL mode).
   vibevoice      VibeVoice-Large-Q8 (long-form + voice cloning)
+  dramabox       Resemble DramaBox (expressive prompt TTS; CUDA, external repo — see CHATTERBOX_TESTER.md)
 
 For better audio playback in WSL, install ffmpeg:
   sudo apt-get install ffmpeg

@@ -284,6 +284,38 @@ class ChatterboxModelCache:
         return model
 
     @classmethod
+    def _apply_chatterbox_transformers_compat(cls, model: Any) -> None:
+        """Align Chatterbox T3 with transformers>=4.57 (qwen-tts stack).
+
+        chatterbox-tts 0.1.3 loads Llama with ``attn_implementation="sdpa"`` but enables
+        ``output_attentions`` for alignment analysis. transformers 4.57+ raises
+        ValueError for that combination; eager attention is required (upstream used to
+        warn only). Qwen3/VibeVoice sdpa defaults are unchanged.
+        """
+        try:
+            t3 = getattr(model, "t3", None)
+            tfmr = getattr(t3, "tfmr", None) if t3 is not None else None
+            if tfmr is None:
+                return
+            cfg = tfmr.config
+            current = getattr(cfg, "_attn_implementation", None) or getattr(
+                cfg, "attn_implementation", None
+            )
+            if current and str(current).lower() == "eager":
+                return
+            if hasattr(cfg, "_attn_implementation"):
+                cfg._attn_implementation = "eager"
+            if hasattr(cfg, "attn_implementation"):
+                cfg.attn_implementation = "eager"
+            logger.info(
+                "ℹ️ Chatterbox: T3 Llama attention %r → 'eager' "
+                "(output_attentions alignment; transformers>=4.57 + sdpa incompatible)",
+                current,
+            )
+        except Exception as e:
+            logger.warning("Chatterbox transformers compat patch failed: %s", e)
+
+    @classmethod
     def _detect_device(cls) -> str:
         """Detect the best available device."""
         if torch.cuda.is_available():
@@ -444,6 +476,9 @@ class ChatterboxModelCache:
                     from chatterbox.tts import ChatterboxTTS as ModelClass
                     model = ModelClass.from_pretrained(device=device_obj)
 
+            if model_type in ("standard", "multilingual", "turbo"):
+                cls._apply_chatterbox_transformers_compat(model)
+
             logger.debug(f"{model_name} model loaded successfully for device: {device}")
             return model
 
@@ -472,7 +507,9 @@ class ChatterboxModelCache:
                 logger.error(
                     "   1. Check ChatterboxTTS installation: pip install chatterbox-tts"
                 )
-                logger.error("   2. Check perth dependency: pip install perth")
+                logger.error(
+                    "   2. Check resemble-perth: pip install resemble-perth==1.0.1"
+                )
             logger.error("   3. If issue persists, check GPU/CUDA compatibility")
             logger.error("=" * 80)
             logger.info("Returning None - will use mock mode for testing")

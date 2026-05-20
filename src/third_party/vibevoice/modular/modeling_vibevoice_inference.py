@@ -102,53 +102,68 @@ class VibeVoiceTokenConstraintProcessor(LogitsProcessor):
         return scores
 
 def access_cache_safely(cache, layer_idx):
-    """Access cache tensors safely across different transformers versions
-    
-    This function handles the different DynamicCache structures across transformers versions:
-    - Old versions (< 4.36): cache.key_cache, cache.value_cache
-    - Intermediate versions: cache._keys, cache._values  
-    - New versions (4.36+): Various new structures
-    
-    Returns (k_cache, v_cache) or (None, None) if cache structure is incompatible
+    """Access cache tensors safely across different transformers versions.
+
+    Returns (k_cache, v_cache) tensors that support in-place modification,
+    or (None, None) if the cache structure is not recognised.
+
+    Supported DynamicCache layouts (oldest → newest):
+    - < 4.36:  cache.key_cache / cache.value_cache  (list of tensors)
+    - ~4.36:   cache._keys / cache._values
+    - ~4.49+:  cache.layers[i].keys / cache.layers[i].values  (DynamicLayer objects)
+    - fallback: cache.to_legacy_cache() / cache.to_legacy_tuple()  (return views)
+    - legacy:  list/tuple of (k, v) pairs
     """
     try:
-        # Method 1: Old versions (< 4.36)
+        # Method 1 (transformers >= ~4.49): layers list with DynamicLayer objects
+        layers = getattr(cache, 'layers', None)
+        if isinstance(layers, list) and layer_idx < len(layers):
+            layer = layers[layer_idx]
+            k = getattr(layer, 'keys', None)
+            v = getattr(layer, 'values', None)
+            if k is not None and v is not None:
+                return k, v
+
+        # Method 2: Old versions (< 4.36): key_cache / value_cache
         if hasattr(cache, 'key_cache') and hasattr(cache, 'value_cache'):
             if layer_idx < len(cache.key_cache):
                 return cache.key_cache[layer_idx], cache.value_cache[layer_idx]
-        
-        # Method 2: Private attributes (some intermediate versions)
+
+        # Method 3: Private attributes (some intermediate versions)
         if hasattr(cache, '_keys') and hasattr(cache, '_values'):
             if layer_idx < len(cache._keys):
                 return cache._keys[layer_idx], cache._values[layer_idx]
-        
-        # Method 3: New versions with get_seq_length or similar
-        # Some versions store as list of tuples
+
+        # Method 4: to_legacy_cache / to_legacy_tuple (both return views → in-place works)
+        for method_name in ('to_legacy_cache', 'to_legacy_tuple'):
+            if hasattr(cache, method_name):
+                try:
+                    legacy = getattr(cache, method_name)()
+                    if legacy and layer_idx < len(legacy):
+                        return legacy[layer_idx][0], legacy[layer_idx][1]
+                except Exception:
+                    pass
+
+        # Method 5: plain list/tuple of (k, v) pairs
         if isinstance(cache, (list, tuple)) and len(cache) > layer_idx:
             layer_cache = cache[layer_idx]
             if isinstance(layer_cache, (list, tuple)) and len(layer_cache) >= 2:
                 return layer_cache[0], layer_cache[1]
             elif hasattr(layer_cache, 'key_states') and hasattr(layer_cache, 'value_states'):
                 return layer_cache.key_states, layer_cache.value_states
-        
-        # Method 4: Check if cache has a different structure entirely
-        # Some very new versions might not expose cache directly
-        if hasattr(cache, 'to_legacy_tuple'):
-            # Convert to legacy format if possible
-            legacy = cache.to_legacy_tuple()
-            if legacy and layer_idx < len(legacy):
-                return legacy[layer_idx][0], legacy[layer_idx][1]
-                
+
     except (AttributeError, IndexError, TypeError) as e:
-        # Log the issue but don't fail
         logger.debug(f"Could not access cache at layer {layer_idx}: {e}")
-    
-    # Return None if we can't access the cache safely
+
     return None, None
 
 def get_num_layers_from_cache(cache):
-    """Get the number of layers in the cache structure"""
+    """Get the number of layers in the cache structure."""
     try:
+        # transformers >= ~4.49: layers list
+        layers = getattr(cache, 'layers', None)
+        if isinstance(layers, list):
+            return len(layers)
         if hasattr(cache, 'key_cache'):
             return len(cache.key_cache)
         elif hasattr(cache, '_keys'):
@@ -157,9 +172,8 @@ def get_num_layers_from_cache(cache):
             return len(cache)
         elif hasattr(cache, 'num_layers'):
             return cache.num_layers
-        # Default fallback - most models have 32 or fewer layers
         return 32
-    except:
+    except Exception:
         return 32
     
 class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, GenerationMixin):
@@ -516,6 +530,15 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
 
         # Initialize audio chunks storage for each sample
         audio_chunks = [[] for _ in range(batch_size)]
+        # Parallel latent collection for artifact-free batch decode at the end.
+        # The streaming acoustic decoder processes one latent per step through causal
+        # transposed-convolution layers; even with the streaming cache the chunk
+        # boundaries introduce subtle discontinuities that accumulate into audible
+        # jitter (~75 Hz repetition rate).  Collecting all scaled_latent tensors and
+        # decoding them in a single non-streaming forward pass avoids this entirely.
+        # The streaming audio_chunks above are still used for the semantic feedback
+        # loop (unchanged) and as a fallback if batch decode fails.
+        latent_chunks: List[List[torch.Tensor]] = [[] for _ in range(batch_size)]
 
         initial_length = input_ids.shape[-1]
         initial_length_per_sample = model_kwargs['attention_mask'].sum(dim=-1)
@@ -802,6 +825,10 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                     # Only append audio chunk if the sample is not finished
                     if not finished_tags[idx]:
                         audio_chunks[idx].append(audio_chunk[i])
+                        # Also store the unscaled latent for batch decode later.
+                        # scaled_latent[i] has shape (1, latent_dim); keep on CPU to
+                        # avoid VRAM growth during long generations.
+                        latent_chunks[idx].append(scaled_latent[i].detach().cpu())
 
                  # Add streaming support here
                 if audio_streamer is not None:
@@ -831,16 +858,40 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
         if audio_streamer is not None:
             audio_streamer.end()
 
-        # Concatenate audio chunks for each sample
+        # Build final audio via batch decode (avoids streaming chunk-boundary artifacts).
+        # For each sample, concatenate all collected scaled_latent frames into a single
+        # tensor and decode them in one non-streaming forward pass.  This gives the
+        # acoustic tokenizer decoder full temporal context across every position,
+        # eliminating the periodic discontinuities introduced by streaming decode.
         final_audio_outputs = []
-        for sample_chunks in audio_chunks:
-            if sample_chunks:
-                # Concatenate all chunks along the time dimension (assumed to be the last dimension)
-                concatenated_audio = torch.cat(sample_chunks, dim=-1)
-                final_audio_outputs.append(concatenated_audio)
-            else:
-                # If no audio was generated for this sample, append None
+        for idx in range(batch_size):
+            if not latent_chunks[idx]:
+                # Nothing was generated for this sample
                 final_audio_outputs.append(None)
+                continue
+            try:
+                # Stack: (N, 1, latent_dim) → squeeze → (N, latent_dim) → unsqueeze → (1, N, latent_dim)
+                all_latents = torch.cat(latent_chunks[idx], dim=0).unsqueeze(0)
+                n_latents = all_latents.shape[1]
+                logger.debug(f"Batch decoding {n_latents} acoustic latents for sample {idx} (non-streaming)")
+                tok_device = self.model.acoustic_tokenizer.device
+                audio_batch = self.model.acoustic_tokenizer.decode(
+                    all_latents.to(tok_device),
+                    cache=None,
+                    sample_indices=None,
+                    use_cache=False,
+                )
+                # audio_batch: (1, audio_len) or (1, 1, audio_len) – take first sample
+                final_audio_outputs.append(audio_batch[0])
+            except Exception as e:
+                logger.warning(
+                    f"Batch decode failed for sample {idx} ({e}); "
+                    "falling back to streamed audio_chunks."
+                )
+                if audio_chunks[idx]:
+                    final_audio_outputs.append(torch.cat(audio_chunks[idx], dim=-1))
+                else:
+                    final_audio_outputs.append(None)
 
         return VibeVoiceGenerationOutput(
             sequences=input_ids,

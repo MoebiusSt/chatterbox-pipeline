@@ -32,6 +32,9 @@ ENV/
 .cursor/*
 .cursorignore
 
+# chatterbox_tester: optional DramaBox checkout path (one line)
+dramabox_repo_root.txt
+
 # IDE
 .vscode/
 .idea/
