@@ -48,13 +48,10 @@ class FileManager:
             preloaded_config: Optional pre-loaded config to avoid redundant loading
             config_manager: Optional ConfigManager instance to reuse existing cache
         """
-        # Use duck typing instead of strict isinstance checks
-        if (
-            hasattr(task_config, "base_output_dir")
-            and hasattr(task_config, "job_name")
-            and hasattr(task_config, "config_path")
-        ):
-            # TaskConfig-like object (duck typing)
+        cm = config_manager if config_manager is not None else ConfigManager(Path.cwd())
+        self._config_manager = cm
+
+        if isinstance(task_config, TaskConfig):
             self.task_config = task_config
             self.task_directory = task_config.base_output_dir
             self.job_name = task_config.job_name
@@ -63,22 +60,12 @@ class FileManager:
             if preloaded_config is not None:
                 self.config = preloaded_config
             else:
-                # Use provided ConfigManager or create new one (with shared cache)
-                if config_manager is not None:
-                    cm = config_manager
-                else:
-                    cm = ConfigManager(Path.cwd())
                 self.config = cm.load_cascading_config(task_config.config_path)
 
         elif isinstance(task_config, dict):
             # Config dictionary (fallback for backward compatibility)
             self.config = task_config
 
-            # Create task config from dictionary
-            if config_manager is not None:
-                cm = config_manager
-            else:
-                cm = ConfigManager(Path.cwd())
             tc = cm.create_task_config(task_config)
             self.task_config = tc
             self.task_directory = tc.base_output_dir
@@ -200,10 +187,7 @@ class FileManager:
         current = self.processed_text_path(text_file)
         if current.exists():
             return current
-        text_file = (
-            text_file if text_file is not None else self.config["input"]["text_file"]
-        )
-        legacy = self.texts_dir / f"original_{Path(text_file).stem}_processed.txt"
+        legacy = self.texts_dir / f"original_{current.name}"
         if legacy.exists():
             return legacy
         return None
@@ -561,56 +545,7 @@ class FileManager:
         Returns:
             Default speaker ID
         """
-        # Use ConfigManager for consistent fallback logic if available
-        if hasattr(self, '_config_manager'):
-            return self._config_manager.get_default_speaker_id(self.config)
-        
-        # Fallback to inline implementation for backward compatibility
-        generation_config = self.config.get("generation", {})
-        speakers = generation_config.get("speakers", [])
-        speaker_ids = [speaker.get("id", "") for speaker in speakers]
-        
-        if not speakers:
-            raise RuntimeError("No speakers configured")
-
-        # Priority 1: default_speaker from merged config (task/job YAML)
-        current_default_speaker = generation_config.get("default_speaker")
-        if current_default_speaker and current_default_speaker in speaker_ids:
-            logger.debug(f"Using task/job default speaker: '{current_default_speaker}'")
-            return current_default_speaker
-
-        # Priority 2: default_speaker from project's default_config.yaml
-        try:
-            from utils.config_manager import ConfigManager
-            cm = ConfigManager(self.project_root)
-            default_config = cm.load_default_config()
-            original_default_speaker = default_config.get("generation", {}).get("default_speaker")
-            
-            if original_default_speaker and original_default_speaker in speaker_ids:
-                logger.warning(
-                    f"Task/job default_speaker '{current_default_speaker}' invalid, "
-                    f"falling back to default_config.yaml default_speaker: '{original_default_speaker}'"
-                )
-                return original_default_speaker
-                
-        except Exception as e:
-            logger.debug(f"Could not load default_config.yaml for fallback: {e}")
-
-        # Priority 3: First speaker from merged speakers list
-        fallback_id = speakers[0].get("id", "default")
-        
-        if current_default_speaker:
-            logger.warning(
-                f"Both task/job default_speaker '{current_default_speaker}' and "
-                f"default_config.yaml default_speaker are invalid, "
-                f"falling back to first speaker: '{fallback_id}'"
-            )
-        else:
-            logger.warning(
-                f"No default_speaker configured, using first speaker: '{fallback_id}'"
-            )
-            
-        return fallback_id
+        return self._config_manager.get_default_speaker_id(self.config)
 
     def get_speaker_config(self, config: Optional[Dict[str, Any]], speaker_id: str) -> Dict[str, Any]:
         """
