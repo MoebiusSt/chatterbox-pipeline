@@ -13,6 +13,11 @@ Configuration (validation.preprocessing.tail_trim):
   post_speech_silence_ms: 200
   fade_out_ms: 120
   prefer_whisperx: true
+  smart_match:
+    last_n_words: 3
+    max_trailing_asr_words: 10   # reject match if this many ASR tokens follow the span
+    vad_reject_gap_seconds: 2.5  # reject content_cut when VAD hears speech longer after cut
+    vad_reject_min_trailing_asr_words: 3  # ...only when enough ASR tokens still follow the span
   vad:
     aggressiveness: 2  # 0..3
     frame_ms: 20
@@ -296,27 +301,37 @@ class TailTrimmer:
             start_j = max(0, len(rec_words) - k)
 
             tgt = " ".join(tgt_words)
-            best_ratio = 0.0
+            highest_ratio = 0.0
+            best_qualifying_j = -1
+            best_qualifying_ratio = 0.0
             best_span: Tuple[Optional[int], Optional[int]] = (None, None)
             best_span_words: list[str] = []
 
-            for j in range(start_j, max(start_j, len(rec_words) - window) + 1):
+            # Prefer the rightmost span that meets the fuzzy threshold so repeated
+            # phrases (e.g. a name in the URL and again at chunk end) cut at the
+            # final occurrence, not an earlier one.
+            for j in range(start_j, len(rec_words) - window + 1):
                 span_tokens = [rec_words[m][1] for m in range(j, min(j + window, len(rec_words)))]
                 if len(span_tokens) != window:
                     continue
                 span = " ".join(span_tokens)
                 ratio = SequenceMatcher(None, tgt, span).ratio()
-                if ratio > best_ratio:
-                    best_ratio = ratio
+                if ratio > highest_ratio:
+                    highest_ratio = ratio
+                if ratio >= float(fuzzy_ratio) and (
+                    j > best_qualifying_j
+                    or (j == best_qualifying_j and ratio > best_qualifying_ratio)
+                ):
+                    best_qualifying_j = j
+                    best_qualifying_ratio = ratio
                     best_span = (rec_words[j][0], rec_words[j + window - 1][0])
                     best_span_words = span_tokens
 
-            # Always expose the numerical ratio for diagnostics,
-            # but only set matched_words when the smart-match is actually used for cutting
+            best_ratio = best_qualifying_ratio if best_qualifying_j >= 0 else highest_ratio
             meta["match_ratio"] = float(best_ratio)
 
             # If fuzzy threshold not met, try compound token heuristic (join target words)
-            if best_ratio < float(fuzzy_ratio) or best_span[0] is None or best_span[1] is None:
+            if best_qualifying_j < 0 or best_span[0] is None or best_span[1] is None:
                 try:
                     tgt_compound = "".join(tgt_words)
                     # Search for exact compound match near the end
@@ -326,7 +341,17 @@ class TailTrimmer:
                             compound_idx = rec_words[j][0]
                             break
                     if compound_idx is not None:
-                        # Found a compound that equals the target phrase → treat as content_cut
+                        compound_rec_j = next(
+                            (idx for idx, pair in enumerate(rec_words) if pair[0] == compound_idx),
+                            None,
+                        )
+                        if compound_rec_j is not None:
+                            trailing = len(rec_words) - 1 - compound_rec_j
+                            meta["trailing_asr_words"] = trailing
+                            max_trailing = int(sm_cfg.get("max_trailing_asr_words", 10))
+                            if trailing > max_trailing:
+                                meta["match_rejected"] = "too_many_trailing_asr_words"
+                                return None, meta
                         end_idx = int(compound_idx)
                         end_word = words[end_idx]
                         end_word_end_s = float(end_word.get("end") or 0.0)
@@ -346,20 +371,16 @@ class TailTrimmer:
             last_end_s_all = max((float(w.get("end") or 0.0) for w in words), default=0.0)
             end_word_end_s = float(end_word.get("end") or 0.0)
 
-            # Compute potential cut, but only set meta matched_words when we actually accept the cut
-            potential_cut_idx = int(round(end_word_end_s * self.sample_rate))
-            # Safety: ensure the matched end is reasonably near the end of audio
-            # Avoid cutting in the middle due to misalignment (require ≥60% of duration)
-            try:
-                total_len = int(audio.shape[-1])
-                duration_s = total_len / float(self.sample_rate)
-                if duration_s > 0 and end_word_end_s < 0.50 * duration_s:
-                    return None, meta
-            except Exception:
-                # If duration computation fails, proceed with the cut
-                pass
+            trailing_asr_words = len(rec_words) - 1 - best_qualifying_j - (window - 1)
+            trailing_asr_words = max(0, trailing_asr_words)
+            meta["trailing_asr_words"] = trailing_asr_words
+            max_trailing = int(sm_cfg.get("max_trailing_asr_words", 10))
+            if trailing_asr_words > max_trailing:
+                meta["match_rejected"] = "too_many_trailing_asr_words"
+                return None, meta
 
-            # Accept smart-match cut → set matched_words and match_type accordingly
+            potential_cut_idx = int(round(end_word_end_s * self.sample_rate))
+
             if abs(last_end_s_all - end_word_end_s) < 1e-3:
                 meta["match_type"] = "exact_final"
             else:
@@ -369,6 +390,82 @@ class TailTrimmer:
         except Exception as e:
             logger.debug(f"smart-match alignment failed; skipping smart trim: {e}")
             return None, meta
+
+    def _smart_match_cfg(self) -> Dict[str, Any]:
+        return (
+            self.config.get("validation", {})
+            .get("preprocessing", {})
+            .get("tail_trim", {})
+            .get("smart_match", {})
+            or {}
+        )
+
+    def _estimate_expected_duration_s(self, original_text: str) -> Optional[float]:
+        """Estimate plausible speech duration from chunk word count and target WPM."""
+        word_count = len([w for w in (original_text or "").split() if w.strip()])
+        if word_count <= 0:
+            return None
+        p_cfg = self.config.get("validation", {}).get("prosody", {}) or {}
+        targets = p_cfg.get("targets", {}) or {}
+        wpm_min = float(targets.get("wpm_min", 115.0))
+        wpm_max = float(targets.get("wpm_max", 155.0))
+        target_wpm = max(1.0, 0.5 * (wpm_min + wpm_max))
+        return (word_count / target_wpm) * 60.0
+
+    def _is_cut_below_expected_minimum(
+        self,
+        cut_idx: int,
+        original_text: str,
+        sm_cfg: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[bool, Optional[float], Optional[float]]:
+        """Return (too_short, cut_s, expected_s) using text-implied minimum duration."""
+        cfg = sm_cfg if sm_cfg is not None else self._smart_match_cfg()
+        min_ratio = float(cfg.get("min_cut_vs_expected_ratio", 0.40))
+        expected_s = self._estimate_expected_duration_s(original_text)
+        if expected_s is None or expected_s <= 0:
+            return False, None, None
+        cut_s = cut_idx / float(self.sample_rate)
+        return cut_s < expected_s * min_ratio, cut_s, expected_s
+
+    def _should_reject_smart_match(
+        self,
+        sm_cut: int,
+        audio: torch.Tensor,
+        language: str,
+        original_text: str,
+        sm_meta: Dict[str, Any],
+        sm_cfg: Dict[str, Any],
+    ) -> Optional[str]:
+        """Return rejection reason or None when a smart-match cut is safe to apply."""
+        too_short, cut_s, expected_s = self._is_cut_below_expected_minimum(
+            sm_cut, original_text, sm_cfg
+        )
+        if too_short:
+            return "cut_below_expected_duration"
+
+        vad_cut = self._trim_with_vad(audio, language)
+        if not isinstance(vad_cut, int) or vad_cut <= sm_cut:
+            return None
+
+        gap_s = (vad_cut - sm_cut) / float(self.sample_rate)
+        vad_reject_gap = float(sm_cfg.get("vad_reject_gap_seconds", 2.5))
+        trailing_asr = int(sm_meta.get("trailing_asr_words") or 0)
+        vad_reject_min_trailing = int(sm_cfg.get("vad_reject_min_trailing_asr_words", 3))
+
+        if gap_s > vad_reject_gap and trailing_asr >= vad_reject_min_trailing:
+            return "vad_speech_after_match"
+
+        # Misaligned ASR on short clips: match sits at ASR end but VAD hears far more speech
+        # while the cut is still well below the text-implied minimum duration.
+        if (
+            cut_s is not None
+            and expected_s is not None
+            and cut_s < expected_s * float(sm_cfg.get("vad_short_cut_expected_ratio", 0.75))
+            and gap_s > float(sm_cfg.get("vad_short_cut_gap_seconds", 1.0))
+        ):
+            return "vad_speech_after_misaligned_match"
+
+        return None
 
     def _apply_fade_out(self, audio: torch.Tensor, fade_out_ms: int) -> torch.Tensor:
         if audio is None or audio.numel() == 0 or fade_out_ms <= 0:
@@ -575,15 +672,10 @@ class TailTrimmer:
 
             cut_idx = None
             method = None
+            sm_cfg = self._smart_match_cfg()
 
             # Smart-match (if enabled)
             try:
-                sm_cfg = (
-                    self.config.get("validation", {})
-                    .get("preprocessing", {})
-                    .get("tail_trim", {})
-                    .get("smart_match", {})
-                )
                 if bool(sm_cfg.get("enabled", False)):
                     last_n = int(sm_cfg.get("last_n_words", 2))
                     fuzzy = float(sm_cfg.get("fuzzy_ratio", 0.85))
@@ -598,11 +690,41 @@ class TailTrimmer:
                         preloaded_words=preloaded_dicts,
                     )
                     # Merge meta
-                    for k in ("match_type", "matched_words", "match_ratio", "language_gated"):
+                    for k in (
+                        "match_type",
+                        "matched_words",
+                        "match_ratio",
+                        "language_gated",
+                        "trailing_asr_words",
+                        "match_rejected",
+                    ):
                         meta[k] = sm_meta.get(k, meta.get(k))
                     if sm_cut is not None:
-                        cut_idx = sm_cut
-                        method = "smart_words"
+                        reject_reason = self._should_reject_smart_match(
+                            sm_cut,
+                            audio,
+                            language,
+                            original_text,
+                            sm_meta,
+                            sm_cfg,
+                        )
+                        if reject_reason:
+                            meta["smart_match_rejected"] = reject_reason
+                            too_short, cut_s, expected_s = self._is_cut_below_expected_minimum(
+                                sm_cut, original_text, sm_cfg
+                            )
+                            if cut_s is not None:
+                                meta["proposed_cut_s"] = cut_s
+                            if expected_s is not None:
+                                meta["expected_duration_s"] = expected_s
+                            logger.debug(
+                                "Smart-match rejected (%s): proposed cut %.2fs",
+                                reject_reason,
+                                cut_s if cut_s is not None else -1.0,
+                            )
+                        else:
+                            cut_idx = sm_cut
+                            method = "smart_words"
             except Exception as e:
                 logger.debug(f"Smart-match failed: {e}")
 
@@ -647,6 +769,22 @@ class TailTrimmer:
                 method = "energy" if cut_idx is not None else None
 
             if cut_idx is None:
+                return audio, None, meta
+
+            too_short, cut_s, expected_s = self._is_cut_below_expected_minimum(
+                cut_idx, original_text, sm_cfg
+            )
+            if too_short:
+                meta["trim_rejected"] = "cut_below_expected_duration"
+                if cut_s is not None:
+                    meta["proposed_cut_s"] = cut_s
+                if expected_s is not None:
+                    meta["expected_duration_s"] = expected_s
+                logger.debug(
+                    "Trim skipped: proposed cut %.2fs below expected minimum (expected %.2fs)",
+                    cut_s if cut_s is not None else -1.0,
+                    expected_s if expected_s is not None else -1.0,
+                )
                 return audio, None, meta
 
             # Keep additional post-speech silence – but never extend beyond detected last speech end

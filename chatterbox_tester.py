@@ -14,8 +14,9 @@ Supported models:
   vibevoice_1_5b VibeVoice-1.5B (reference model)
   vibevoice_q4   VibeVoice-Large-Q4 (DevParker low-VRAM quant)
   dramabox       Resemble DramaBox (LTX-2.3 IC-LoRA, tester-only via external repo)
+  higgs          Boson Higgs Audio V2 (tester-only via external repo + .venv-higgs)
 
-GUI text field: Chatterbox models are capped at 500 characters; qwen3, DramaBox, and all
+GUI text field: Chatterbox models are capped at 500 characters; qwen3, DramaBox, Higgs, and all
 VibeVoice variants use 10000 so long-form input can be pasted.
 
 Environment (DramaBox tester-only):
@@ -27,6 +28,17 @@ Environment (DramaBox tester-only):
   Isolated venv (recommended — keeps chatterbox deps untouched):
     CHATTERBOX_TESTER_DRAMABOX_PYTHON=/path/to/DramaBox/venv/bin/python
     Dramabox_tester spawns dramabox_worker_main.py in that interpreter.
+
+Environment (Higgs Audio tester-only):
+
+  Repo path (either):
+    CHATTERBOX_TESTER_HIGGS_ROOT or HIGGS_REPO
+    higgs_repo_root.txt (single line path) at this repo root
+
+  Isolated venv (required — keeps chatterbox deps untouched):
+    CHATTERBOX_TESTER_HIGGS_PYTHON=/path/to/higgs-audio/.venv-higgs/bin/python
+    Spawns higgs_worker_main.py in that interpreter.
+    On normal startup, both vars are filled from higgs_repo_root.txt when unset.
 
 Environment (VibeVoice only):
   CHATTERBOX_TESTER_VIBEVOICE_ATTN  Override attention backend for the Qwen2 LM (all VV models).
@@ -47,7 +59,7 @@ import random
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import threading
 import time
 import numpy as np
@@ -70,9 +82,40 @@ from utils.qwen3_progress_streamer import Qwen3ProgressStreamer as _Qwen3Progres
 from tools.dramabox_tester_loader import (
     DramaboxTesterError,
     dispose_dramabox_ttsserver,
+    dramabox_cancel_active_generation,
     dramabox_generate_to_file,
     dramabox_prepare_runtime,
 )
+from tools.higgs_tester_loader import (
+    HiggsTesterError,
+    apply_higgs_tester_env_defaults,
+    dispose_higgs_worker,
+    higgs_cancel_active_generation,
+    higgs_generate_to_file,
+    higgs_prepare_runtime,
+)
+
+try:
+    from transformers.generation.stopping_criteria import (
+        StoppingCriteria,
+        StoppingCriteriaList,
+    )
+except ImportError:
+    from transformers.generation import StoppingCriteria, StoppingCriteriaList
+
+
+class GenerationCancelledError(Exception):
+    """Raised when the user cancels an in-flight TTS generation."""
+
+
+class _CancelStoppingCriteria(StoppingCriteria):
+    """HF stopping criteria that fires when the tester cancel event is set."""
+
+    def __init__(self, cancel_check: Callable[[], bool]) -> None:
+        self._cancel_check = cancel_check
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        return bool(self._cancel_check())
 
 
 def _maybe_suppress_transformers_console_noise() -> None:
@@ -144,6 +187,10 @@ _SLIDER_CONFIG = [
     ("db_ref_duration",      3.0,  30.0,   10.0,   0.5,   ["dramabox"],                             False),
     ("db_steps",             8.0,  48.0,   24.0,   1.0,   ["dramabox"],                             True),
     ("db_rescale_scale",     0.0,  1.0,    0.5,    0.01,  ["dramabox"],                             False),
+    # --- Higgs Audio V2 (boson-ai/higgs-audio; tester-only) ---
+    ("hg_temperature",       0.1,  1.5,    0.70,   0.01,  ["higgs"],                                False),
+    ("hg_top_p",             0.5,  1.0,    0.95,   0.01,  ["higgs"],                                False),
+    ("hg_top_k",             0.0,  200.0,  50.0,   1.0,   ["higgs"],                                True),
 ]
 
 _SLIDER_MODELS: Dict[str, list] = {row[0]: row[5] for row in _SLIDER_CONFIG}
@@ -151,7 +198,7 @@ _VIBEVOICE_UI_MODELS = {"vibevoice", "vibevoice_1_5b", "vibevoice_q4"}
 
 # Tester-only UI limit (characters). Chatterbox stays short; long-form models match VibeVoice.
 _LONGFORM_TEXT_UI_LIMIT = 10000
-_LONGFORM_TEXT_UI_MODELS = _VIBEVOICE_UI_MODELS | {"qwen3", "dramabox"}
+_LONGFORM_TEXT_UI_MODELS = _VIBEVOICE_UI_MODELS | {"qwen3", "dramabox", "higgs"}
 # Optional global override. Empty string → per-model defaults in model_cache.py take effect.
 _VIBEVOICE_TESTER_ATTN: str = os.environ.get(
     "CHATTERBOX_TESTER_VIBEVOICE_ATTN", ""
@@ -291,6 +338,7 @@ class ChatterboxTester:
         self.current_model_type = "multilanguage"
 
         self.is_generating: bool = False
+        self._generation_cancel = threading.Event()
 
         # UI containers filled during _build_ui
         self.param_vars: Dict[str, tk.DoubleVar] = {}
@@ -305,6 +353,10 @@ class ChatterboxTester:
         self.settings_file = Path(__file__).parent / ".chatterbox_tester_settings.json"
         self.presets_file  = Path(__file__).parent / ".chatterbox_tester_presets.yaml"
         self.presets: Dict[str, Dict[str, float]] = {}
+        self.higgs_profiles_file = (
+            Path(__file__).parent / ".chatterbox_tester_higgs_profiles.yaml"
+        )
+        self.higgs_profiles: Dict[str, Dict[str, Any]] = {}
 
         # History for undo/redo
         self.history: list[Dict[str, Any]] = []
@@ -312,10 +364,13 @@ class ChatterboxTester:
         self.is_restoring_state: bool = False
         self._slider_save_timer: Optional[str] = None
         self._text_save_timer:   Optional[str] = None
+        self._settings_save_timer: Optional[str] = None
 
         self._build_ui()
         self._load_settings()
         self._load_presets()
+        self._load_higgs_profiles()
+        self._refresh_higgs_profile_combo()
         self._load_initial_model()
         self._update_model_ui()
         self._update_load_button_state()
@@ -360,6 +415,138 @@ class ChatterboxTester:
             Path(__file__).parent / "data" / "input" / "reference_audio" / filename
         )
 
+    def _ref_dropdown_values(self) -> List[str]:
+        """Reference WAV dropdown values; Higgs adds NONE (profile-only / smart voice)."""
+        if self.model_var.get() == "higgs":
+            return ["NONE"] + list(self.reference_audio_files)
+        return list(self.reference_audio_files)
+
+    def _resolve_higgs_ref_audio_path(self) -> Optional[str]:
+        """Absolute WAV path for Higgs clone, or None when NONE / empty."""
+        ref = self.ref_audio_var.get().strip()
+        if not ref or ref == "NONE":
+            return None
+        path = self._reference_audio_full_path(ref)
+        if not os.path.isfile(path):
+            raise RuntimeError(
+                f"Higgs: reference WAV not found: {path}. Select NONE or a valid file."
+            )
+        txt = Path(path).with_suffix(".txt")
+        if not txt.is_file():
+            raise RuntimeError(
+                f"Higgs: missing sidecar transcript {txt.name} next to reference WAV."
+            )
+        return path
+
+    def _load_higgs_profiles(self) -> None:
+        if not self.higgs_profiles_file.exists():
+            return
+        try:
+            import yaml
+
+            with open(self.higgs_profiles_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if isinstance(data, dict):
+                self.higgs_profiles = data
+            print(
+                f"Loaded {len(self.higgs_profiles)} Higgs profile(s) from "
+                f"{self.higgs_profiles_file.name}"
+            )
+        except Exception as e:
+            print(f"Could not load Higgs profiles: {e}")
+            self.higgs_profiles = {}
+
+    def _save_higgs_profiles_to_disk(self) -> None:
+        try:
+            import yaml
+
+            sorted_profiles = dict(sorted(self.higgs_profiles.items()))
+            with open(self.higgs_profiles_file, "w", encoding="utf-8") as f:
+                yaml.dump(sorted_profiles, f, default_flow_style=False, sort_keys=False)
+        except Exception as e:
+            print(f"Could not save Higgs profiles: {e}")
+
+    def _refresh_higgs_profile_combo(self) -> None:
+        names = sorted(self.higgs_profiles.keys())
+        self.higgs_profile_combo.config(values=names)
+        cur = self.higgs_profile_var.get().strip()
+        if cur and cur in names:
+            self.higgs_profile_var.set(cur)
+        # Do not auto-select the first profile: session prompts come from settings.json.
+
+    def _collect_higgs_profile_data(self) -> Dict[str, Any]:
+        data: Dict[str, Any] = {
+            "scene_prompt": self.higgs_scene_text.get("1.0", tk.END).strip(),
+            "profile_prompt": self.higgs_profile_text.get("1.0", tk.END).strip(),
+            "ref_audio": self.ref_audio_var.get().strip() or "NONE",
+        }
+        for name in self.param_vars:
+            if "higgs" in _SLIDER_MODELS.get(name, []):
+                data[name] = round(float(self.param_vars[name].get()), 4)
+        return data
+
+    def _apply_higgs_profile_data(self, data: Dict[str, Any]) -> None:
+        self.higgs_scene_text.delete("1.0", tk.END)
+        sp = data.get("scene_prompt", "")
+        if sp:
+            self.higgs_scene_text.insert("1.0", str(sp))
+        self.higgs_profile_text.delete("1.0", tk.END)
+        pp = data.get("profile_prompt", "")
+        if pp:
+            self.higgs_profile_text.insert("1.0", str(pp))
+        ref = str(data.get("ref_audio", "NONE")).strip() or "NONE"
+        vals = self._ref_dropdown_values()
+        if ref in vals:
+            self.ref_audio_var.set(ref)
+        elif ref == "NONE" and "NONE" in vals:
+            self.ref_audio_var.set("NONE")
+        for param_name, value in data.items():
+            if param_name in self.param_vars:
+                try:
+                    self.param_vars[param_name].set(float(value))
+                    self._format_label(param_name)
+                except Exception:
+                    pass
+        self._update_ref_text_indicator()
+
+    def _on_higgs_profile_save(self) -> None:
+        name = self.higgs_profile_name_var.get().strip()
+        if not name:
+            tk_messagebox.showwarning("Higgs profile", "Enter a profile name to save.")
+            return
+        self.higgs_profiles[name] = self._collect_higgs_profile_data()
+        self.higgs_profile_var.set(name)
+        self._save_higgs_profiles_to_disk()
+        self._refresh_higgs_profile_combo()
+        self._update_load_button_state()
+        print(f"Saved Higgs profile '{name}'")
+
+    def _on_higgs_profile_load(self) -> None:
+        name = self.higgs_profile_var.get().strip()
+        if not name or name not in self.higgs_profiles:
+            return
+        self.is_restoring_state = True
+        try:
+            self._apply_higgs_profile_data(self.higgs_profiles[name])
+            self.higgs_profile_name_var.set(name)
+        finally:
+            self.is_restoring_state = False
+        self._update_model_ui()
+        self._mark_needs_refresh()
+        self._save_state_to_history()
+        self._schedule_settings_save()
+        print(f"Loaded Higgs profile '{name}'")
+
+    def _on_higgs_profile_delete(self) -> None:
+        name = self.higgs_profile_var.get().strip()
+        if not name or name not in self.higgs_profiles:
+            return
+        del self.higgs_profiles[name]
+        self._save_higgs_profiles_to_disk()
+        self._refresh_higgs_profile_combo()
+        self._update_load_button_state()
+        print(f"Deleted Higgs profile '{name}'")
+
     def _load_vibevoice_reference_np(self, wav_path: str) -> np.ndarray:
         """Load mono 24 kHz reference and apply voice_speed_factor (shared for all speakers)."""
         import librosa
@@ -378,9 +565,12 @@ class ChatterboxTester:
     def _refresh_reference_audio_list(self):
         current = self.ref_audio_var.get()
         self.reference_audio_files = self._get_reference_audio_files()
-        self.ref_dropdown.config(values=self.reference_audio_files)
-        if current in self.reference_audio_files:
+        ref_vals = self._ref_dropdown_values()
+        self.ref_dropdown.config(values=ref_vals)
+        if current in ref_vals:
             self.ref_audio_var.set(current)
+        elif self.model_var.get() == "higgs":
+            self.ref_audio_var.set("NONE")
         elif self.reference_audio_files:
             self.ref_audio_var.set(self.reference_audio_files[0])
         vv_vals: List[str] = [""] + list(self.reference_audio_files)
@@ -403,6 +593,8 @@ class ChatterboxTester:
         """Reload reference audio files and presets from disk."""
         self._refresh_reference_audio_list()
         self._load_presets()
+        self._load_higgs_profiles()
+        self._refresh_higgs_profile_combo()
         self._update_load_button_state()
         print("Reloaded reference audio list and presets file")
 
@@ -412,17 +604,29 @@ class ChatterboxTester:
 
     def _get_preset_key(self) -> str:
         """Return preset dict key for current ref_audio + model combination."""
-        ref   = self.ref_audio_var.get()
         model = self.model_var.get()
+        if model == "higgs":
+            name = self.higgs_profile_var.get().strip()
+            return f"higgs::{name}" if name else "higgs::"
+        ref = self.ref_audio_var.get()
         if model in ("turbo", "qwen3", "dramabox") or model in _VIBEVOICE_UI_MODELS:
             return f"{ref}::{model}"
         # classic / multilanguage keep the old-style key for backward compat
         return ref
 
     def _has_preset(self) -> bool:
+        if self.model_var.get() == "higgs":
+            name = self.higgs_profile_var.get().strip()
+            return bool(name) and name in self.higgs_profiles
         return self._get_preset_key() in self.presets
 
     def _on_load_preset(self):
+        if self.model_var.get() == "higgs":
+            self._on_higgs_profile_load()
+            if self._has_preset():
+                self.load_preset_btn.config(text="✓ Loaded")
+                self.root.after(1500, lambda: self.load_preset_btn.config(text="Load"))
+            return
         if not self._has_preset():
             return
         try:
@@ -454,7 +658,10 @@ class ChatterboxTester:
             print(f"Error loading preset: {e}")
 
     def _on_save_preset(self):
-        self._save_preset()
+        if self.model_var.get() == "higgs":
+            self._on_higgs_profile_save()
+        else:
+            self._save_preset()
         self.save_preset_btn.config(text="✓ Saved")
         self.root.after(1500, lambda: self.save_preset_btn.config(text="Save"))
 
@@ -467,12 +674,13 @@ class ChatterboxTester:
         ref_frame = tk.Frame(self.root)
         ref_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        self.ref_audio_var = tk.StringVar(
-            value=self.reference_audio_files[0] if self.reference_audio_files else ""
+        _init_ref = (
+            self.reference_audio_files[0] if self.reference_audio_files else ""
         )
+        self.ref_audio_var = tk.StringVar(value=_init_ref)
         self.ref_dropdown = ttk.Combobox(
             ref_frame, textvariable=self.ref_audio_var,
-            values=self.reference_audio_files, state="readonly", font=("Arial", 12)
+            values=list(self.reference_audio_files), state="readonly", font=("Arial", 12)
         )
         self.ref_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         self.ref_dropdown.bind(
@@ -555,6 +763,7 @@ class ChatterboxTester:
                 "vibevoice_1_5b",
                 "vibevoice_q4",
                 "dramabox",
+                "higgs",
             ],
             state="readonly", font=("Arial", 12), width=16
         )
@@ -621,6 +830,85 @@ class ChatterboxTester:
             command=_dramabox_chk_cmd,
         )
         self.dramabox_auto_rescale_check.pack(anchor=tk.W)
+
+        # ---- Higgs Audio V2 (scene / profile prompts + named profiles) -----
+        self.higgs_frame = tk.Frame(self.root)
+        self.higgs_profile_var = tk.StringVar(value="")
+        self.higgs_profile_name_var = tk.StringVar(value="")
+
+        higgs_prof_row = tk.Frame(self.higgs_frame)
+        higgs_prof_row.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(higgs_prof_row, text="Higgs profile:", font=("Arial", 10)).pack(
+            side=tk.LEFT, padx=(0, 4)
+        )
+        self.higgs_profile_combo = ttk.Combobox(
+            higgs_prof_row,
+            textvariable=self.higgs_profile_var,
+            values=[],
+            state="readonly",
+            font=("Arial", 11),
+            width=18,
+        )
+        self.higgs_profile_combo.pack(side=tk.LEFT, padx=(0, 4))
+        self.higgs_profile_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda e: self._on_higgs_profile_load(),
+        )
+        tk.Entry(
+            higgs_prof_row,
+            textvariable=self.higgs_profile_name_var,
+            font=("Arial", 11),
+            width=14,
+        ).pack(side=tk.LEFT, padx=(0, 4))
+        tk.Button(
+            higgs_prof_row,
+            text="Load",
+            font=("Arial", 9),
+            command=self._on_higgs_profile_load,
+            bg="#f0f0f0",
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=2)
+        tk.Button(
+            higgs_prof_row,
+            text="Save",
+            font=("Arial", 9),
+            command=self._on_higgs_profile_save,
+            bg="#f0f0f0",
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=2)
+        tk.Button(
+            higgs_prof_row,
+            text="Delete",
+            font=("Arial", 9),
+            command=self._on_higgs_profile_delete,
+            bg="#f0f0f0",
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=2)
+
+        tk.Label(
+            self.higgs_frame, text="Scene prompt:", font=("Arial", 10), anchor=tk.W
+        ).pack(fill=tk.X)
+        self.higgs_scene_text = tk.Text(
+            self.higgs_frame, height=4, font=("Arial", 11), wrap=tk.WORD
+        )
+        self.higgs_scene_text.pack(fill=tk.X, pady=(0, 4))
+        self.higgs_scene_text.bind("<KeyRelease>", lambda e: self._on_text_change())
+        self.higgs_scene_text.bind("<FocusOut>", lambda e: self._schedule_settings_save())
+
+        tk.Label(
+            self.higgs_frame, text="Profile prompt:", font=("Arial", 10), anchor=tk.W
+        ).pack(fill=tk.X)
+        self.higgs_profile_text = tk.Text(
+            self.higgs_frame, height=4, font=("Arial", 11), wrap=tk.WORD
+        )
+        self.higgs_profile_text.pack(fill=tk.X, pady=(0, 2))
+        self.higgs_profile_text.bind("<KeyRelease>", lambda e: self._on_text_change())
+        self.higgs_profile_text.bind(
+            "<FocusOut>", lambda e: self._schedule_settings_save()
+        )
+        self.higgs_profile_name_var.trace_add(
+            "write", lambda *_: self._schedule_settings_save()
+        )
 
         # ---- Seed row ----------------------------------------------------
         seed_frame = tk.Frame(self.root)
@@ -854,7 +1142,7 @@ class ChatterboxTester:
             if self.lang_var.get() not in self.QWEN3_LANGUAGES:
                 self.lang_var.set("English (en)")
         else:
-            # classic / turbo / vibevoice / dramabox: no language selection
+            # classic / turbo / vibevoice / dramabox / higgs: no language selection
             self.lang_dropdown.config(state="disabled")
 
         if model in _VIBEVOICE_UI_MODELS:
@@ -868,6 +1156,24 @@ class ChatterboxTester:
             self.dramabox_frame.pack(fill=tk.X, padx=10, pady=(0, 3))
         else:
             self.dramabox_frame.pack_forget()
+
+        if model == "higgs":
+            self.higgs_frame.pack(fill=tk.X, padx=10, pady=(0, 3))
+            ref_vals = self._ref_dropdown_values()
+            self.ref_dropdown.config(values=ref_vals)
+            if self.ref_audio_var.get() not in ref_vals:
+                self.ref_audio_var.set("NONE" if "NONE" in ref_vals else ref_vals[0])
+        else:
+            self.higgs_frame.pack_forget()
+            self.ref_dropdown.config(values=list(self.reference_audio_files))
+            cur = self.ref_audio_var.get()
+            if cur == "NONE" or (
+                cur and cur not in self.reference_audio_files
+            ):
+                if self.reference_audio_files:
+                    self.ref_audio_var.set(self.reference_audio_files[0])
+                else:
+                    self.ref_audio_var.set("")
 
         # DramaBox: manual rescale slider only when auto rescale is off
         if "db_rescale_scale" in self.slider_frames:
@@ -886,6 +1192,25 @@ class ChatterboxTester:
     def _update_ref_text_indicator(self):
         """Update the ref_text sidecar indicator label."""
         model = self.model_var.get()
+        if model == "higgs":
+            ref = self.ref_audio_var.get().strip()
+            if not ref or ref == "NONE":
+                self.ref_text_label.config(
+                    text="Higgs: no reference WAV (profile / scene / smart voice)",
+                    fg="#555555",
+                )
+                return
+            txt = Path(self._reference_audio_full_path(ref)).with_suffix(".txt")
+            if txt.is_file():
+                self.ref_text_label.config(
+                    text=f"✓ Higgs ref_text: {txt.name}", fg="#2a7a2a"
+                )
+            else:
+                self.ref_text_label.config(
+                    text=f"⚠ Higgs: missing {txt.name} (required for voice clone)",
+                    fg="#b05000",
+                )
+            return
         if model != "qwen3":
             self.ref_text_label.config(text="")
             return
@@ -923,6 +1248,7 @@ class ChatterboxTester:
         if not self.settings_file.exists():
             self._center_window()
             return
+        self.is_restoring_state = True
         try:
             import json
             with open(self.settings_file, 'r', encoding='utf-8') as f:
@@ -954,6 +1280,16 @@ class ChatterboxTester:
                 self.dramabox_watermark_var.set(bool(settings['dramabox_watermark']))
             if settings.get('dramabox_auto_rescale') is not None:
                 self.dramabox_auto_rescale_var.set(bool(settings['dramabox_auto_rescale']))
+            if 'higgs_scene_prompt' in settings:
+                self.higgs_scene_text.delete("1.0", tk.END)
+                self.higgs_scene_text.insert("1.0", settings['higgs_scene_prompt'])
+            if 'higgs_profile_prompt' in settings:
+                self.higgs_profile_text.delete("1.0", tk.END)
+                self.higgs_profile_text.insert("1.0", settings['higgs_profile_prompt'])
+            if 'higgs_profile_name' in settings:
+                name = settings['higgs_profile_name']
+                self.higgs_profile_var.set(name)
+                self.higgs_profile_name_var.set(name)
             if settings.get('active_state'):
                 self.active_state = settings['active_state']
 
@@ -1011,6 +1347,20 @@ class ChatterboxTester:
         except Exception as e:
             print(f"Could not load settings: {e}")
             self._center_window()
+        finally:
+            self.is_restoring_state = False
+
+    def _schedule_settings_save(self) -> None:
+        """Persist session snapshot (debounced) — independent of named Higgs profiles."""
+        if self.is_restoring_state:
+            return
+        if self._settings_save_timer:
+            self.root.after_cancel(self._settings_save_timer)
+        self._settings_save_timer = self.root.after(800, self._flush_settings_save)
+
+    def _flush_settings_save(self) -> None:
+        self._settings_save_timer = None
+        self._save_settings()
 
     def _save_settings(self):
         try:
@@ -1038,6 +1388,11 @@ class ChatterboxTester:
                 'dramabox_use_reference': self.dramabox_use_ref_var.get(),
                 'dramabox_watermark': self.dramabox_watermark_var.get(),
                 'dramabox_auto_rescale': self.dramabox_auto_rescale_var.get(),
+                'higgs_scene_prompt': self.higgs_scene_text.get("1.0", tk.END).strip(),
+                'higgs_profile_prompt': self.higgs_profile_text.get(
+                    "1.0", tk.END
+                ).strip(),
+                'higgs_profile_name': self.higgs_profile_var.get().strip(),
                 'active_state':    self.active_state,
                 'window_x':        window_x,
                 'window_y':        window_y,
@@ -1085,11 +1440,13 @@ class ChatterboxTester:
     def _save_preset(self):
         try:
             import yaml
+            model = self.model_var.get()
+            if model == "higgs":
+                return
             ref = self.ref_audio_var.get()
             if not ref:
                 return
             key = self._get_preset_key()
-            model = self.model_var.get()
 
             # Collect only params that are visible/applicable for this model
             preset_params = {}
@@ -1138,6 +1495,24 @@ class ChatterboxTester:
 
         if prev_type == "dramabox" and model_ui_name != "dramabox":
             dispose_dramabox_ttsserver()
+        if prev_type == "higgs" and model_ui_name != "higgs":
+            dispose_higgs_worker()
+
+        if model_ui_name == "higgs":
+            ChatterboxModelCache.free_vram(self.device)
+            self.current_model = None
+            self.current_model_type = "higgs"
+            try:
+                higgs_prepare_runtime(self.device)
+            except HiggsTesterError as e:
+                err_txt = str(e)
+                print(f"Higgs Audio: {err_txt}")
+
+                def _warn_setup(m: str = err_txt) -> None:
+                    tk_messagebox.showwarning("Higgs Audio setup", m)
+
+                self.root.after(0, _warn_setup)
+            return
 
         if model_ui_name == "dramabox":
             ChatterboxModelCache.free_vram(self.device)
@@ -1214,6 +1589,7 @@ class ChatterboxTester:
         self._update_load_button_state()
         self._on_text_change()
         self._mark_needs_refresh()
+        self._schedule_settings_save()
 
     # ------------------------------------------------------------------ #
     # Text / slider change handlers                                         #
@@ -1244,11 +1620,17 @@ class ChatterboxTester:
 
     def _save_text_after_idle(self):
         self._save_state_to_history()
+        self._schedule_settings_save()
 
     def _on_text_change(self):
         if hasattr(self, '_text_save_timer') and self._text_save_timer:
             self.root.after_cancel(self._text_save_timer)
-        self._text_save_timer = self.root.after(500, self._save_state_to_history)
+        self._text_save_timer = self.root.after(500, self._save_text_change_idle)
+
+    def _save_text_change_idle(self) -> None:
+        self._text_save_timer = None
+        self._save_state_to_history()
+        self._schedule_settings_save()
 
     def _get_text_limit(self) -> int:
         return (
@@ -1271,7 +1653,12 @@ class ChatterboxTester:
         self._mark_needs_refresh()
         if hasattr(self, '_slider_save_timer') and self._slider_save_timer:
             self.root.after_cancel(self._slider_save_timer)
-        self._slider_save_timer = self.root.after(300, self._save_state_to_history)
+        self._slider_save_timer = self.root.after(300, self._save_slider_change_idle)
+
+    def _save_slider_change_idle(self) -> None:
+        self._slider_save_timer = None
+        self._save_state_to_history()
+        self._schedule_settings_save()
 
     # ------------------------------------------------------------------ #
     # State / history                                                       #
@@ -1291,6 +1678,26 @@ class ChatterboxTester:
         )
         return params
 
+    def _get_higgs_prompt_snapshot(self) -> Dict[str, str]:
+        return {
+            'higgs_scene_prompt': self.higgs_scene_text.get("1.0", tk.END).strip(),
+            'higgs_profile_prompt': self.higgs_profile_text.get(
+                "1.0", tk.END
+            ).strip(),
+        }
+
+    def _restore_higgs_prompt_snapshot(self, state: Dict[str, Any]) -> None:
+        if 'higgs_scene_prompt' in state:
+            self.higgs_scene_text.delete("1.0", tk.END)
+            sp = state['higgs_scene_prompt']
+            if sp:
+                self.higgs_scene_text.insert("1.0", sp)
+        if 'higgs_profile_prompt' in state:
+            self.higgs_profile_text.delete("1.0", tk.END)
+            pp = state['higgs_profile_prompt']
+            if pp:
+                self.higgs_profile_text.insert("1.0", pp)
+
     def _get_current_state(self) -> Dict[str, Any]:
         return {
             'reference_audio': self.ref_audio_var.get(),
@@ -1302,6 +1709,7 @@ class ChatterboxTester:
             'seed':            self.seed_var.get(),
             'text':            self.text_widget.get("1.0", tk.END).strip(),
             'params':          self._get_all_params(),
+            **self._get_higgs_prompt_snapshot(),
         }
 
     def _get_current_ui_state(self) -> Dict[str, Any]:
@@ -1357,6 +1765,7 @@ class ChatterboxTester:
             if state.get('text') is not None:
                 self.text_widget.delete("1.0", tk.END)
                 self.text_widget.insert("1.0", state['text'])
+            self._restore_higgs_prompt_snapshot(state)
             for param_name, value in state.get('params', {}).items():
                 if param_name in self.param_vars:
                     try:
@@ -1382,6 +1791,7 @@ class ChatterboxTester:
             self._restore_state(self.history[self.history_position])
             self._update_history_buttons()
             self._mark_needs_refresh()
+            self._schedule_settings_save()
 
     def _redo(self):
         if self.history_position < len(self.history) - 1:
@@ -1389,6 +1799,7 @@ class ChatterboxTester:
             self._restore_state(self.history[self.history_position])
             self._update_history_buttons()
             self._mark_needs_refresh()
+            self._schedule_settings_save()
 
     def _update_history_buttons(self):
         self.undo_btn.config(state=tk.NORMAL if self.history_position > 0 else tk.DISABLED)
@@ -1402,10 +1813,50 @@ class ChatterboxTester:
         self._update_refresh_button_color()
 
     def _update_refresh_button_color(self):
+        if self.is_generating:
+            return
         active_state = self.state_a if self.active_state == 1 else self.state_b
         self.refresh_btn.config(
             bg="#4CAF50" if active_state['needs_refresh'] else "#677867"
         )
+
+    def _is_generation_cancelled(self) -> bool:
+        return self._generation_cancel.is_set()
+
+    def _set_refresh_btn_generating(self) -> None:
+        self.refresh_btn.config(
+            state=tk.NORMAL,
+            text="⏳ Generating… (Click to cancel)",
+            bg="#888888",
+            cursor="hand2",
+        )
+
+    def _set_refresh_btn_cancelling(self) -> None:
+        self.refresh_btn.config(
+            state=tk.NORMAL,
+            text="⏳ Cancelling…",
+            bg="#888888",
+            cursor="hand2",
+        )
+
+    def _restore_refresh_btn_idle(self) -> None:
+        self.refresh_btn.config(
+            state=tk.NORMAL,
+            text="⟳ REFRESH - Generate Audio",
+            cursor="hand2",
+        )
+        self._update_refresh_button_color()
+
+    def _request_generation_cancel(self) -> None:
+        if not self.is_generating:
+            return
+        self._generation_cancel.set()
+        print("⏹ Generation cancel requested…")
+        if self.model_var.get() == "dramabox":
+            dramabox_cancel_active_generation()
+        elif self.model_var.get() == "higgs":
+            higgs_cancel_active_generation()
+        self.root.after(0, self._set_refresh_btn_cancelling)
 
     def _switch_state(self, state_num: int):
         if state_num == self.active_state:
@@ -1473,6 +1924,7 @@ class ChatterboxTester:
 
         self._update_refresh_button_color()
         self._update_history_buttons()
+        self._schedule_settings_save()
 
     def _copy_state(self, from_state_num: int, to_state_num: int):
         current_state = self.state_a if self.active_state == 1 else self.state_b
@@ -1568,23 +2020,21 @@ class ChatterboxTester:
 
     def _on_refresh(self):
         if self.is_generating:
+            self._request_generation_cancel()
             return
         self._update_char_count()
         self._save_settings()
         threading.Thread(target=self._generate_and_play, daemon=True).start()
 
     def _generate_and_play(self):
+        self._generation_cancel.clear()
         self.is_generating = True
-        self.root.after(0, lambda: self.refresh_btn.config(
-            state=tk.DISABLED, text="⏳ Generating…"
-        ))
+        self.root.after(0, self._set_refresh_btn_generating)
 
         text = self.text_widget.get("1.0", tk.END).strip()
         if not text:
             self.is_generating = False
-            self.root.after(0, lambda: self.refresh_btn.config(
-                state=tk.NORMAL, text="⟳ REFRESH - Generate Audio"
-            ))
+            self.root.after(0, self._restore_refresh_btn_idle)
             return
 
         try:
@@ -1607,14 +2057,14 @@ class ChatterboxTester:
             print(f"🎲 Seed set to: {seed}")
 
         ref_audio_file = self.ref_audio_var.get()
-        ref_audio_path = str(
-            Path(__file__).parent / "data" / "input" / "reference_audio" / ref_audio_file
-        )
+        ref_audio_path = ""
+        if ref_audio_file and ref_audio_file != "NONE":
+            ref_audio_path = self._reference_audio_full_path(ref_audio_file)
 
         try:
             model_ui = self.model_var.get()
             current_model = self.current_model
-            if model_ui != "dramabox" and current_model is None:
+            if model_ui not in ("dramabox", "higgs") and current_model is None:
                 raise RuntimeError("No TTS model loaded")
 
             gen_elapsed = 0.0
@@ -1656,12 +2106,28 @@ class ChatterboxTester:
                     getattr(current_model, "model", None), "talker", None
                 )
                 streamer = _Qwen3ProgressStreamer(total=2048, label="Qwen3")
+                cancel_crit = _CancelStoppingCriteria(self._is_generation_cancelled)
                 orig_talker_generate = None
                 if talker is not None and hasattr(talker, "generate"):
                     orig_talker_generate = talker.generate
 
-                    def _patched_generate(*a, _orig=orig_talker_generate, _s=streamer, **kw):
+                    def _patched_generate(
+                        *a,
+                        _orig=orig_talker_generate,
+                        _s=streamer,
+                        _cc=cancel_crit,
+                        **kw,
+                    ):
                         kw.setdefault("streamer", _s)
+                        existing = kw.get("stopping_criteria")
+                        if existing is None:
+                            kw["stopping_criteria"] = StoppingCriteriaList([_cc])
+                        elif isinstance(existing, StoppingCriteriaList):
+                            existing.append(_cc)
+                        else:
+                            kw["stopping_criteria"] = StoppingCriteriaList(
+                                list(existing) + [_cc]
+                            )
                         return _orig(*a, **kw)
 
                     talker.generate = _patched_generate  # type: ignore[assignment]
@@ -1680,6 +2146,8 @@ class ChatterboxTester:
                     if talker is not None and orig_talker_generate is not None:
                         talker.generate = orig_talker_generate  # type: ignore[assignment]
                     streamer.end()
+                if self._is_generation_cancelled():
+                    raise GenerationCancelledError()
                 gen_elapsed = time.perf_counter() - _t0
                 audio_np = wavs[0].astype(np.float32)
                 self.sample_rate = int(sr)
@@ -1730,6 +2198,8 @@ class ChatterboxTester:
                     watermark=bool(self.dramabox_watermark_var.get()),
                     **drama_kwargs,
                 )
+                if self._is_generation_cancelled():
+                    raise GenerationCancelledError()
                 gen_elapsed = time.perf_counter() - _t0
                 audio_np, sr = sf.read(out_wav)
                 try:
@@ -1743,6 +2213,58 @@ class ChatterboxTester:
                 sum_speaker_names = (
                     [Path(ref_audio_file).stem] if ref_audio_file else ["(no ref)"]
                 )
+                sum_unique_speakers = 1
+                sum_segments = 1
+
+            # ---- Higgs Audio V2 (external repo, tester-only) -------------
+            elif model_ui == "higgs":
+                scene_prompt = self.higgs_scene_text.get("1.0", tk.END).strip() or None
+                profile_text = (
+                    self.higgs_profile_text.get("1.0", tk.END).strip() or None
+                )
+                higgs_ref_path = self._resolve_higgs_ref_audio_path()
+
+                top_k_val = int(self.param_vars["hg_top_k"].get())
+                higgs_kwargs = {
+                    "temperature": float(self.param_vars["hg_temperature"].get()),
+                    "top_p": float(self.param_vars["hg_top_p"].get()),
+                    "top_k": top_k_val,
+                    "seed": seed,
+                }
+                print(
+                    f"🎙️ Higgs | ref={higgs_ref_path!r} | scene={bool(scene_prompt)} | "
+                    f"profile={bool(profile_text)} | {higgs_kwargs}"
+                )
+
+                out_wav = tempfile.mktemp(suffix=".wav")
+                _t0 = time.perf_counter()
+                higgs_generate_to_file(
+                    self.device,
+                    transcript=text,
+                    output_path=out_wav,
+                    scene_prompt=scene_prompt,
+                    ref_audio_path=higgs_ref_path,
+                    profile_text=profile_text,
+                    **higgs_kwargs,
+                )
+                if self._is_generation_cancelled():
+                    raise GenerationCancelledError()
+                gen_elapsed = time.perf_counter() - _t0
+                audio_np, sr = sf.read(out_wav)
+                try:
+                    os.remove(out_wav)
+                except OSError:
+                    pass
+                if audio_np.ndim > 1:
+                    audio_np = np.mean(audio_np, axis=1)
+                audio_np = np.asarray(audio_np, dtype=np.float32)
+                self.sample_rate = int(sr)
+                if higgs_ref_path:
+                    sum_speaker_names = [Path(ref_audio_file).stem]
+                elif profile_text:
+                    sum_speaker_names = ["(profile prompt)"]
+                else:
+                    sum_speaker_names = ["(smart voice)"]
                 sum_unique_speakers = 1
                 sum_segments = 1
 
@@ -1832,7 +2354,13 @@ class ChatterboxTester:
 
                 _t0 = time.perf_counter()
                 with torch.no_grad():
-                    output = current_model.generate(**inputs, **gen_kwargs)
+                    output = current_model.generate(
+                        **inputs,
+                        **gen_kwargs,
+                        stop_check_fn=self._is_generation_cancelled,
+                    )
+                if self._is_generation_cancelled():
+                    raise GenerationCancelledError()
                 gen_elapsed = time.perf_counter() - _t0
 
                 if not hasattr(output, "speech_outputs") or not output.speech_outputs:
@@ -1867,6 +2395,8 @@ class ChatterboxTester:
                 print(f"⚡ Turbo | {params}")
                 _t0 = time.perf_counter()
                 audio_tensor = current_model.generate(text, **params)
+                if self._is_generation_cancelled():
+                    raise GenerationCancelledError()
                 gen_elapsed = time.perf_counter() - _t0
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
@@ -1891,6 +2421,8 @@ class ChatterboxTester:
                 }
                 _t0 = time.perf_counter()
                 audio_tensor = current_model.generate(text, language_id=language_id, **params)
+                if self._is_generation_cancelled():
+                    raise GenerationCancelledError()
                 gen_elapsed = time.perf_counter() - _t0
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
@@ -1913,6 +2445,8 @@ class ChatterboxTester:
                 }
                 _t0 = time.perf_counter()
                 audio_tensor = current_model.generate(text, **params)
+                if self._is_generation_cancelled():
+                    raise GenerationCancelledError()
                 gen_elapsed = time.perf_counter() - _t0
                 audio_np = (audio_tensor.cpu().numpy()
                             if isinstance(audio_tensor, torch.Tensor)
@@ -1972,23 +2506,30 @@ class ChatterboxTester:
             self._stop_playback()
             self._play_audio()
 
+        except GenerationCancelledError:
+            print("⏹ Generation cancelled.")
         except DramaboxTesterError as e:
-            err_msg = str(e)
-            print(f"Error generating audio: {err_msg}")
+            if self._is_generation_cancelled():
+                print("⏹ Generation cancelled.")
+            else:
+                err_msg = str(e)
+                print(f"Error generating audio: {err_msg}")
 
-            def _show_db_err(m: str = err_msg) -> None:
-                tk_messagebox.showerror("DramaBox", m)
+                def _show_db_err(m: str = err_msg) -> None:
+                    tk_messagebox.showerror("DramaBox", m)
 
-            self.root.after(0, _show_db_err)
+                self.root.after(0, _show_db_err)
         except Exception as e:
-            print(f"Error generating audio: {e}")
-            import traceback
-            traceback.print_exc()
+            if self._is_generation_cancelled():
+                print("⏹ Generation cancelled.")
+            else:
+                print(f"Error generating audio: {e}")
+                import traceback
+                traceback.print_exc()
         finally:
             self.is_generating = False
-            self.root.after(0, lambda: self.refresh_btn.config(
-                state=tk.NORMAL, text="⟳ REFRESH - Generate Audio"
-            ))
+            self._generation_cancel.clear()
+            self.root.after(0, self._restore_refresh_btn_idle)
 
     # ------------------------------------------------------------------ #
     # Playback                                                              #
@@ -2157,6 +2698,23 @@ class ChatterboxTester:
         """Return model-specific tts_params YAML block."""
         model_ui = self.model_var.get()
 
+        if model_ui == "higgs":
+            ref = self.ref_audio_var.get().strip() or "NONE"
+            scene = self.higgs_scene_text.get("1.0", tk.END).strip()
+            profile = self.higgs_profile_text.get("1.0", tk.END).strip()
+            block = (
+                "# Higgs Audio V2 — tester-only (not used by cbpipe)\n"
+                "higgs_params:\n"
+                f"  temperature: {float(self.param_vars['hg_temperature'].get()):.3f}\n"
+                f"  top_p: {float(self.param_vars['hg_top_p'].get()):.3f}\n"
+                f"  top_k: {int(self.param_vars['hg_top_k'].get())}\n"
+                f"  ref_audio: {ref}\n"
+            )
+            if scene:
+                block += "# scene_prompt: (multiline — stored in Higgs profile file)\n"
+            if profile:
+                block += "# profile_prompt: (multiline — stored in Higgs profile file)\n"
+            return block.rstrip()
         if model_ui == "dramabox":
             if self.dramabox_auto_rescale_var.get():
                 rs_repr = "auto"
@@ -2416,7 +2974,10 @@ class ChatterboxTester:
 
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        ref_name  = Path(self.ref_audio_var.get()).stem
+        ref_sel = self.ref_audio_var.get().strip()
+        ref_name = (
+            "no_ref" if (not ref_sel or ref_sel == "NONE") else Path(ref_sel).stem
+        )
         base_name = f"{timestamp}_test_{ref_name}"
         output_path = output_dir / f"{base_name}.wav"
         yaml_path   = output_dir / f"{base_name}.yaml"
@@ -2456,6 +3017,16 @@ class ChatterboxTester:
             header += f"# use_reference_audio: {self.dramabox_use_ref_var.get()}\n"
             header += f"# watermark: {self.dramabox_watermark_var.get()}\n"
             header += f"# auto_rescale: {self.dramabox_auto_rescale_var.get()}\n"
+        elif model_ui == "higgs":
+            header += "# Language: via text / scene / profile prompts (no model param)\n"
+            ref = self.ref_audio_var.get().strip() or "NONE"
+            header += f"# Reference Audio: {ref}\n"
+            sp = self.higgs_scene_text.get("1.0", tk.END).strip()
+            if sp:
+                header += "# Scene prompt: (see higgs_params in YAML block)\n"
+            pp = self.higgs_profile_text.get("1.0", tk.END).strip()
+            if pp:
+                header += "# Profile prompt: (see higgs_params in YAML block)\n"
 
         header += f"# Seed: {seed}\n\n"
         header += f"# Text:\n# {self.text_widget.get('1.0', tk.END).strip()}\n\n"
@@ -2476,6 +3047,7 @@ class ChatterboxTester:
     def cleanup(self):
         self._stop_playback()
         dispose_dramabox_ttsserver()
+        dispose_higgs_worker()
         if self.external_player_process:
             try:
                 self.external_player_process.terminate()
@@ -2489,6 +3061,9 @@ class ChatterboxTester:
         if self.update_timer:
             self.root.after_cancel(self.update_timer)
             self.update_timer = None
+        if self._settings_save_timer:
+            self.root.after_cancel(self._settings_save_timer)
+            self._settings_save_timer = None
         self._save_settings()
         if self.temp_audio_file and os.path.exists(self.temp_audio_file):
             try:
@@ -2517,6 +3092,7 @@ Supported models:
                  for best cloning quality (ICL mode).
   vibevoice      VibeVoice-Large-Q8 (long-form + voice cloning)
   dramabox       Resemble DramaBox (expressive prompt TTS; CUDA, external repo — see CHATTERBOX_TESTER.md)
+  higgs          Boson Higgs Audio V2 (scene/profile prompts; CUDA, external repo — see CHATTERBOX_TESTER.md)
 
 For better audio playback in WSL, install ffmpeg:
   sudo apt-get install ffmpeg
@@ -2524,6 +3100,8 @@ For better audio playback in WSL, install ffmpeg:
 For detailed documentation, see CHATTERBOX_TESTER.md
         """)
         sys.exit(0)
+
+    apply_higgs_tester_env_defaults()
 
     try:
         root = tk.Tk()

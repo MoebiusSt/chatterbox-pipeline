@@ -139,8 +139,6 @@ coverage.xml
 
 # Config files with secrets
 notes_ideas.txt
-config/*secret*
-config/*private*
 config/*
 
 # Keep reference yaml files

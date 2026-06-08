@@ -54,6 +54,12 @@ def isolated_dramabox_python() -> Optional[str]:
     return raw or None
 
 
+def _canonical_python_executable(py_exe_raw: str) -> str:
+    """Path for subprocess without resolving venv shims to system Python."""
+    p = Path(py_exe_raw).expanduser()
+    return str(p.absolute() if not p.is_absolute() else p)
+
+
 def dramabox_using_isolated_python() -> bool:
     return isolated_dramabox_python() is not None
 
@@ -175,6 +181,11 @@ def _device_for_ttsserver(pipeline_device: str) -> str:
     return pipeline_device
 
 
+def dramabox_cancel_active_generation() -> None:
+    """Terminate the DramaBox worker subprocess to interrupt a blocked generate."""
+    dispose_dramabox_worker()
+
+
 def dispose_dramabox_worker() -> None:
     global _WORKER_PROC, _WORKER_ID
     proc = _WORKER_PROC
@@ -214,7 +225,7 @@ def dispose_dramabox_ttsserver() -> None:
 def _ensure_dramabox_worker(py_exe_raw: str, repo: Path, cuda_dev: str) -> None:
     global _WORKER_PROC, _WORKER_ID
 
-    canon_py = str(Path(py_exe_raw).expanduser().resolve())
+    canon_py = _canonical_python_executable(py_exe_raw)
     canon_repo = str(repo.resolve())
 
     worker_script = DRAMABOX_WORKER_SCRIPT.resolve()

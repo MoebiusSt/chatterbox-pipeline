@@ -223,9 +223,15 @@ validation:
       persist_trimmed_candidate: true
       smart_match:
         enabled: true
-        last_n_words: 2
+        last_n_words: 3
         fuzzy_ratio: 0.9
         search_window_words: 30
+        max_trailing_asr_words: 10
+        vad_reject_gap_seconds: 2.5
+        vad_reject_min_trailing_asr_words: 3
+        min_cut_vs_expected_ratio: 0.40
+        vad_short_cut_expected_ratio: 0.75
+        vad_short_cut_gap_seconds: 1.0
         language_gate: [en, de, fr, es, it]
       vad:
         aggressiveness: 1        # 0..3

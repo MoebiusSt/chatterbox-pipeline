@@ -1,0 +1,2 @@
+# Linux path inside WSL (not \\wsl$\\... from Windows Explorer)
+/home/stephan/projekte/higgs-audio

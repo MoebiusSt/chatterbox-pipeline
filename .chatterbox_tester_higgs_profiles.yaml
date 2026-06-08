@@ -1,0 +1,133 @@
+annie_coleman_1_DE-fake:
+  scene_prompt: Very clear radio production. The morning radio show with upbeat tone
+    radiates good cheer in the morning.
+  profile_prompt: The speaker is a woman with clear Standard German (Hochdeutsch),
+    a professional radio host with bright enthusiastic energy, warm smile in the voice,
+    lively pace, varied pitch and strong emphasis and clear articualtion.
+  ref_audio: annie_coleman_rothenberg_2_DE-fake_15s.wav
+  hg_temperature: 1.25
+  hg_top_p: 0.92
+  hg_top_k: 58.0
+annie_coleman_2_DE-fake:
+  scene_prompt: A professional radio documentary with clean audio recorded in a quiet
+    studio.
+  profile_prompt: The speaker is a woman with articulated Standard German (Hochdeutsch).
+    She is a professional show host with a lively pace, upbeat energy, varied pitch,
+    strong emphasis. She is smiling in her voice.
+  ref_audio: annie_coleman_rothenberg_2_DE-fake_15s.wav
+  hg_temperature: 1.29
+  hg_top_p: 0.9
+  hg_top_k: 70.0
+annie_coleman_rothenberg_2_DE-fake_:
+  scene_prompt: A professional morning radio show with clean audio recorded in a quiet
+    studio.
+  profile_prompt: A female voice with articulated Standard German (Hochdeutsch) and
+    a conversationale tone. She is a radio show host with an upbeat vibe and an easy
+    warmth, lively pace, upbeat energy, varied pitch, strong emphasis. She is smiling
+    in her voice.
+  ref_audio: annie_coleman_rothenberg_2_DE-fake_15s.wav
+  hg_temperature: 1.38
+  hg_top_p: 0.85
+  hg_top_k: 44.0
+cori_samuel_3_DE-fake:
+  scene_prompt: A professional radio documentary with clean audio recorded in a quiet
+    studio.
+  profile_prompt: The speaker is a woman with articulated Standard German (Hochdeutsch)
+    with no accent. She is a professional show host with a lively pace, upbeat energy,
+    varied pitch, strong emphasis. She is smiling in her voice.
+  ref_audio: cori_samuel_3_15s.wav
+  hg_temperature: 1.29
+  hg_top_p: 0.9
+  hg_top_k: 70.0
+cori_samuel_5_DE-Fake:
+  scene_prompt: A professional radio morning show with clean audio recorded in a quiet
+    studio.
+  profile_prompt: The speaker is a woman with articulated Standard German (Hochdeutsch).
+    She is a professional radio show host and delivers a enthusiastic upbeat vibe,
+    lively pace, varied pitch, and strong emphasis.
+  ref_audio: cori_samuel_5_DE-Fake_15s.wav
+  hg_temperature: 1.32
+  hg_top_p: 0.88
+  hg_top_k: 61.0
+gesine_1_DE-FAKE:
+  scene_prompt: A professional morning radio show with clean audio recorded in a quiet
+    studio.
+  profile_prompt: A female voice with articulated Standard German (Hochdeutsch) and
+    a conversationale tone. She is a radio show host with an upbeat vibe and an easy
+    warmth, lively pace, upbeat energy, varied pitch, strong emphasis. She is smiling
+    in her voice.
+  ref_audio: gesine_1_DE-Fake_15s.wav
+  hg_temperature: 1.38
+  hg_top_p: 0.85
+  hg_top_k: 44.0
+gesine_2_DE-FAKE:
+  scene_prompt: A professional morning radio show with clean audio recorded in a quiet
+    studio.
+  profile_prompt: A female voice with articulated Standard German (Hochdeutsch) and
+    a conversationale tone. She is a radio show host with an upbeat vibe and an easy
+    warmth, lively pace, upbeat energy, varied pitch, strong emphasis. She is smiling
+    in her voice.
+  ref_audio: gesine_1_DE-Fake_15s.wav
+  hg_temperature: 1.38
+  hg_top_p: 0.85
+  hg_top_k: 44.0
+mary-john_DE-Fake:
+  scene_prompt: A professional radio documentary with clean audio recorded in a quiet
+    studio.
+  profile_prompt: The speaker is a woman with articulated Standard German (Hochdeutsch).
+    She is a professional radio show host with an sunny vibe, lively pace, upbeat
+    energy, varied pitch, strong emphasis. She is smiling in her voice.
+  ref_audio: mary-john_DE-Fake3.wav
+  hg_temperature: 1.31
+  hg_top_p: 0.91
+  hg_top_k: 71.0
+mary-john_DE-Fake4:
+  scene_prompt: A professional radio morning show recorded in a quiet studio.
+  profile_prompt: A female voice with a clear Standard German (Hochdeutsch), a easy
+    and conversationale tone. She brings the text to life with a warm vibe, lively
+    pace, upbeat energy, varied pitch, strong emphasis in her vocal style. She has
+    a smile and energy in her voice.
+  ref_audio: mary-john_DE-Fake4.wav
+  hg_temperature: 1.33
+  hg_top_p: 0.84
+  hg_top_k: 76.0
+mary-john_DE-Fakegesine_2_DE-FAKE:
+  scene_prompt: A professional radio documentary with clean audio recorded in a quiet
+    studio.
+  profile_prompt: The speaker is a woman with articulated Standard German (Hochdeutsch).
+    She is a professional radio show host with an upbeat vibe, lively pace, upbeat
+    energy, varied pitch, strong emphasis. She is smiling in her voice.
+  ref_audio: gesine_2_DE-FAKE.wav
+  hg_temperature: 1.31
+  hg_top_p: 0.91
+  hg_top_k: 71.0
+mary-john_DE-Fakegesine_2_DE-FAKEgesine_1_DE-FAKE:
+  scene_prompt: A professional radio morning show with clean audio recorded in a quiet
+    studio.
+  profile_prompt: The speaker is a woman with articulated Standard German (Hochdeutsch).
+    She is a professional radio show host an delivers a sunny upbeat vibe, lively
+    pace, varied pitch, strong emphasis. She is smiling in her voice.
+  ref_audio: gesine_1_DE-Fake_15s.wav
+  hg_temperature: 1.23
+  hg_top_p: 0.9
+  hg_top_k: 62.0
+mary-john_DE-Fakegesine_2_DE-FAKEgesine_2_DE-FAKE:
+  scene_prompt: A professional radio documentary with clean audio recorded in a quiet
+    studio.
+  profile_prompt: The speaker is a woman with articulated Standard German (Hochdeutsch).
+    She is a professional radio show host an delivers a sunny upbeat vibe, lively
+    pace, varied pitch, strong emphasis. She is smiling in her voice.
+  ref_audio: gesine_2_DE-FAKE.wav
+  hg_temperature: 1.19
+  hg_top_p: 0.97
+  hg_top_k: 83.0
+mike_kamp_3_DE:
+  scene_prompt: A morning radio show with professional clean audio recorded in a quiet
+    studio.
+  profile_prompt: A german male voice with articulated Standard German (Hochdeutsch)
+    a very clear pronunciation with an sunny vibe, lively pace, upbeat energy, varied
+    pitch and strong emphasis. He is smiling in his voice.
+  ref_audio: mike_kamp_3_DE.wav
+  hg_temperature: 1.25
+  hg_top_p: 0.96
+  hg_top_k: 45.0

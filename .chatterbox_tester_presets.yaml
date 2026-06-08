@@ -1,3 +1,10 @@
+annie_coleman_rothenberg_1.wav:
+  exaggeration: 0.65
+  cfg_weight: 0.35
+  min_p: 0.24
+  temperature: 1.1
+  top_p: 1.0
+  repetition_penalty: 1.3
 annie_coleman_rothenberg_1.wav::vibevoice:
   temperature: 1.2
   top_p: 0.97
@@ -19,6 +26,13 @@ annie_coleman_rothenberg_1.wav::vibevoice_q4:
   diffusion_steps: 25.0
   voice_speed_factor: 1.0
   use_sampling: true
+annie_coleman_rothenberg_1_15s.wav:
+  exaggeration: 0.65
+  cfg_weight: 0.35
+  min_p: 0.03
+  temperature: 1.1
+  top_p: 0.99
+  repetition_penalty: 1.3
 annie_coleman_rothenberg_1_15s.wav::qwen3:
   temperature: 1.53
   top_k: 192.0
@@ -49,6 +63,13 @@ annie_coleman_rothenberg_1_DE-fake_15s.wav::qwen3:
   subtalker_top_k: 130.0
   subtalker_top_p: 0.98
   repetition_penalty: 1.05
+annie_coleman_rothenberg_2.wav:
+  exaggeration: 0.6
+  cfg_weight: 0.25
+  min_p: 0.24
+  temperature: 1.0
+  top_p: 1.0
+  repetition_penalty: 1.3
 annie_coleman_rothenberg_2.wav::vibevoice:
   temperature: 1.2
   top_p: 0.97
@@ -63,6 +84,13 @@ annie_coleman_rothenberg_2.wav::vibevoice_q4:
   diffusion_steps: 30.0
   voice_speed_factor: 1.0
   use_sampling: true
+annie_coleman_rothenberg_2_15s.wav:
+  exaggeration: 0.6
+  cfg_weight: 0.25
+  min_p: 0.24
+  temperature: 1.0
+  top_p: 1.0
+  repetition_penalty: 1.3
 annie_coleman_rothenberg_2_15s.wav::qwen3:
   temperature: 1.467
   top_k: 163.0
@@ -76,6 +104,51 @@ annie_coleman_rothenberg_2_15s.wav::vibevoice:
   top_p: 0.97
   cfg_scale: 1.6
   diffusion_steps: 19.0
+  voice_speed_factor: 1.0
+  use_sampling: true
+annie_coleman_rothenberg_2_DE-fake_15s.wav:
+  exaggeration: 1.34
+  cfg_weight: 0.38
+  min_p: 0.06
+  temperature: 1.35
+  top_p: 0.98
+  repetition_penalty: 1.74
+annie_coleman_rothenberg_2_DE-fake_15s.wav::qwen3:
+  temperature: 1.37
+  top_k: 81.0
+  top_p: 0.93
+  subtalker_temperature: 1.43
+  subtalker_top_k: 130.0
+  subtalker_top_p: 0.98
+  repetition_penalty: 1.05
+annie_coleman_rothenberg_3_DE-fake.wav::qwen3:
+  temperature: 1.33
+  top_k: 205.0
+  top_p: 0.98
+  subtalker_temperature: 1.01
+  subtalker_top_k: 212.0
+  subtalker_top_p: 0.98
+  repetition_penalty: 1.05
+annie_coleman_rothenberg_4_DE-fake.wav:
+  exaggeration: 1.55
+  cfg_weight: 0.33
+  min_p: 0.05
+  temperature: 0.77
+  top_p: 0.98
+  repetition_penalty: 2.0
+annie_coleman_rothenberg_4_DE-fake.wav::qwen3:
+  temperature: 1.33
+  top_k: 205.0
+  top_p: 0.98
+  subtalker_temperature: 1.01
+  subtalker_top_k: 212.0
+  subtalker_top_p: 0.98
+  repetition_penalty: 1.05
+annie_coleman_rothenberg_4_DE-fake.wav::vibevoice_q4:
+  temperature: 1.15
+  top_p: 0.97
+  cfg_scale: 1.27
+  diffusion_steps: 25.0
   voice_speed_factor: 1.0
   use_sampling: true
 cori_samuel_1.wav:
@@ -110,6 +183,73 @@ cori_samuel_3.wav:
   temperature: 0.85
   top_p: 1.0
   repetition_penalty: 2.06
+cori_samuel_3_DE-Fake_15s.wav:
+  exaggeration: 1.34
+  cfg_weight: 0.38
+  min_p: 0.06
+  temperature: 1.35
+  top_p: 0.98
+  repetition_penalty: 1.74
+cori_samuel_3_DE-Fake_15s.wav::qwen3:
+  temperature: 1.089
+  top_k: 114.0
+  top_p: 0.99
+  subtalker_temperature: 1.456
+  subtalker_top_k: 206.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
+cori_samuel_4_DE-Fake_15s.wav:
+  exaggeration: 1.11
+  cfg_weight: 0.2
+  min_p: 0.05
+  temperature: 1.26
+  top_p: 0.97
+  repetition_penalty: 2.0
+cori_samuel_4_DE-Fake_15s.wav::qwen3:
+  temperature: 1.84
+  top_k: 223.0
+  top_p: 0.99
+  subtalker_temperature: 1.17
+  subtalker_top_k: 124.0
+  subtalker_top_p: 0.98
+  repetition_penalty: 1.07
+cori_samuel_4_DE-Fake_15s.wav::vibevoice_q4:
+  temperature: 1.15
+  top_p: 0.97
+  cfg_scale: 1.27
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
+cori_samuel_5_DE-Fake.wav::qwen3:
+  temperature: 1.11
+  top_k: 196.0
+  top_p: 0.99
+  subtalker_temperature: 1.35
+  subtalker_top_k: 199.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
+cori_samuel_5_DE-Fake.wav::vibevoice_q4:
+  temperature: 1.15
+  top_p: 0.97
+  cfg_scale: 1.27
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
+cori_samuel_5_DE-Fake_15s.wav:
+  exaggeration: 1.4
+  cfg_weight: 0.36
+  min_p: 0.06
+  temperature: 1.35
+  top_p: 0.97
+  repetition_penalty: 1.74
+cori_samuel_6_DE-Fake_15s.wav::qwen3:
+  temperature: 1.11
+  top_k: 196.0
+  top_p: 0.99
+  subtalker_temperature: 1.35
+  subtalker_top_k: 199.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
 david-barnes_2_DE-fake.wav:
   exaggeration: 0.9
   cfg_weight: 0.2
@@ -148,12 +288,12 @@ david_barnes_2_15s.wav::qwen3:
   subtalker_top_p: 0.97
   repetition_penalty: 1.06
 erik_prochnow_DE.wav:
-  exaggeration: 1.58
-  cfg_weight: 0.51
-  temperature: 1.2
+  exaggeration: 1.6
+  cfg_weight: 0.5
+  min_p: 0.03
+  temperature: 1.0
+  top_p: 0.99
   repetition_penalty: 2.0
-  min_p: 0.09
-  top_p: 0.98
 erik_prochnow_DE.wav::vibevoice_q4:
   temperature: 1.1
   top_p: 0.99
@@ -169,6 +309,14 @@ erik_prochnow_DE_15s.wav::qwen3:
   subtalker_top_k: 187.0
   subtalker_top_p: 1.0
   repetition_penalty: 1.05
+gesine_0_15s.wav::qwen3:
+  temperature: 1.278
+  top_k: 139.0
+  top_p: 0.99
+  subtalker_temperature: 1.311
+  subtalker_top_k: 181.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
 gesine_1.wav:
   exaggeration: 1.6
   cfg_weight: 0.2
@@ -176,6 +324,28 @@ gesine_1.wav:
   repetition_penalty: 2.02
   min_p: 0.12
   top_p: 0.94
+gesine_1_15s.wav:
+  exaggeration: 1.43
+  cfg_weight: 0.22
+  min_p: 0.06
+  temperature: 1.35
+  top_p: 0.98
+  repetition_penalty: 1.74
+gesine_1_DE-Fake_15s.wav:
+  exaggeration: 1.48
+  cfg_weight: 0.24
+  min_p: 0.05
+  temperature: 1.0
+  top_p: 0.99
+  repetition_penalty: 2.0
+gesine_1_DE-Fake_15s.wav::qwen3:
+  temperature: 1.16
+  top_k: 186.0
+  top_p: 0.99
+  subtalker_temperature: 1.18
+  subtalker_top_k: 143.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
 gesine_2.wav:
   exaggeration: 1.5
   cfg_weight: 0.5
@@ -183,6 +353,28 @@ gesine_2.wav:
   temperature: 1.29
   top_p: 0.98
   repetition_penalty: 1.75
+gesine_2_15s.wav:
+  exaggeration: 1.34
+  cfg_weight: 0.38
+  min_p: 0.06
+  temperature: 1.35
+  top_p: 0.98
+  repetition_penalty: 1.74
+gesine_2_DE-FAKE.wav:
+  exaggeration: 1.34
+  cfg_weight: 0.38
+  min_p: 0.06
+  temperature: 1.35
+  top_p: 0.98
+  repetition_penalty: 1.74
+gesine_2_DE-FAKE.wav::qwen3:
+  temperature: 1.16
+  top_k: 186.0
+  top_p: 0.99
+  subtalker_temperature: 1.2
+  subtalker_top_k: 137.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
 gesine_3.wav:
   exaggeration: 0.38
   cfg_weight: 0.55
@@ -190,6 +382,35 @@ gesine_3.wav:
   repetition_penalty: 2.05
   min_p: 0.15
   top_p: 1.0
+gesine_3_15s.wav:
+  exaggeration: 1.5
+  cfg_weight: 0.15
+  min_p: 0.24
+  temperature: 0.9
+  top_p: 1.0
+  repetition_penalty: 2.4
+gesine_4_DE-Fake.wav:
+  exaggeration: 1.19
+  cfg_weight: 0.48
+  min_p: 0.05
+  temperature: 1.3
+  top_p: 0.97
+  repetition_penalty: 2.0
+gesine_4_DE-Fake.wav::qwen3:
+  temperature: 1.16
+  top_k: 186.0
+  top_p: 0.99
+  subtalker_temperature: 1.2
+  subtalker_top_k: 137.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
+gesine_4_DE-Fake.wav::vibevoice_q4:
+  temperature: 1.1
+  top_p: 0.98
+  cfg_scale: 1.26
+  diffusion_steps: 28.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 glen_hallstrom_1.wav:
   exaggeration: 0.47
   cfg_weight: 0.3
@@ -204,6 +425,42 @@ glen_hallstrom_2.wav:
   temperature: 1.23
   top_p: 0.99
   repetition_penalty: 1.3
+glen_hallstrom_3.wav:
+  exaggeration: 0.94
+  cfg_weight: 0.28
+  min_p: 0.07
+  temperature: 1.15
+  top_p: 1.0
+  repetition_penalty: 1.54
+glen_hallstrom_3_DE.wav:
+  exaggeration: 0.95
+  cfg_weight: 0.4
+  min_p: 0.05
+  temperature: 1.25
+  top_p: 0.99
+  repetition_penalty: 2.0
+glen_hallstrom_3_DE_15s.wav:
+  exaggeration: 0.95
+  cfg_weight: 0.4
+  min_p: 0.05
+  temperature: 1.25
+  top_p: 0.99
+  repetition_penalty: 2.0
+glen_hallstrom_3_DE_15s.wav::qwen3:
+  temperature: 1.47
+  top_k: 163.0
+  top_p: 0.99
+  subtalker_temperature: 1.167
+  subtalker_top_k: 157.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.07
+glen_hallstrom_3_DE_15s.wav::vibevoice_q4:
+  temperature: 1.0
+  top_p: 0.99
+  cfg_scale: 1.3
+  diffusion_steps: 30.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 hans-juergen-lenhart.wav::vibevoice:
   temperature: 1.2
   top_p: 0.97
@@ -269,6 +526,13 @@ hans-juergen-lenhart_DE_15s.wav::vibevoice:
   diffusion_steps: 30.0
   voice_speed_factor: 1.0
   use_sampling: true
+hans-juergen-lenhart_DE_15s.wav::vibevoice_q4:
+  temperature: 1.09
+  top_p: 0.99
+  cfg_scale: 1.3
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 hans-juergen-lenhart_IT.wav::qwen3:
   temperature: 1.089
   top_k: 114.0
@@ -291,6 +555,52 @@ martina-zimmermann_DE.wav:
   repetition_penalty: 2.1
   min_p: 0.12
   top_p: 0.98
+mary-john_0.wav::qwen3:
+  temperature: 1.44
+  top_k: 218.0
+  top_p: 0.99
+  subtalker_temperature: 1.22
+  subtalker_top_k: 135.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.96
+mary-john_0_15s.wav:
+  exaggeration: 1.43
+  cfg_weight: 0.45
+  min_p: 0.06
+  temperature: 1.39
+  top_p: 0.98
+  repetition_penalty: 1.74
+mary-john_15s.wav::qwen3:
+  temperature: 1.44
+  top_k: 218.0
+  top_p: 0.99
+  subtalker_temperature: 1.22
+  subtalker_top_k: 135.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.96
+mary-john_1_15s.wav::qwen3:
+  temperature: 1.44
+  top_k: 218.0
+  top_p: 0.99
+  subtalker_temperature: 1.22
+  subtalker_top_k: 135.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.96
+mary-john_DE-Fake.wav::qwen3:
+  temperature: 1.44
+  top_k: 218.0
+  top_p: 0.99
+  subtalker_temperature: 1.22
+  subtalker_top_k: 135.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.96
+mary-john_DE-Fake4.wav:
+  exaggeration: 1.5
+  cfg_weight: 0.55
+  min_p: 0.06
+  temperature: 1.0
+  top_p: 0.98
+  repetition_penalty: 2.06
 maryjohn.wav:
   exaggeration: 1.4
   cfg_weight: 0.45
@@ -326,6 +636,13 @@ peter_yearsley_1.wav:
   repetition_penalty: 1.3
   min_p: 0.05
   top_p: 0.94
+peter_yearsley_1_DE_15s.wav:
+  exaggeration: 0.65
+  cfg_weight: 0.3
+  min_p: 0.07
+  temperature: 0.95
+  top_p: 0.97
+  repetition_penalty: 1.2
 petra_ries2_DE.wav:
   exaggeration: 1.45
   cfg_weight: 0.27
@@ -369,6 +686,13 @@ stefan_backes_DE.wav:
   repetition_penalty: 2.1
   min_p: 0.17
   top_p: 0.96
+stefan_backes_DE.wav::vibevoice_q4:
+  temperature: 1.09
+  top_p: 0.98
+  cfg_scale: 1.32
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 stefan_backes_DE_15s.wav::qwen3:
   temperature: 1.21
   top_k: 137.0
@@ -377,6 +701,13 @@ stefan_backes_DE_15s.wav::qwen3:
   subtalker_top_k: 120.0
   subtalker_top_p: 1.0
   repetition_penalty: 1.04
+stefan_backes_DE_15s.wav::vibevoice_q4:
+  temperature: 1.09
+  top_p: 0.98
+  cfg_scale: 1.32
+  diffusion_steps: 25.0
+  voice_speed_factor: 1.0
+  use_sampling: true
 stephan_moebius_3.wav:
   exaggeration: 1.3
   cfg_weight: 0.41
@@ -384,6 +715,22 @@ stephan_moebius_3.wav:
   repetition_penalty: 2.02
   min_p: 0.07
   top_p: 1.0
+stephan_moebius_7_DE_15s.wav::qwen3:
+  temperature: 0.9
+  top_k: 90.0
+  top_p: 0.96
+  subtalker_temperature: 1.6
+  subtalker_top_k: 220.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.17
+stephan_moebius_7_FR-fake_15s.wav::qwen3:
+  temperature: 0.9
+  top_k: 90.0
+  top_p: 0.96
+  subtalker_temperature: 1.6
+  subtalker_top_k: 220.0
+  subtalker_top_p: 0.97
+  repetition_penalty: 1.17
 ulrich_joosten_1_DE.wav:
   exaggeration: 1.3
   cfg_weight: 0.6

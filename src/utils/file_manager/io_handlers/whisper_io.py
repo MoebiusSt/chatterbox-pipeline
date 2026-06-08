@@ -346,6 +346,13 @@ class WhisperIOHandler:
                         "match_ratio",
                         "language_gated",
                         "trimmed_path",
+                        "trailing_asr_words",
+                        "match_rejected",
+                        "smart_match_rejected",
+                        "vad_gap_seconds",
+                        "trim_rejected",
+                        "expected_duration_s",
+                        "proposed_cut_s",
                     }
                     filtered = {k: tail_trim_meta.get(k) for k in allowed_keys if k in tail_trim_meta}
                     if filtered:
